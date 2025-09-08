@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "presidio_evaluator"
-version = "0.2.4"
+version = "0.2.5"
 description = ""
 authors = ["Microsoft"]
 readme = "README.md"
