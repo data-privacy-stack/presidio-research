@@ -1,5 +1,15 @@
 # CHANGELOG
 
+Version 0.2.5
+
+## Improvements
+ - Introduced a new evaluator, `SpanEvaluator` which compares full spans of annotations and predictions, instead of tokens. (#141)
+ - Make Azure SDK as an optional dependency (#116)
+ - Add a DF output to evaluation results (#126)
+## Bug Fixes
+ - Fixed bugs around plotting and experiment tracking (#140) around configuring Presidio in the evaluation loop. (#155)
+ - Data generation bug fixes #113
+
 Version 0.2.0
 
 ## Breaking changes
