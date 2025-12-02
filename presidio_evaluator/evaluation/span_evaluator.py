@@ -1082,8 +1082,8 @@ class SpanEvaluator(BaseEvaluator):
 
         return ModelError(
             error_type=error_type,
-            annotation=prediction,
-            prediction=annotation,
+            annotation=annotation,
+            prediction=prediction,
             full_text=pred_span.entity_value
             if error_type == ErrorType.FP
             else ann_span.entity_value,
