@@ -1,5 +1,5 @@
 import pytest
-from presidio_analyzer.predefined_recognizers.spacy_recognizer import SpacyRecognizer
+from presidio_analyzer.predefined_recognizers import SpacyRecognizer
 
 from presidio_evaluator import InputSample
 from presidio_evaluator.evaluation.scorers import score_presidio_recognizer
