@@ -25,7 +25,7 @@ class SpanEvaluator(BaseEvaluator):
         entities_to_keep: Optional[List[str]] = None,
         generic_entities: Optional[List[str]] = None,
         skip_words: Optional[List] = None,
-        iou_threshold: float = 0.9,
+        iou_threshold: float = 0.75,
         char_based: bool = True,
     ):
         """
@@ -1179,7 +1179,7 @@ class SpanEvaluator(BaseEvaluator):
             ann_chars = set(
                 range(
                     annotation_span.normalized_start_index,
-                    annotation_span.normalized_end_index + 1,
+                    annotation_span.normalized_end_index,
                 )
             )
             pred_chars = set()
@@ -1188,7 +1188,7 @@ class SpanEvaluator(BaseEvaluator):
                     pred_chars.update(
                         range(
                             pred_span.normalized_start_index,
-                            pred_span.normalized_end_index + 1,
+                            pred_span.normalized_end_index,
                         )
                     )
                 else:

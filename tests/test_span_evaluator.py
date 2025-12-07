@@ -1474,3 +1474,98 @@ def test_span_creation_with_skip_words(
         assert (
             actual_span.token_end == expected_span["token_end"]
         ), f"In {scenario}, span {i} token_end expected {expected_span['token_end']}, got {actual_span.token_end}"
+
+
+def test_calculate_combined_iou_char_based_split_entity():
+    """
+    Test _calculate_combined_iou with char_based=True for a split entity.
+
+    Scenario:
+    Text: "A B"
+    Annotation: "A B" (indices 0-3: 'A', ' ', 'B')
+    Predictions: "A" (0-1), "B" (2-3)
+
+    Expected:
+    The predictions combined should perfectly match the annotation.
+
+    With the off-by-one bug:
+    Annotation became {0, 1, 2, 3} (extra char at end)
+    Predictions became {0, 1} U {1, 2} = {0, 1, 2}
+    IoU = 3/4 = 0.75
+
+    Correct:
+    Annotation {0, 1, 2}
+    Predictions {0} U {1, 2} = {0, 1, 2}
+    IoU = 1.0
+    """
+    evaluator = SpanEvaluator(model=MockModel(), char_based=True)
+
+    # Annotation "A B"
+    # Start 0, End 3 (exclusive). Length 3.
+    ann_span = Span(
+        entity_type="PERSON",
+        entity_value="A B",
+        start_position=0,
+        end_position=3,
+        normalized_tokens=["a", "b"],
+        normalized_start_index=0,
+        normalized_end_index=3,
+    )
+
+    # Prediction 1 "A"
+    # Start 0, End 1. Length 1.
+    pred_span_1 = Span(
+        entity_type="PERSON",
+        entity_value="A",
+        start_position=0,
+        end_position=1,
+        normalized_tokens=["a"],
+        normalized_start_index=0,
+        normalized_end_index=1,
+    )
+
+    # Prediction 2 "B"
+    # Start 2, End 3. Length 1.
+    pred_span_2 = Span(
+        entity_type="PERSON",
+        entity_value="B",
+        start_position=2,
+        end_position=3,
+        normalized_tokens=["b"],
+        normalized_start_index=2,
+        normalized_end_index=3,
+    )
+
+    iou = evaluator._calculate_combined_iou(ann_span, [pred_span_1, pred_span_2])
+
+    assert iou == 1.0, f"Expected IoU 1.0 for perfect split match, got {iou}"
+
+
+def test_calculate_combined_iou_char_based_exact_match():
+    """
+    Test simple exact match to ensure no regression.
+    """
+    evaluator = SpanEvaluator(model=MockModel(), char_based=True)
+
+    ann_span = Span(
+        entity_type="PERSON",
+        entity_value="John",
+        start_position=0,
+        end_position=4,
+        normalized_tokens=["john"],
+        normalized_start_index=0,
+        normalized_end_index=4,
+    )
+
+    pred_span = Span(
+        entity_type="PERSON",
+        entity_value="John",
+        start_position=0,
+        end_position=4,
+        normalized_tokens=["john"],
+        normalized_start_index=0,
+        normalized_end_index=4,
+    )
+
+    iou = evaluator._calculate_combined_iou(ann_span, [pred_span])
+    assert iou == 1.0, f"Expected IoU 1.0 for exact match, got {iou}"
