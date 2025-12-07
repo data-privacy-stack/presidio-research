@@ -21,6 +21,24 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
+    - name: Cache Poetry dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/pypoetry
+          ~/.cache/pip
+        key: ${{ runner.os }}-poetry-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-poetry-${{ matrix.python-version }}-
+    
+    - name: Cache spaCy models
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.local/lib/python${{ matrix.python-version }}/site-packages/en_core_web_sm*
+          ~/.local/lib/python${{ matrix.python-version }}/site-packages/en_core_web_lg*
+        key: ${{ runner.os }}-spacy-models-${{ matrix.python-version }}
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
