@@ -18,6 +18,16 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Free up disk space
+      run: |
+        # Remove unnecessary tools and files to free up disk space
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
+        df -h
+    
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
@@ -44,3 +54,11 @@ jobs:
     - name: Run pytest
       run: |
         poetry run pytest --runslow
+    
+    - name: Clean up after tests
+      if: always()
+      run: |
+        # Clean up pip cache and poetry cache to free space for next matrix job
+        pip cache purge || true
+        poetry cache clear pypi --all -n || true
+        df -h
