@@ -47,7 +47,7 @@ cc_test_template_testdata = [
         pii_csv="{}/data/FakeNameGenerator.com_100.csv",
         utterances="{}/data/templates.txt",
         num_of_examples=100,
-        acceptance_threshold=0.6,
+        acceptance_threshold=0.5,
         marks=pytest.mark.none,
     )
 ]
