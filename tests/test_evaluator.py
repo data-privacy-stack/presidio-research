@@ -70,6 +70,26 @@ def test_evaluate_multiple_entities_to_keep_correct_statistics():
 
 
 
+def test_entities_to_keep_handles_bio_prefix_when_compare_by_io_false():
+    prediction = ["B-PERSON", "I-PERSON", "O"]
+    model = MockTokensModel(prediction=prediction)
+    evaluator = MockEvaluator(
+        model=model, entities_to_keep=["PERSON"], compare_by_io=False, skip_words=["-"]
+    )
+
+    sample = InputSample(
+        full_text="John Doe",
+        tokens=["John", "Doe", ""],
+        tags=["B-PERSON", "I-PERSON", "O"],
+    )
+
+    evaluation_result = evaluator.evaluate_sample(sample, prediction)
+    assert evaluation_result.results[("B-PERSON", "B-PERSON")] == 1
+    assert evaluation_result.results[("I-PERSON", "I-PERSON")] == 1
+    assert evaluation_result.results[("O", "O")] == 1
+
+
+
 
 def test_align_entity_types_correct_output():
     sample1 = InputSample(
@@ -113,6 +133,25 @@ def test_align_entity_types_wrong_mapping_exception():
         BaseEvaluator.align_entity_types(
             input_samples=[sample1], entities_mapping=entities_mapping
         )
+
+
+def test_align_entity_types_case_and_underscore_insensitive():
+    sample = InputSample(
+        "John Doe",
+        spans=[Span("person_name", "John Doe", 0, 8)],
+        create_tags_from_span=False,
+    )
+    sample.tokens = ["John", "Doe"]
+    sample.tags = ["B-person_name", "I-person_name"]
+
+    mapping = {"Person_Name": "PERSON"}
+
+    mapped_samples = BaseEvaluator.align_entity_types([sample], mapping)
+    mapped_sample = mapped_samples[0]
+
+    assert len(mapped_sample.spans) == 1
+    assert mapped_sample.spans[0].entity_type == "PERSON"
+    assert mapped_sample.tags == ["B-PERSON", "I-PERSON"]
 
 
 
@@ -246,6 +285,24 @@ def test_get_results_dataframe_with_entity_filtering():
     # Verify that LOCATION tags are filtered out (replaced with "O")
     assert list(df["annotation"]) == ["O", "O", "PERSON", "PERSON", "O", "O", "O"]
     assert list(df["prediction"]) == ["O", "O", "PERSON", "PERSON", "O", "O", "O"]
+
+
+def test_get_results_dataframe_with_bio_prefix_filtering():
+    """Ensure BIO/BILUO prefixes are stripped before entity filtering."""
+    evaluation_results = [
+        EvaluationResult(
+            tokens=["John", "Doe", "from", "Seattle"],
+            actual_tags=["B-PERSON", "I-PERSON", "O", "B-LOCATION"],
+            predicted_tags=["B-PERSON", "I-PERSON", "O", "B-CITY"],
+            start_indices=list(range(4)),
+            results={},
+        )
+    ]
+
+    df = BaseEvaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
+
+    assert list(df["annotation"]) == ["B-PERSON", "I-PERSON", "O", "O"]
+    assert list(df["prediction"]) == ["B-PERSON", "I-PERSON", "O", "O"]
 
 
 def test_get_results_dataframe_with_multiple_entities():

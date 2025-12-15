@@ -6,7 +6,7 @@ from presidio_analyzer import EntityRecognizer
 from presidio_analyzer.nlp_engine import SpacyNlpEngine
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import EvaluationResult, Evaluator
+from presidio_evaluator.evaluation import EvaluationResult, SpanEvaluator
 from presidio_evaluator.models import (
     PresidioRecognizerWrapper,
     PresidioAnalyzerWrapper,
@@ -27,7 +27,7 @@ def score_model(
 
     print("Evaluating samples")
 
-    evaluator = Evaluator(model=model, entities_to_keep=entities_to_keep)
+    evaluator = SpanEvaluator(model=model, entities_to_keep=entities_to_keep)
     evaluated_samples = evaluator.evaluate_all(input_samples)
 
     print("Estimating metrics")
@@ -95,7 +95,7 @@ def score_presidio_recognizer(
 
     print("Preparing dataset by aligning entity names to Presidio's entity names")
 
-    updated_samples = Evaluator.align_entity_types(
+    updated_samples = SpanEvaluator.align_entity_types(
         input_samples, entities_mapping=PresidioAnalyzerWrapper.presidio_entities_map
     )
 

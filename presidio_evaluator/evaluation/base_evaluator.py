@@ -2,6 +2,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections import Counter
 from typing import List, Optional, Dict, Union, Tuple
+import copy
 
 import numpy as np
 import pandas as pd
@@ -213,10 +214,42 @@ class BaseEvaluator(ABC):
         return reverted
 
     def _adjust_per_entities(self, tags: List[str]) -> List[str]:
-        if self.entities_to_keep:
-            return [tag if tag in self.entities_to_keep else "O" for tag in tags]
-        else:
+        if not self.entities_to_keep:
             return tags
+
+        filtered_tags = []
+        for tag in tags:
+            if tag == "O":
+                filtered_tags.append(tag)
+                continue
+
+            base = tag.split("-", 1)[1] if "-" in tag else tag
+            filtered_tags.append(tag if base in self.entities_to_keep else "O")
+
+        return filtered_tags
+
+    @staticmethod
+    def _detect_scheme(tags: List[str]) -> str:
+        """
+        Detect the tagging scheme used in a list of tags.
+
+        :param tags: List of tags to analyze
+        :return: Detected scheme as a string ('IO', 'BIO', 'BILUO', or 'UNKNOWN')
+        """
+        prefixes = set()
+        for tag in tags:
+            if tag != "O" and "-" in tag:
+                prefix = tag.split("-")[0]
+                prefixes.add(prefix)
+
+        if not prefixes:
+            return "IO"
+        elif prefixes <= {"B", "I"}:
+            return "BIO"
+        elif prefixes <= {"B", "I", "L", "U"}:
+            return "BILUO"
+        else:
+            return "UNKNOWN"
 
     @staticmethod
     def _to_io(tags: List[str]) -> List[str]:
@@ -276,12 +309,28 @@ class BaseEvaluator(ABC):
         predictions = self.model.batch_predict(dataset, **kwargs)
         print("Finished running model on dataset")
 
+        # Detect schemes from first sample (for warning purposes)
+        scheme_warned = False
+
         for prediction, sample in zip(predictions, dataset):
             # Remove entities not requested (in model.entities_to_keep))
             prediction = self.model.filter_tags_in_supported_entities(prediction)
 
             # Switch to requested labeling scheme (IO/BIO/BILUO)
             prediction = self.model.to_scheme(prediction)
+
+            # Detect scheme mismatch and warn once
+            if not scheme_warned and self.compare_by_io:
+                pred_scheme = self._detect_scheme(prediction)
+                gt_scheme = self._detect_scheme(sample.tags)
+                if pred_scheme != gt_scheme and pred_scheme != "IO" and gt_scheme != "IO":
+                    warnings.warn(
+                        f"Scheme mismatch detected: model predictions use {pred_scheme}, "
+                        f"ground truth uses {gt_scheme}. Both will be normalized to IO scheme "
+                        f"for comparison (compare_by_io=True).",
+                        UserWarning
+                    )
+                    scheme_warned = True
 
             evaluation_result = self.evaluate_sample(
                 sample=sample, prediction=prediction
@@ -300,35 +349,38 @@ class BaseEvaluator(ABC):
         Change input samples to conform with the provided entity mappings
         :return: new list of InputSample
         """
+        if not entities_mapping:
+            raise ValueError("entities_mapping must be provided and non-empty")
 
-        new_input_samples = input_samples.copy()
+        # Work on copies to avoid mutating the original dataset
+        new_input_samples = [copy.deepcopy(sample) for sample in input_samples]
 
-        def is_key_in_dict(key_dict: Dict[str, str], search_key: str) -> bool:
-            """Check if a key is in a dictionary, ignoring case and underscores."""
-            # Normalize the search key by converting to uppercase and removing underscores
-            normalized_search_key = search_key.upper().replace("_", "")
+        # Pre-compute a normalized mapping for case/underscore-insensitive lookups
+        normalized_mapping = {
+            key.upper().replace("_", ""): value for key, value in entities_mapping.items()
+        }
 
-            # Check if any normalized key in the dictionary matches the search key
-            return any(
-                normalized_search_key == key.upper().replace("_", "")
-                for key in key_dict.keys()
-            )
+        def resolve_mapping_key(search_key: str) -> Optional[str]:
+            """Return the mapped entity value for a search key, ignoring case/underscores."""
+            return normalized_mapping.get(search_key.upper().replace("_", ""))
 
         # A list that will contain updated input samples,
         new_list = []
+        missing_entities = set()
 
         for input_sample in new_input_samples:
             contains_field_in_mapping = False
             new_spans = []
             # Update spans to match the entity types in the values of entities_mapping
             for span in input_sample.spans:
-                if is_key_in_dict(entities_mapping, span.entity_type):
-                    new_name = entities_mapping.get(span.entity_type)
+                new_name = resolve_mapping_key(span.entity_type)
+                if new_name:
                     span.entity_type = new_name
                     contains_field_in_mapping = True
 
                     new_spans.append(span)
                 else:
+                    missing_entities.add(span.entity_type)
                     if not allow_missing_mappings:
                         raise ValueError(
                             f"Key {span.entity_type} cannot be found in the provided entities_mapping"
@@ -346,16 +398,24 @@ class BaseEvaluator(ABC):
                         prefix = ""
                         clean = tag
 
-                    if clean in entities_mapping.keys():
-                        new_name = entities_mapping.get(clean)
-                        input_sample.tags[i] = "{}{}".format(prefix, new_name)
+                    new_name = resolve_mapping_key(clean)
+                    if new_name:
+                        input_sample.tags[i] = f"{prefix}{new_name}"
                     else:
                         input_sample.tags[i] = "O"
+            else:
+                # No mapped entities in this sample; keep spans empty and zero out tags
+                input_sample.tags = ["O" for _ in input_sample.tags]
 
             new_list.append(input_sample)
 
+        if allow_missing_mappings and missing_entities:
+            print(
+                "Entities without mapping (filtered out): "
+                f"{sorted(missing_entities)}"
+            )
+
         return new_list
-        # Iterate on all samples
 
     @abstractmethod
     def calculate_score(
@@ -423,7 +483,20 @@ class BaseEvaluator(ABC):
         """
         if entities is None:
             return tags
-        return [tag if tag in entities else "O" for tag in tags]
+        filtered_tags = []
+        for tag in tags:
+            if tag == "O":
+                filtered_tags.append(tag)
+                continue
+
+            if "-" in tag:
+                _, base = tag.split("-", 1)
+            else:
+                base = tag
+
+            filtered_tags.append(tag if base in entities else "O")
+
+        return filtered_tags
 
     @staticmethod
     def precision(

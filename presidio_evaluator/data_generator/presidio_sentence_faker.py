@@ -160,8 +160,12 @@ class PresidioSentenceFaker:
             )
         self.fake_sentence_results = None
 
-    def generate_new_fake_sentences(self, num_samples: int) -> List[InputSample]:
-        """Generate fake sentences based on the templates, input data and entity providers."""
+    def generate_new_fake_sentences(self, num_samples: int, calculate_tags: bool = True) -> List[InputSample]:
+        """Generate fake sentences based on the templates, input data and entity providers.
+
+        :param num_samples: Number of fake sentences to generate
+        :param calculate_tags: Whether to calculate the tags for each generated sentence, or just spans.
+        """
         self.fake_sentence_results = []
         # Map faker generated entity types to Presidio entity types
         for _ in tqdm(range(num_samples), desc="Sampling"):
@@ -169,6 +173,7 @@ class PresidioSentenceFaker:
             template = self._sentence_templates[template_id]
             template = self._preprocess_template(template)
             fake_sentence_result = self._sentence_faker.parse(template, template_id)
+
             for span in fake_sentence_result.spans:
                 if span.entity_type in self._entity_type_mapping.keys():
                     # Use the mapped entity type if exists
@@ -184,6 +189,13 @@ class PresidioSentenceFaker:
                     self._entity_type_mapping[span.entity_type] = (
                         span.entity_type.upper()
                     )
+
+            if calculate_tags:
+                tokens, tags, start_indices = fake_sentence_result.get_tags()
+                fake_sentence_result.tokens = tokens
+                fake_sentence_result.tags = tags
+                fake_sentence_result.start_indices = start_indices
+
             for key, value in self._entity_type_mapping.items():
                 fake_sentence_result.masked = fake_sentence_result.masked.replace(
                     "{{%s}}" % key, "{{%s}}" % value
