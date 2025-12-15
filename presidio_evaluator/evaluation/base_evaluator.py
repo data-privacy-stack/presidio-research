@@ -229,6 +229,29 @@ class BaseEvaluator(ABC):
         return filtered_tags
 
     @staticmethod
+    def _detect_scheme(tags: List[str]) -> str:
+        """
+        Detect the tagging scheme used in a list of tags.
+
+        :param tags: List of tags to analyze
+        :return: Detected scheme as a string ('IO', 'BIO', 'BILUO', or 'UNKNOWN')
+        """
+        prefixes = set()
+        for tag in tags:
+            if tag != "O" and "-" in tag:
+                prefix = tag.split("-")[0]
+                prefixes.add(prefix)
+
+        if not prefixes:
+            return "IO"
+        elif prefixes <= {"B", "I"}:
+            return "BIO"
+        elif prefixes <= {"B", "I", "L", "U"}:
+            return "BILUO"
+        else:
+            return "UNKNOWN"
+
+    @staticmethod
     def _to_io(tags: List[str]) -> List[str]:
         """
         Translates BILUO/BIO/IOB to IO - only In or Out of entity.
@@ -286,12 +309,28 @@ class BaseEvaluator(ABC):
         predictions = self.model.batch_predict(dataset, **kwargs)
         print("Finished running model on dataset")
 
+        # Detect schemes from first sample (for warning purposes)
+        scheme_warned = False
+
         for prediction, sample in zip(predictions, dataset):
             # Remove entities not requested (in model.entities_to_keep))
             prediction = self.model.filter_tags_in_supported_entities(prediction)
 
             # Switch to requested labeling scheme (IO/BIO/BILUO)
             prediction = self.model.to_scheme(prediction)
+
+            # Detect scheme mismatch and warn once
+            if not scheme_warned and self.compare_by_io:
+                pred_scheme = self._detect_scheme(prediction)
+                gt_scheme = self._detect_scheme(sample.tags)
+                if pred_scheme != gt_scheme and pred_scheme != "IO" and gt_scheme != "IO":
+                    warnings.warn(
+                        f"Scheme mismatch detected: model predictions use {pred_scheme}, "
+                        f"ground truth uses {gt_scheme}. Both will be normalized to IO scheme "
+                        f"for comparison (compare_by_io=True).",
+                        UserWarning
+                    )
+                    scheme_warned = True
 
             evaluation_result = self.evaluate_sample(
                 sample=sample, prediction=prediction
@@ -377,7 +416,6 @@ class BaseEvaluator(ABC):
             )
 
         return new_list
-        # Iterate on all samples
 
     @abstractmethod
     def calculate_score(

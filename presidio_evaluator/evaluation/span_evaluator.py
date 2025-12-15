@@ -375,9 +375,13 @@ class SpanEvaluator(BaseEvaluator):
         :param evaluation_results: List of EvaluationResult objects containing the results of the evaluation run,
         specifically `actual_tags` and `predicted_tags`.
         :param entities: Optional list of entities to filter the evaluation results by.
-        If None, all entities are considered.
+        If None, uses self.entities_to_keep from the constructor.
         :param beta: The beta parameter for F-beta score calculation. Default is 2.
         """
+        # Use self.entities_to_keep as default if entities not explicitly provided
+        if entities is None:
+            entities = self.entities_to_keep
+
         evaluation_result = EvaluationResult()
         df = self.get_results_dataframe(
             evaluation_results=evaluation_results, entities=entities
