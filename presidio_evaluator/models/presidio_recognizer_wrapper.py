@@ -27,7 +27,6 @@ class PresidioRecognizerWrapper(BaseModel):
         entities_to_keep: List[str] = None,
         labeling_scheme: str = "BILUO",
         with_nlp_artifacts: bool = False,
-        entity_mapping: Optional[Dict[str, str]] = None,
         verbose: bool = False,
     ):
 
@@ -35,7 +34,6 @@ class PresidioRecognizerWrapper(BaseModel):
             entities_to_keep=entities_to_keep,
             verbose=verbose,
             labeling_scheme=labeling_scheme,
-            entity_mapping=entity_mapping,
         )
         self.with_nlp_artifacts = with_nlp_artifacts
         self.recognizer = recognizer

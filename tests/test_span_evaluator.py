@@ -11,7 +11,11 @@ from tests.mocks import MockModel
 def span_evaluator():
     """Create a SpanEvaluator instance for testing."""
     return SpanEvaluator(
-        model=MockModel(), iou_threshold=0.75, char_based=True, skip_words=None
+        model=MockModel(), 
+        entity_mapping={},  # No mapping needed for these tests
+        iou_threshold=0.75, 
+        char_based=True, 
+        skip_words=None
     )
 
 
@@ -718,7 +722,11 @@ def test_calculate_iou_token_based():
         normalized_end_index=19,
     )
     span_evaluator = SpanEvaluator(
-        model=MockModel(), iou_threshold=0.75, char_based=False, skip_words=[]
+        model=MockModel(), 
+        entity_mapping={},
+        iou_threshold=0.75, 
+        char_based=False, 
+        skip_words=[]
     )
     # Test token-based IoU calculations for individual spans
     iou_exact = span_evaluator.calculate_iou(span1, span2, char_based=False)
@@ -1420,7 +1428,11 @@ def test_span_creation_with_skip_words(
     """
     # Create evaluator with specific skip words
     span_evaluator = SpanEvaluator(
-        model=MockModel(), iou_threshold=0.75, char_based=True, skip_words=skip_words
+        model=MockModel(), 
+        entity_mapping={},
+        iou_threshold=0.75, 
+        char_based=True, 
+        skip_words=skip_words
     )
 
     # Build the DataFrame

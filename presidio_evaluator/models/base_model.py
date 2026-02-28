@@ -1,4 +1,4 @@
-import copy
+import warnings
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 
@@ -19,16 +19,22 @@ class BaseModel(ABC):
         entities are ignored. If None, none are filtered
         :param labeling_scheme: Used to translate (if needed)
         the prediction to a specific scheme (IO, BIO/IOB, BILUO)
-        :param entity_mapping: Dictionary for mapping this model's input and output with the expected.
-        Keys should be the input entity types (from the input dataset),
-        values should be the model's supported entity types.
+        :param entity_mapping: DEPRECATED. This parameter is no longer supported.
+        Entity mapping should be passed to the evaluator instead.
         :param verbose: Whether to print more debug info
-
-
         """
+        
+        if entity_mapping is not None:
+            raise ValueError(
+                "The 'entity_mapping' parameter is deprecated and has been removed from BaseModel.\n"
+                "Entity mapping is now handled by the evaluator for better separation of concerns.\n"
+                "Please pass entity_mapping to the evaluator constructor instead:\n"
+                "  evaluator = Evaluator(model=model, entity_mapping={...})\n"
+                "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for examples."
+            )
+        
         self.entities = entities_to_keep
         self.labeling_scheme = labeling_scheme
-        self.entity_mapping = entity_mapping
         self.verbose = verbose
         self.name = self.__class__.__name__
 
@@ -44,36 +50,6 @@ class BaseModel(ABC):
     @abstractmethod
     def batch_predict(self, dataset: List[InputSample], **kwargs) -> List[List[str]]:
         """Perform batch prediction if the model supports it."""
-
-    def align_entity_types(self, sample: InputSample) -> None:
-        """
-        Translates the sample's tags to the ones requested by the model
-        :param sample: Input sample
-        :return: None
-        """
-        if self.entity_mapping:
-            sample.translate_input_sample_tags(dictionary=self.entity_mapping)
-
-    def align_prediction_types(
-        self, tags: List[str], ignore_unknown: bool = True
-    ) -> List[str]:
-        """
-        Turns the model's output from the model tags to the input tags.
-        :param tags: List of tags (entity names in IO or "O")
-        :param ignore_unknown: True if entity types not in entity_mapping should be translated to "O"
-        :return: New tags
-        """
-        if not self.entity_mapping:
-            return tags
-
-        inverse_mapping = {v: k for k, v in self.entity_mapping.items()}
-        new_tags = [
-            InputSample.translate_tag(
-                tag, dictionary=inverse_mapping, ignore_unknown=ignore_unknown
-            )
-            for tag in tags
-        ]
-        return new_tags
 
     def filter_tags_in_supported_entities(self, tags: List[str]) -> List[str]:
         """
@@ -96,29 +72,6 @@ class BaseModel(ABC):
         io_tags = [self._to_io(tag) for tag in tags]
 
         return io_to_scheme(io_tags=io_tags, scheme=self.labeling_scheme)
-
-    def _ignore_unwanted_entities(
-        self, dataset: List[InputSample]
-    ) -> List[InputSample]:
-        """
-        Copy dataset and turn non-requested entity types into "O"
-        :param dataset: Input dataset
-        :return: Copy of dataset with requested entity types and "O" otherwise
-        """
-        entities_in_dataset = set()
-        for sample in dataset:
-            entities_in_dataset.update(set([span.entity_type for span in sample.spans]))
-        entities_in_dataset.add("O")
-
-        entities_to_keep = set(self.entities).intersection(entities_in_dataset)
-        entities_to_ignore = entities_in_dataset.difference(self.entities)
-        self.entity_mapping = {v: "O" for v in entities_to_ignore}
-        self.entity_mapping.update({v: v for v in entities_to_keep})
-
-        dataset = copy.copy(dataset)
-
-        [self.align_entity_types(sample) for sample in dataset]
-        return dataset
 
     @staticmethod
     def _to_io(tag):

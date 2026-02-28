@@ -20,6 +20,7 @@ class SpanEvaluator(BaseEvaluator):
     def __init__(
         self,
         model: Optional[Union[BaseModel, AnalyzerEngine]],
+        entity_mapping: Dict[str, str],
         verbose: bool = False,
         compare_by_io: bool = True,
         entities_to_keep: Optional[List[str]] = None,
@@ -31,6 +32,13 @@ class SpanEvaluator(BaseEvaluator):
         """
         Initialize the SpanEvaluator for evaluating pii entities detection results.
 
+        :param model: Instance of a fitted model or Presidio Analyzer
+        :param entity_mapping: REQUIRED. Dictionary mapping dataset entity types to model entity types.
+        :param verbose: Whether to print debug information
+        :param compare_by_io: Whether to compare on entity level only
+        :param entities_to_keep: List of entity names to focus on
+        :param generic_entities: List of entities that are not considered errors
+        :param skip_words: List of words to skip during evaluation
         :param iou_threshold: Minimum Intersection over Union (IoU) threshold for considering spans as matching.
                             Value between 0 and 1, where higher values require more overlap (default: 0.5)
         :param skip_words: Optional list of custom skip words to ignore during token normalization,
@@ -41,6 +49,7 @@ class SpanEvaluator(BaseEvaluator):
         """
         super().__init__(
             model=model,
+            entity_mapping=entity_mapping,
             verbose=verbose,
             compare_by_io=compare_by_io,
             entities_to_keep=entities_to_keep,
@@ -183,8 +192,8 @@ class SpanEvaluator(BaseEvaluator):
     def _process_sentence_spans(
         self, sentence_df: pd.DataFrame
     ) -> Tuple[List[Span], List[Span]]:
-        annotation_spans = self._create_spans(df=sentence_df, column="annotation")
-        prediction_spans = self._create_spans(df=sentence_df, column="prediction")
+        annotation_spans = self._create_spans(df=sentence_df, column="annotation", apply_entity_mapping=True)
+        prediction_spans = self._create_spans(df=sentence_df, column="prediction", apply_entity_mapping=False)
 
         annotation_spans = self._merge_adjacent_spans(
             spans=annotation_spans, df=sentence_df
@@ -467,12 +476,13 @@ class SpanEvaluator(BaseEvaluator):
         )
         return evaluation_result
 
-    def _create_spans(self, df: pd.DataFrame, column: str) -> List[Span]:
+    def _create_spans(self, df: pd.DataFrame, column: str, apply_entity_mapping: bool = False) -> List[Span]:
         """
         Create spans from a DataFrame column.
 
         :param df: DataFrame containing the spans.
         :param column: Name of the column to extract spans from.
+        :param apply_entity_mapping: If True, applies entity mapping to translate dataset entities to model entities.
 
         Returns:
             List[Span]: List of Span objects created from the DataFrame.
@@ -489,6 +499,10 @@ class SpanEvaluator(BaseEvaluator):
             entity_type = row[column]
             if self.compare_by_io:
                 entity_type = self._to_io([entity_type])[0]
+            
+            # Apply entity mapping for annotation column to translate dataset entities to model entities
+            if apply_entity_mapping and entity_type != "O":
+                entity_type = self._normalize_entity_for_comparison(entity_type, self.entity_mapping)
             token = row["token"]
             token_start = row["start_indices"]
             token_length = len(token)

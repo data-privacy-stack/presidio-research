@@ -79,15 +79,6 @@ def test_notebook():
     print("Using this mapping between the dataset and Presidio's entities:")
     pprint(entities_mapping, compact=True)
 
-    dataset = Evaluator.align_entity_types(
-        dataset, entities_mapping=entities_mapping, allow_missing_mappings=True
-    )
-    new_entity_counts = get_entity_counts(dataset)
-    print("\nCount per entity after alignment:")
-    pprint(new_entity_counts.most_common(), compact=True)
-
-    dataset_entities = list(new_entity_counts.values())
-
     # ## 5. Set up the Evaluator object
 
     # In[8]:
@@ -95,8 +86,8 @@ def test_notebook():
     # Set up the experiment tracker to log the experiment for reproducibility
     experiment = get_experiment_tracker()
 
-    # Create the evaluator object
-    evaluator = Evaluator(model=analyzer_engine)
+    # Create the evaluator object with entity mapping
+    evaluator = Evaluator(model=analyzer_engine, entity_mapping=entities_mapping)
 
     evaluation_results = evaluator.evaluate_all(dataset)
     results = evaluator.calculate_score(evaluation_results)

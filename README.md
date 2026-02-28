@@ -20,6 +20,7 @@ The easiest way to get started is by reviewing the notebooks.
 - [Notebook 3](notebooks/3_Split_by_pattern_number.ipynb): Provides tools to split the dataset into train/test/validation sets while avoiding leakage due to the same pattern appearing in multiple folds (only applicable for synthetically generated data).
 - [Notebook 4](notebooks/4_Evaluate_Presidio_Analyzer.ipynb): Shows how to use the evaluation tools to evaluate how well Presidio detects PII. Note that this is using the vanilla Presidio, and the results aren't very accurate.
 - [Notebook 5](notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb): Shows how one can configure Presidio to detect PII much more accurately, and boost the f score in ~30%.
+- [Notebook 6](notebooks/6_Interactive_Entity_Mapping.ipynb): Demonstrates the interactive entity mapping helper for automatically aligning dataset entities with model entities.
 
 ### Installation
 

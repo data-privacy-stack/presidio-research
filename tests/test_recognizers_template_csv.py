@@ -1,10 +1,14 @@
+import os
+
 import numpy as np
 import pandas as pd
 import pytest
 from presidio_analyzer.predefined_recognizers import CreditCardRecognizer
+from presidio_analyzer.nlp_engine import SpacyNlpEngine
 
 from presidio_evaluator.data_generator import PresidioSentenceFaker
-from presidio_evaluator.evaluation.scorers import score_presidio_recognizer
+from presidio_evaluator.evaluation import Evaluator
+from presidio_evaluator.models import PresidioRecognizerWrapper
 
 
 class TemplateTextTestCase:
@@ -71,7 +75,6 @@ def test_credit_card_recognizer_with_template(
     :param acceptance_threshold: minimum precision/recall
      allowed for tests to pass
     """
-    import os
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -88,10 +91,15 @@ def test_credit_card_recognizer_with_template(
     )
     input_samples = sentence_faker.generate_new_fake_sentences(num_of_examples)
 
-    scores = score_presidio_recognizer(
+    nlp_engine = SpacyNlpEngine()
+    model = PresidioRecognizerWrapper(
         recognizer=CreditCardRecognizer(),
+        nlp_engine=nlp_engine,
         entities_to_keep=["CREDIT_CARD"],
-        input_samples=input_samples,
     )
+    evaluator = Evaluator(model=model, entity_mapping={})
+    evaluation_results = evaluator.evaluate_all(input_samples)
+    scores = evaluator.calculate_score(evaluation_results)
+
     if not np.isnan(scores.pii_f):
         assert acceptance_threshold <= scores.pii_f

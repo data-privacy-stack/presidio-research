@@ -51,6 +51,27 @@ def small_dataset() -> List[InputSample]:
     return input_samples
 
 
+@pytest.fixture
+def default_entity_mapping():
+    """Default identity entity mapping for tests (entities map to themselves)."""
+    return {
+        "PERSON": "PERSON",
+        "GPE": "GPE",
+        "ORG": "ORG",
+        "LOCATION": "LOCATION",
+        "EMAIL": "EMAIL",
+        "PHONE_NUMBER": "PHONE_NUMBER",
+        "CREDIT_CARD": "CREDIT_CARD",
+        "IP_ADDRESS": "IP_ADDRESS",
+        "US_SSN": "US_SSN",
+        "US_DRIVER_LICENSE": "US_DRIVER_LICENSE",
+        "DATE_TIME": "DATE_TIME",
+        "X": "X",
+        "Y": "Y",
+        "Z": "Z",
+    }
+
+
 def assert_model_results_gt(
     scores: EvaluationResult, entity: str = "PERSON", threshold: float = 0.1
 ):

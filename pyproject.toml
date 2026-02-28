@@ -9,8 +9,8 @@ include = [{ path= "presidio_evaluator/data_generator/raw_data/*"}]
 
 
 [tool.poetry.dependencies]
-python = "^3.10"
-spacy = { version = "<3.8.4", python = "<3.10" }  #Remove once 3.9 is EOL
+python = ">=3.10,<3.14"
+spacy = { version = "^3.0.0"}
 numpy = "^2.0.0"
 pandas = "^2.1.4"
 tqdm = "^4.60.0"
@@ -21,7 +21,9 @@ presidio-anonymizer = "^2.2.360"
 requests = "^2.25"
 xmltodict = "^0.12.0"
 python-dotenv = "^1.0.0"
-plotly= "^5.24.0"
+plotly= "^6.1.1"
+transformers = "^4.57.6"
+sentence-transformers = "^3.0.0"
 
 # optional dependencies for the different NLP approaches
 [tool.poetry.group.ner]
@@ -29,7 +31,6 @@ optional=true
 
 [tool.poetry.group.ner.dependencies]
 flair = "^0.15.1"
-spacy_stanza = "^1.0.0"
 spacy_huggingface_pipelines = "^0.0.4"
 azure-ai-textanalytics = "^5.3.0"
 gliner = "^0.2.24"
@@ -40,6 +41,8 @@ ruff = "^0.8"
 pytest-azurepipelines = "^1.0.5"
 jupyter = "^1.0.0"
 matplotlib = "^3.4.3"
+ipykernel = "^7.1.0"
+
 
 [build-system]
 requires = ["poetry-core"]

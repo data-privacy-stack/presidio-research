@@ -20,6 +20,7 @@ class BaseEvaluator(ABC):
     def __init__(
         self,
         model: Optional[Union[BaseModel, AnalyzerEngine]],
+        entity_mapping: Dict[str, str],
         verbose: bool = False,
         compare_by_io: bool = True,
         entities_to_keep: Optional[List[str]] = None,
@@ -31,6 +32,10 @@ class BaseEvaluator(ABC):
 
         :param model: Instance of a fitted model (of base type BaseModel),
         or an instance of Presidio Analyzer
+        :param entity_mapping: REQUIRED. Dictionary mapping dataset entity types to model entity types.
+        Keys are dataset entities (e.g., STREET_ADDRESS, GPE), values are model entities (e.g., LOCATION).
+        This mapping is used during comparison to match dataset labels with model predictions.
+        :param verbose: Whether to print debug information
         :param compare_by_io: True if comparison should be done on the entity
         level and not the sub-entity level
         :param entities_to_keep: List of entity names to focus the evaluator on (and ignore the rest).
@@ -41,6 +46,16 @@ class BaseEvaluator(ABC):
         :param skip_words: List of words to skip. If None, the default list would be used.
         """
 
+        # Validate entity_mapping is provided
+        if entity_mapping is None:
+            raise ValueError(
+                "entity_mapping is required. Please provide a dictionary mapping dataset entity types "
+                "to model entity types. Example: {'STREET_ADDRESS': 'LOCATION', 'GPE': 'LOCATION'}. "
+                "If no mapping is needed, pass an empty dict: entity_mapping={}"
+            )
+        
+        self.entity_mapping = entity_mapping
+        
         if model is None:
             warnings.warn("Using the evaluator without a model only supports comparing actual vs. existing "
                           "predicted tags. It will not run the model to generate predictions.")
@@ -64,6 +79,15 @@ class BaseEvaluator(ABC):
 
         elif isinstance(model, BaseModel):
             self.model = model
+            
+            # Check if model has deprecated entity_mapping and raise error
+            if hasattr(model, 'entity_mapping') and model.entity_mapping:
+                raise ValueError(
+                    "Passing entity_mapping to the model is deprecated. "
+                    "Please pass entity_mapping to the evaluator instead.\n"
+                    f"Remove entity_mapping={model.entity_mapping} from model constructor and "
+                    f"add entity_mapping={model.entity_mapping} to evaluator constructor."
+                )
         else:
             raise ValueError(
                 "Model should be an instance of BaseModel or Presidio Analyzer, or None."
@@ -114,29 +138,43 @@ class BaseEvaluator(ABC):
             new_annotation = self._to_io(new_annotation)
             prediction = self._to_io(prediction)
 
-        # Ignore annotations that aren't in the list of
-        # requested entities.
+        # Keep a copy for error reporting (after IO conversion but before normalization)
+        original_annotation = new_annotation.copy()
+
+        # Normalize annotation entities to model entities BEFORE filtering
+        # This ensures dataset entities (like GPE) are mapped to model entities (like LOCATION)
+        # before checking if they should be kept
+        normalized_annotation = [
+            self._normalize_entity_for_comparison(tag, self.entity_mapping)
+            for tag in new_annotation
+        ]
+
+        # Now filter by entities_to_keep (which contains model entity names)
         if self.entities_to_keep:
             prediction = self._adjust_per_entities(prediction)
-            new_annotation = self._adjust_per_entities(new_annotation)
+            normalized_annotation = self._adjust_per_entities(normalized_annotation)
 
-        for i in range(0, len(new_annotation)):
+        for i in range(0, len(normalized_annotation)):
             cur_token = tokens[i]
             cur_prediction = prediction[i]
-            cur_annotation = new_annotation[i]
-            results[(cur_annotation, cur_prediction)] += 1
+            cur_annotation = original_annotation[i]  # Use original for error reporting
+            cur_normalized_annotation = normalized_annotation[i]
+            
+            # Use normalized annotation for counting and comparison
+            results[(cur_normalized_annotation, cur_prediction)] += 1
 
             if self.verbose:
                 print("Annotation:", cur_annotation)
+                print("Normalized Annotation:", cur_normalized_annotation)
                 print("Prediction:", cur_prediction)
                 print(results)
 
-            # check if there was an error
-            is_error = cur_annotation != cur_prediction
+            # check if there was an error (using normalized annotation)
+            is_error = cur_normalized_annotation != cur_prediction
 
             if is_error:
                 reverted = self.__revert_known_errors(
-                    cur_annotation, cur_prediction, cur_token, results
+                    cur_normalized_annotation, cur_prediction, cur_token, results
                 )
                 if reverted:
                     # This isn't really an error, continue.
@@ -153,7 +191,7 @@ class BaseEvaluator(ABC):
                             metadata=input_sample.metadata,
                         )
                     )
-                elif new_annotation[i] == "O":
+                elif normalized_annotation[i] == "O":
                     mistakes.append(
                         ModelError(
                             error_type=ErrorType.FP,
@@ -229,6 +267,37 @@ class BaseEvaluator(ABC):
         """
         return [tag[2:] if "-" in tag else tag for tag in tags]
 
+    @staticmethod
+    def _normalize_entity_for_comparison(
+        entity: str, 
+        entity_mapping: Dict[str, str]
+    ) -> str:
+        """
+        Normalize an entity name using mapping for comparison.
+        Handles prefixed tags (B-STREET_ADDRESS -> B-LOCATION).
+        
+        Mapping to None means identity mapping (use entity as-is).
+        
+        :param entity: Entity tag (e.g., "STREET_ADDRESS" or "B-STREET_ADDRESS")
+        :param entity_mapping: Dict mapping dataset entities to model entities
+        :return: Normalized entity for comparison
+        """
+        if entity == "O":
+            return entity
+        
+        # Handle prefixed tags (B-, I-, L-, U-)
+        if "-" in entity:
+            prefix, clean_entity = entity.split("-", 1)
+            mapped_entity = entity_mapping.get(clean_entity, clean_entity)
+            # If mapped to None, use original entity (identity mapping)
+            if mapped_entity is None:
+                mapped_entity = clean_entity
+            return f"{prefix}-{mapped_entity}"
+        else:
+            mapped_entity = entity_mapping.get(entity, entity)
+            # If mapped to None, use original entity (identity mapping)
+            return entity if mapped_entity is None else mapped_entity
+
     def evaluate_sample(
         self, sample: InputSample, prediction: List[str]
     ) -> EvaluationResult:
@@ -267,10 +336,10 @@ class BaseEvaluator(ABC):
             )
 
         evaluation_results = []
-        if self.model.entity_mapping:
-            print(
-                f"Mapping entity values using this dictionary: {self.model.entity_mapping}"
-            )
+        
+        # Note: entity_mapping is now applied during comparison, not before prediction
+        # This preserves original dataset entity types in results
+        print(f"Using entity mapping for comparison: {self.entity_mapping}")
 
         print(f"Running model {self.model.__class__.__name__} on dataset...")
         predictions = self.model.batch_predict(dataset, **kwargs)
@@ -290,73 +359,6 @@ class BaseEvaluator(ABC):
 
         return evaluation_results
 
-    @staticmethod
-    def align_entity_types(
-        input_samples: List[InputSample],
-        entities_mapping: Dict[str, str] = None,
-        allow_missing_mappings: bool = False,
-    ) -> List[InputSample]:
-        """
-        Change input samples to conform with the provided entity mappings
-        :return: new list of InputSample
-        """
-
-        new_input_samples = input_samples.copy()
-
-        def is_key_in_dict(key_dict: Dict[str, str], search_key: str) -> bool:
-            """Check if a key is in a dictionary, ignoring case and underscores."""
-            # Normalize the search key by converting to uppercase and removing underscores
-            normalized_search_key = search_key.upper().replace("_", "")
-
-            # Check if any normalized key in the dictionary matches the search key
-            return any(
-                normalized_search_key == key.upper().replace("_", "")
-                for key in key_dict.keys()
-            )
-
-        # A list that will contain updated input samples,
-        new_list = []
-
-        for input_sample in new_input_samples:
-            contains_field_in_mapping = False
-            new_spans = []
-            # Update spans to match the entity types in the values of entities_mapping
-            for span in input_sample.spans:
-                if is_key_in_dict(entities_mapping, span.entity_type):
-                    new_name = entities_mapping.get(span.entity_type)
-                    span.entity_type = new_name
-                    contains_field_in_mapping = True
-
-                    new_spans.append(span)
-                else:
-                    if not allow_missing_mappings:
-                        raise ValueError(
-                            f"Key {span.entity_type} cannot be found in the provided entities_mapping"
-                        )
-            input_sample.spans = new_spans
-
-            # Update tags in case this sample has relevant entities for evaluation
-            if contains_field_in_mapping:
-                for i, tag in enumerate(input_sample.tags):
-                    has_prefix = "-" in tag
-                    if has_prefix:
-                        prefix = tag[:2]
-                        clean = tag[2:]
-                    else:
-                        prefix = ""
-                        clean = tag
-
-                    if clean in entities_mapping.keys():
-                        new_name = entities_mapping.get(clean)
-                        input_sample.tags[i] = "{}{}".format(prefix, new_name)
-                    else:
-                        input_sample.tags[i] = "O"
-
-            new_list.append(input_sample)
-
-        return new_list
-        # Iterate on all samples
-
     @abstractmethod
     def calculate_score(
         self,
@@ -370,19 +372,19 @@ class BaseEvaluator(ABC):
 
         pass
 
-    @staticmethod
     def get_results_dataframe(
-        evaluation_results: List[EvaluationResult], entities: Optional[List[str]] = None
+        self, evaluation_results: List[EvaluationResult], entities: Optional[List[str]] = None
     ) -> pd.DataFrame:
         """Return a DataFrame with the results of the evaluation.
 
         :param evaluation_results: List of EvaluationResult objects containing the evaluation results.
         :param entities: Optional list of entities to filter the results. If None, all entities are included.
+        Note: entities should be model entity names (e.g., LOCATION), not dataset entity names.
 
         :return: A pandas DataFrame with the following columns
             - sentence_id
             - token text
-            - annotation
+            - annotation (normalized to model entity types)
             - prediction
             - start_indices
         """
@@ -396,8 +398,23 @@ class BaseEvaluator(ABC):
         rows_list = []
         for i, res in enumerate(evaluation_results):
             tokens = res.tokens
-            annotations = BaseEvaluator._filter_entities(res.actual_tags, entities)
-            predictions = BaseEvaluator._filter_entities(res.predicted_tags, entities)
+            
+            # Normalize annotations to model entity types before filtering
+            # This ensures that when entities filter contains model names,
+            # it matches dataset names that map to it
+            annotations = res.actual_tags
+            if self.compare_by_io:
+                annotations = self._to_io(annotations)
+            annotations = [
+                self._normalize_entity_for_comparison(tag, self.entity_mapping)
+                for tag in annotations
+            ]
+            if self.entities_to_keep:
+                annotations = self._adjust_per_entities(annotations)
+            
+            # Now filter by entities if provided
+            annotations = self._filter_entities(annotations, entities)
+            predictions = self._filter_entities(res.predicted_tags, entities)
             start_indices = res.start_indices
             for j in range(len(tokens)):
                 rows_list.append(

@@ -2,7 +2,8 @@ import pytest
 from presidio_analyzer.predefined_recognizers import SpacyRecognizer
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation.scorers import score_presidio_recognizer
+from presidio_evaluator.evaluation import Evaluator
+from presidio_evaluator.models import PresidioRecognizerWrapper
 
 
 class GeneratedTextTestCase:
@@ -59,10 +60,20 @@ def test_spacy_recognizer_with_generated_text(test_input, acceptance_threshold):
 
     # read test input from generated file
     import os
+    from presidio_analyzer.nlp_engine import SpacyNlpEngine
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     input_samples = InputSample.read_dataset_json(test_input.format(dir_path))
-    scores = score_presidio_recognizer(
-        SpacyRecognizer(), ["PERSON"], input_samples, with_nlp_artifacts=True
+    
+    nlp_engine = SpacyNlpEngine()
+    model = PresidioRecognizerWrapper(
+        recognizer=SpacyRecognizer(),
+        nlp_engine=nlp_engine,
+        entities_to_keep=["PERSON"],
+        with_nlp_artifacts=True
     )
+    evaluator = Evaluator(model=model, entity_mapping={})
+    evaluation_results = evaluator.evaluate_all(input_samples)
+    scores = evaluator.calculate_score(evaluation_results)
+    
     assert acceptance_threshold <= scores.pii_f

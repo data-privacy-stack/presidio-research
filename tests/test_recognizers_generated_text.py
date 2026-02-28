@@ -1,8 +1,13 @@
-from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation.scorers import score_presidio_recognizer
-import pytest
+import os
 
 from presidio_analyzer.predefined_recognizers import CreditCardRecognizer
+from presidio_analyzer.nlp_engine import SpacyNlpEngine
+import pytest
+
+
+from presidio_evaluator import InputSample
+from presidio_evaluator.evaluation import Evaluator
+from presidio_evaluator.models import PresidioRecognizerWrapper
 
 
 # test case parameters for tests with dataset which was previously generated.
@@ -55,13 +60,17 @@ def test_credit_card_recognizer_with_generated_text(test_input, acceptance_thres
     """
 
     # read test input from generated file
-    import os
-
     dir_path = os.path.dirname(os.path.realpath(__file__))
     input_samples = InputSample.read_dataset_json(test_input.format(dir_path))
-    scores = score_presidio_recognizer(
+
+    nlp_engine = SpacyNlpEngine()
+    model = PresidioRecognizerWrapper(
         recognizer=CreditCardRecognizer(),
+        nlp_engine=nlp_engine,
         entities_to_keep=["CREDIT_CARD"],
-        input_samples=input_samples,
     )
+    evaluator = Evaluator(model=model, entity_mapping={})
+    evaluation_results = evaluator.evaluate_all(input_samples)
+    scores = evaluator.calculate_score(evaluation_results)
+
     assert acceptance_threshold <= scores.pii_f

@@ -51,7 +51,7 @@ def test_analyzer_simple_input():
     )
 
     prediction = model.predict(sample)
-    evaluator = Evaluator(model=model)
+    evaluator = Evaluator(model=model, entity_mapping={})
 
     evaluated = evaluator.evaluate_sample(sample, prediction)
     metrics = evaluator.calculate_score([evaluated])
@@ -79,15 +79,9 @@ def test_analyzer_with_generated_text(test_input, acceptance_threshold):
     dir_path = os.path.dirname(os.path.realpath(__file__))
     input_samples = InputSample.read_dataset_json(test_input.format(dir_path))
 
-    updated_samples = Evaluator.align_entity_types(
-        input_samples=input_samples,
-        entities_mapping=PresidioAnalyzerWrapper.presidio_entities_map,
-        allow_missing_mappings=True
-    )
-
     analyzer = PresidioAnalyzerWrapper()
-    evaluator = Evaluator(model=analyzer)
-    evaluated_samples = evaluator.evaluate_all(updated_samples)
+    evaluator = Evaluator(model=analyzer, entity_mapping=PresidioAnalyzerWrapper.presidio_entities_map)
+    evaluated_samples = evaluator.evaluate_all(input_samples)
     scores = evaluator.calculate_score(evaluation_results=evaluated_samples)
 
     assert acceptance_threshold <= scores.pii_precision

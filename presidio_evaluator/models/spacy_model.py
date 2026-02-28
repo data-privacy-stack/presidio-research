@@ -15,13 +15,11 @@ class SpacyModel(BaseModel):
         entities_to_keep: List[str] = None,
         verbose: bool = False,
         labeling_scheme: str = "BIO",
-        entity_mapping: Optional[Dict[str, str]] = PRESIDIO_SPACY_ENTITIES,
     ):
         super().__init__(
             entities_to_keep=entities_to_keep,
             verbose=verbose,
             labeling_scheme=labeling_scheme,
-            entity_mapping=entity_mapping,
         )
 
         if model is None:

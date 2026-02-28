@@ -268,3 +268,154 @@ def test_span_iou(pair_of_spans):
 
     iou_type_normalized = span1.iou(span2, ignore_entity_type=True, use_normalized_indices=True)
     assert iou_type_normalized == 5 / 9.0
+
+
+def test_extract_entity_types_from_spans():
+    """Test extracting entity types from span-based samples"""
+    samples = [
+        InputSample(
+            full_text="John works at Microsoft.",
+            spans=[
+                Span(entity_type="PERSON", entity_value="John", start_position=0, end_position=4),
+                Span(entity_type="ORG", entity_value="Microsoft", start_position=14, end_position=23)
+            ]
+        ),
+        InputSample(
+            full_text="Alice lives in Seattle.",
+            spans=[
+                Span(entity_type="PERSON", entity_value="Alice", start_position=0, end_position=5),
+                Span(entity_type="LOCATION", entity_value="Seattle", start_position=15, end_position=22)
+            ]
+        )
+    ]
+    
+    entity_types = InputSample.extract_entity_types(samples)
+    assert entity_types == {"PERSON", "ORG", "LOCATION"}
+
+
+def test_extract_entity_types_from_tags_bio():
+    """Test extracting entity types from BIO-tagged samples"""
+    samples = [
+        InputSample(
+            full_text="John Smith works here.",
+            tags=["B-PERSON", "I-PERSON", "O", "O"],
+            tokens=[],
+            create_tags_from_span=False
+        ),
+        InputSample(
+            full_text="Microsoft Corporation in Seattle.",
+            tags=["B-ORG", "I-ORG", "O", "B-LOCATION"],
+            tokens=[],
+            create_tags_from_span=False
+        )
+    ]
+    
+    entity_types = InputSample.extract_entity_types(samples)
+    assert entity_types == {"PERSON", "ORG", "LOCATION"}
+
+
+def test_extract_entity_types_from_tags_biluo():
+    """Test extracting entity types from BILUO-tagged samples"""
+    samples = [
+        InputSample(
+            full_text="John works at Microsoft.",
+            tags=["U-PERSON", "O", "O", "U-ORG"],
+            tokens=[],
+            create_tags_from_span=False
+        ),
+        InputSample(
+            full_text="Bob Smith at Google.",
+            tags=["B-PERSON", "L-PERSON", "O", "U-ORG"],
+            tokens=[],
+            create_tags_from_span=False
+        )
+    ]
+    
+    entity_types = InputSample.extract_entity_types(samples)
+    assert entity_types == {"PERSON", "ORG"}
+
+
+def test_extract_entity_types_from_tags_io():
+    """Test extracting entity types from IO-tagged samples"""
+    samples = [
+        InputSample(
+            full_text="John works.",
+            tags=["PERSON", "O"],
+            tokens=[],
+            create_tags_from_span=False
+        ),
+        InputSample(
+            full_text="Microsoft here.",
+            tags=["ORG", "O"],
+            tokens=[],
+            create_tags_from_span=False
+        )
+    ]
+    
+    entity_types = InputSample.extract_entity_types(samples)
+    assert entity_types == {"PERSON", "ORG"}
+
+
+def test_extract_entity_types_mixed():
+    """Test extracting entity types from both spans and tags"""
+    samples = [
+        InputSample(
+            full_text="John works at Microsoft.",
+            spans=[
+                Span(entity_type="PERSON", entity_value="John", start_position=0, end_position=4),
+                Span(entity_type="ORG", entity_value="Microsoft", start_position=14, end_position=23)
+            ]
+        ),
+        InputSample(
+            full_text="Seattle is nice.",
+            tags=["B-LOCATION", "O", "O"],
+            tokens=[],
+            create_tags_from_span=False
+        )
+    ]
+    
+    entity_types = InputSample.extract_entity_types(samples)
+    assert entity_types == {"PERSON", "ORG", "LOCATION"}
+
+
+def test_extract_entity_types_empty_dataset():
+    """Test extracting entity types from empty dataset"""
+    entity_types = InputSample.extract_entity_types([])
+    assert entity_types == set()
+
+
+def test_extract_entity_types_no_entities():
+    """Test extracting entity types when samples have no entities"""
+    samples = [
+        InputSample(
+            full_text="Hello world.",
+            tags=["O", "O"],
+            tokens=[],
+            create_tags_from_span=False
+        )
+    ]
+    
+    entity_types = InputSample.extract_entity_types(samples)
+    assert entity_types == set()
+
+
+def test_extract_entity_types_duplicate_entities():
+    """Test that duplicate entity types are handled correctly"""
+    samples = [
+        InputSample(
+            full_text="John and Alice.",
+            spans=[
+                Span(entity_type="PERSON", entity_value="John", start_position=0, end_position=4),
+                Span(entity_type="PERSON", entity_value="Alice", start_position=9, end_position=14)
+            ]
+        ),
+        InputSample(
+            full_text="Bob here.",
+            spans=[
+                Span(entity_type="PERSON", entity_value="Bob", start_position=0, end_position=3)
+            ]
+        )
+    ]
+    
+    entity_types = InputSample.extract_entity_types(samples)
+    assert entity_types == {"PERSON"}  # Should only appear once in the set

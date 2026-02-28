@@ -6,33 +6,12 @@ from tests.mocks import MockModel
 
 @pytest.fixture(scope="session")
 def mock_model():
-    return MockModel(entity_mapping={"name": "new_name"}, entities_to_keep=["name"])
+    return MockModel(entities_to_keep=["name"])
 
 
-def test_align_entity_types(mock_model):
-    input_sample = InputSample(
-        full_text="Dan is my name.", spans=[Span("name", "Dan", 0, 3)]
-    )
-
-    mock_model.align_entity_types(sample=input_sample)
-
-    assert input_sample.spans[0].entity_type == "new_name"
-
-
-@pytest.mark.parametrize(
-    "tags, expected_tags, ignore_unknown",
-    [
-        (["O", "O"], ["O", "O"], True),
-        (["new_name", "O"], ["name", "O"], True),
-        (["O", "credit_card"], ["O", "O"], True),
-        (["O", "credit_card"], ["O", "credit_card"], False),
-    ],
-)
-def test_align_prediction(mock_model, tags, expected_tags, ignore_unknown):
-    actual_tags = mock_model.align_prediction_types(
-        tags=tags, ignore_unknown=ignore_unknown
-    )
-    assert actual_tags == expected_tags
+# test_align_entity_types and test_align_prediction removed
+# These methods have been deprecated and removed from BaseModel.
+# Entity mapping is now handled by the evaluator.
 
 
 @pytest.mark.parametrize(

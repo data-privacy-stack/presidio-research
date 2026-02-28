@@ -339,6 +339,37 @@ class InputSample(object):
             return self.metadata.get("template_id")
 
     @staticmethod
+    def extract_entity_types(dataset: List["InputSample"]) -> set[str]:
+        """Extract all unique entity types from a dataset.
+        
+        Handles both span-based and token-based annotations, stripping BIO/BILUO prefixes.
+        
+        :param dataset: List of InputSample objects
+        :return: Set of unique entity type strings found in the dataset
+        """
+        entity_types = set()
+        
+        for sample in dataset:
+            # Extract from spans
+            if sample.spans:
+                for span in sample.spans:
+                    entity_types.add(span.entity_type)
+            
+            # Extract from tags (tokens)
+            if sample.tags:
+                for tag in sample.tags:
+                    # Strip BIO/BILUO prefixes
+                    if tag.startswith(("B-", "I-", "U-", "L-")):
+                        entity_type = tag[2:]
+                    else:
+                        entity_type = tag
+                    
+                    if entity_type and entity_type != "O":
+                        entity_types.add(entity_type)
+        
+        return entity_types
+
+    @staticmethod
     def create_conll_dataset(
         dataset: List["InputSample"],
         translate_tags=False,

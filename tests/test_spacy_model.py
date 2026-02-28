@@ -14,7 +14,7 @@ def test_spacy_simple():
     )
 
     spacy_model = SpacyModel(model_name="en_core_web_sm", entities_to_keep=["PERSON"])
-    evaluator = Evaluator(model=spacy_model)
+    evaluator = Evaluator(model=spacy_model, entity_mapping={})
     evaluation_results = evaluator.evaluate_all(input_samples)
     scores = evaluator.calculate_score(evaluation_results)
 
