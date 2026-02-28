@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import List
 
 from presidio_analyzer import EntityRecognizer
 from presidio_analyzer.nlp_engine import NlpEngine
@@ -29,7 +29,6 @@ class PresidioRecognizerWrapper(BaseModel):
         with_nlp_artifacts: bool = False,
         verbose: bool = False,
     ):
-
         super().__init__(
             entities_to_keep=entities_to_keep,
             verbose=verbose,

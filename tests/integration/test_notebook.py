@@ -5,7 +5,7 @@ from typing import Dict, List
 import json
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import Evaluator, ModelError, Plotter
+from presidio_evaluator.evaluation import Evaluator, ModelError
 from presidio_evaluator.experiment_tracking import get_experiment_tracker
 from presidio_evaluator.models import PresidioAnalyzerWrapper
 

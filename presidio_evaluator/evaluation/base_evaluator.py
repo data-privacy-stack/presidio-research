@@ -56,16 +56,17 @@ class BaseEvaluator(ABC):
                 "to model entity types. Example: {'STREET_ADDRESS': 'LOCATION', 'GPE': 'LOCATION'}. "
                 "If no mapping is needed, pass an empty dict: entity_mapping={}"
             )
-        
+
         self.entity_mapping = entity_mapping
-        
+
         if model is None:
-            warnings.warn("Using the evaluator without a model only supports comparing actual vs. existing "
-                          "predicted tags. It will not run the model to generate predictions.")
+            warnings.warn(
+                "Using the evaluator without a model only supports comparing actual vs. existing "
+                "predicted tags. It will not run the model to generate predictions."
+            )
             self.model = None
 
         elif isinstance(model, AnalyzerEngine):
-
             num_languages = len(model.supported_languages)
             if num_languages > 1:
                 warnings.warn(
@@ -82,9 +83,9 @@ class BaseEvaluator(ABC):
 
         elif isinstance(model, BaseModel):
             self.model = model
-            
+
             # Check if model has deprecated entity_mapping and raise error
-            if hasattr(model, 'entity_mapping') and model.entity_mapping:
+            if hasattr(model, "entity_mapping") and model.entity_mapping:
                 raise ValueError(
                     "Passing entity_mapping to the model is deprecated. "
                     "Please pass entity_mapping to the evaluator instead.\n"
@@ -107,11 +108,14 @@ class BaseEvaluator(ABC):
         )
 
         if skip_words is None:
-            warnings.warn("skip words not provided, using default skip words. "
-                          "If you want the evaluation to not use skip words, pass skip_words=[]")
+            warnings.warn(
+                "skip words not provided, using default skip words. "
+                "If you want the evaluation to not use skip words, pass skip_words=[]"
+            )
             self.skip_words = get_skip_words()
         else:
             self.skip_words = skip_words
+
     def compare(
         self, input_sample: InputSample, prediction: List[str]
     ) -> Tuple[Counter, List[ModelError]]:
@@ -162,7 +166,7 @@ class BaseEvaluator(ABC):
             cur_prediction = prediction[i]
             cur_annotation = original_annotation[i]  # Use original for error reporting
             cur_normalized_annotation = normalized_annotation[i]
-            
+
             # Use normalized annotation for counting and comparison
             results[(cur_normalized_annotation, cur_prediction)] += 1
 
@@ -272,22 +276,21 @@ class BaseEvaluator(ABC):
 
     @staticmethod
     def _normalize_entity_for_comparison(
-        entity: str, 
-        entity_mapping: Dict[str, str]
+        entity: str, entity_mapping: Dict[str, str]
     ) -> str:
         """
         Normalize an entity name using mapping for comparison.
         Handles prefixed tags (B-STREET_ADDRESS -> B-LOCATION).
-        
+
         Mapping to None means identity mapping (use entity as-is).
-        
+
         :param entity: Entity tag (e.g., "STREET_ADDRESS" or "B-STREET_ADDRESS")
         :param entity_mapping: Dict mapping dataset entities to model entities
         :return: Normalized entity for comparison
         """
         if entity == "O":
             return entity
-        
+
         # Handle prefixed tags (B-, I-, L-, U-)
         if "-" in entity:
             prefix, clean_entity = entity.split("-", 1)
@@ -339,7 +342,7 @@ class BaseEvaluator(ABC):
             )
 
         evaluation_results = []
-        
+
         # Note: entity_mapping is now applied during comparison, not before prediction
         # This preserves original dataset entity types in results
         logger.info("Using entity mapping for comparison: %s", self.entity_mapping)
@@ -376,7 +379,9 @@ class BaseEvaluator(ABC):
         pass
 
     def get_results_dataframe(
-        self, evaluation_results: List[EvaluationResult], entities: Optional[List[str]] = None
+        self,
+        evaluation_results: List[EvaluationResult],
+        entities: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """Return a DataFrame with the results of the evaluation.
 
@@ -416,7 +421,7 @@ class BaseEvaluator(ABC):
             if self.entities_to_keep:
                 annotations = self._adjust_per_entities(annotations)
                 predictions = self._adjust_per_entities(predictions)
-            
+
             # Now filter by entities if provided
             annotations = self._filter_entities(annotations, entities)
             predictions = self._filter_entities(predictions, entities)

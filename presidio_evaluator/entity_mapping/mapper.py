@@ -102,21 +102,21 @@ class SemanticEntityMapper:
 
         :param model_name: Name of the sentence transformer model to use.
                        Default is all-mpnet-base-v2 for best quality entity mapping.
-                       
+
                        Alternative models to try:
                        - "sentence-transformers/all-MiniLM-L6-v2" (faster, lighter weight)
                        - "sentence-transformers/paraphrase-MiniLM-L6-v2" (paraphrase-focused)
                        - "sentence-transformers/multi-qa-MiniLM-L6-cos-v1" (QA-focused)
-                       
-                       Note: For short entity names (single words), word embeddings like 
-                       Word2Vec or GloVe might work better than sentence transformers, 
-                       as they capture direct word relationships rather than sentence-level 
+
+                       Note: For short entity names (single words), word embeddings like
+                       Word2Vec or GloVe might work better than sentence transformers,
+                       as they capture direct word relationships rather than sentence-level
                        semantics.
         :param threshold: Minimum similarity score (0-1) for a match. Higher values are stricter.
         :param cache_embeddings: Whether to cache computed embeddings for reuse.
-        :param full_name_weight: Weight for full entity name similarity (0-1). 
-                                (e.g. "EMAIL_ADDRESS" instead of "EMAIL" and "ADDRESS") 
-                                The remaining weight (1 - full_name_weight) is used for 
+        :param full_name_weight: Weight for full entity name similarity (0-1).
+                                (e.g. "EMAIL_ADDRESS" instead of "EMAIL" and "ADDRESS")
+                                The remaining weight (1 - full_name_weight) is used for
                                 word-level similarity. Higher values emphasize the full name.
                                 Default 0.6 means 60% full name, 40% word-level.
         """
@@ -163,19 +163,20 @@ class SemanticEntityMapper:
     def _compute_cosine_similarity(self, text1: str, text2: str) -> float:
         """
         Compute cosine similarity between two text strings using their embeddings.
-        
+
         :param text1: First text (entity name or word)
         :param text2: Second text (entity name or word)
         :returns: Cosine similarity score between 0 and 1
         """
         emb1 = self._get_embedding(text1)
         emb2 = self._get_embedding(text2)
-        
+
         emb1_np = np.array(emb1)
         emb2_np = np.array(emb2)
-        
+
         return float(
-            np.dot(emb1_np, emb2_np) / (np.linalg.norm(emb1_np) * np.linalg.norm(emb2_np))
+            np.dot(emb1_np, emb2_np)
+            / (np.linalg.norm(emb1_np) * np.linalg.norm(emb2_np))
         )
 
     def compute_similarity(self, entity1: str, entity2: str) -> float:
@@ -185,28 +186,30 @@ class SemanticEntityMapper:
         Uses a hybrid approach combining:
         1. Full entity name similarity (e.g., "EMAIL_ADDRESS" as a whole)
         2. Word-level pairwise similarity (e.g., comparing individual words)
-        
+
         :param entity1: First entity type name
         :param entity2: Second entity type name
 
-        :returns: Similarity score between 0 and 1 (weighted combination of full name 
+        :returns: Similarity score between 0 and 1 (weighted combination of full name
             and word-level similarities)
         """
         if self.full_name_weight == 1.0:
             full_name_similarity = self._compute_cosine_similarity(entity1, entity2)
-            
+
             logger.info(
                 f"Full name only (weight=1.0): '{entity1}' <-> '{entity2}' = {full_name_similarity:.4f}"
             )
             return full_name_similarity
-        
+
         # Optimization: If full_name_weight is 0.0, only compute word-level similarity
         if self.full_name_weight == 0.0:
             words1 = self._split_entity_name(entity1)
             words2 = self._split_entity_name(entity2)
-            
-            logger.info(f"Word-level only (weight=0.0): '{entity1}' -> {words1}, '{entity2}' -> {words2}")
-            
+
+            logger.info(
+                f"Word-level only (weight=0.0): '{entity1}' -> {words1}, '{entity2}' -> {words2}"
+            )
+
             # Compute pairwise similarities between all word pairs
             word_similarities = []
             for word1 in words1:
@@ -214,31 +217,35 @@ class SemanticEntityMapper:
                     sim = self._compute_cosine_similarity(word1, word2)
                     word_similarities.append(sim)
                     logger.info(f"  Word pair: '{word1}' <-> '{word2}' = {sim:.4f}")
-            
+
             word_level_similarity = (
                 float(np.max(word_similarities)) if word_similarities else 0.0
             )
             logger.info(f"Word-level average similarity: {word_level_similarity:.4f}")
             return word_level_similarity
-        
+
         # Hybrid approach: compute both and combine with weights
         # 1. Compute full entity name similarity
         full_name_similarity = self._compute_cosine_similarity(entity1, entity2)
-        
+
         logger.info(
             f"Full name comparison: '{entity1}' <-> '{entity2}' = {full_name_similarity:.4f}"
         )
-        
+
         # 2. Check if word-level splitting is needed
         words1 = self._split_entity_name(entity1)
         words2 = self._split_entity_name(entity2)
 
         # If both entities are single words (no splits), skip word-level calculation
         if len(words1) == 1 and len(words2) == 1:
-            logger.info(f"No splits needed: '{entity1}' and '{entity2}' are single words")
+            logger.info(
+                f"No splits needed: '{entity1}' and '{entity2}' are single words"
+            )
             return float(full_name_similarity)
 
-        logger.info(f"Word-level split: '{entity1}' -> {words1}, '{entity2}' -> {words2}")
+        logger.info(
+            f"Word-level split: '{entity1}' -> {words1}, '{entity2}' -> {words2}"
+        )
 
         # Get embeddings for all words and compute pairwise similarities
         word_similarities = []
@@ -251,19 +258,19 @@ class SemanticEntityMapper:
         word_level_similarity = (
             float(np.max(word_similarities)) if word_similarities else 0.0
         )
-        
+
         logger.info(f"Word-level average similarity: {word_level_similarity:.4f}")
-        
+
         # 3. Combine with weighted average
         combined_similarity = (
-            self.full_name_weight * full_name_similarity +
-            (1 - self.full_name_weight) * word_level_similarity
+            self.full_name_weight * full_name_similarity
+            + (1 - self.full_name_weight) * word_level_similarity
         )
-        
+
         logger.info(
             f"Combined similarity (weight={self.full_name_weight:.2f}): {combined_similarity:.4f}"
         )
-        
+
         return float(combined_similarity)
 
     def _split_entity_name(self, entity_name: str) -> List[str]:
@@ -509,7 +516,9 @@ def create_hierarchical_mapper(
     # Normalize exact mappings to uppercase
     exact_map_normalized = {k.upper(): v for k, v in exact_mappings.items()}
 
-    def mapper(source_entity: str, target_entities: List[str]) -> Optional[Tuple[str, float]]:
+    def mapper(
+        source_entity: str, target_entities: List[str]
+    ) -> Optional[Tuple[str, float]]:
         source_upper = source_entity.upper()
 
         # Strategy 1: Exact match - high confidence (predefined mapping)
@@ -570,13 +579,11 @@ def create_presidio_mapper() -> Callable[[str, List[str]], Optional[Tuple[str, f
         "AU_TFN": "AU_TFN",
         "AU_ABN": "AU_ABN",
         "AU_ACN": "AU_ACN",
-        
         # Financial
         "CREDIT_CARD": "CREDIT_CARD",
         "CRYPTO": "CRYPTO",
         "IBAN_CODE": "IBAN_CODE",
         "US_BANK_NUMBER": "US_BANK_NUMBER",
-
         # Contact
         "EMAIL_ADDRESS": "EMAIL_ADDRESS",
         "EMAIL": "EMAIL",
@@ -584,18 +591,16 @@ def create_presidio_mapper() -> Callable[[str, List[str]], Optional[Tuple[str, f
         "PHONE": "PHONE_NUMBER",
         "FAX_NUMBER": "PHONE_NUMBER",
         "FAX": "PHONE_NUMBER",
-
         # ORGANIZATION
         "ORGANIZATION": "ORGANIZATION",
         "ORG": "ORGANIZATION",
         "NORP": "ORGANIZATION",
         "NRP": "ORGANIZATION",
         "INSTITUTE": "ORGANIZATION",
-
         # LOCATION
         "ADDRESS": "LOCATION",
-        "HOSPITAL" : "LOCATION",
-        "FACILITY" : "LOCATION",
+        "HOSPITAL": "LOCATION",
+        "FACILITY": "LOCATION",
         "STREET_ADDRESS": "LOCATION",
         "CITY": "LOCATION",
         "ZIP": "LOCATION",
@@ -603,13 +608,11 @@ def create_presidio_mapper() -> Callable[[str, List[str]], Optional[Tuple[str, f
         "ZIPCODE": "LOCATION",
         "STATE": "LOCATION",
         "COUNTRY": "LOCATION",
-        "GPE" : "LOCATION",
-
+        "GPE": "LOCATION",
         # Technical
         "IP_ADDRESS": "IP_ADDRESS",
         "URL": "URL",
         "DOMAIN_NAME": "URL",
-
         # Date/Time
         "DATE": "DATE_TIME",
         "DATE_TIME": "DATE_TIME",
@@ -719,4 +722,3 @@ class HybridEntityMapper:
     ) -> Dict[str, Optional[str]]:
         """Map multiple entities."""
         return {source: self.map(source, target_entities) for source in source_entities}
-

@@ -192,8 +192,12 @@ class SpanEvaluator(BaseEvaluator):
     def _process_sentence_spans(
         self, sentence_df: pd.DataFrame
     ) -> Tuple[List[Span], List[Span]]:
-        annotation_spans = self._create_spans(df=sentence_df, column="annotation", apply_entity_mapping=True)
-        prediction_spans = self._create_spans(df=sentence_df, column="prediction", apply_entity_mapping=False)
+        annotation_spans = self._create_spans(
+            df=sentence_df, column="annotation", apply_entity_mapping=True
+        )
+        prediction_spans = self._create_spans(
+            df=sentence_df, column="prediction", apply_entity_mapping=False
+        )
 
         annotation_spans = self._merge_adjacent_spans(
             spans=annotation_spans, df=sentence_df
@@ -476,7 +480,9 @@ class SpanEvaluator(BaseEvaluator):
         )
         return evaluation_result
 
-    def _create_spans(self, df: pd.DataFrame, column: str, apply_entity_mapping: bool = False) -> List[Span]:
+    def _create_spans(
+        self, df: pd.DataFrame, column: str, apply_entity_mapping: bool = False
+    ) -> List[Span]:
         """
         Create spans from a DataFrame column.
 
@@ -499,10 +505,12 @@ class SpanEvaluator(BaseEvaluator):
             entity_type = row[column]
             if self.compare_by_io:
                 entity_type = self._to_io([entity_type])[0]
-            
+
             # Apply entity mapping for annotation column to translate dataset entities to model entities
             if apply_entity_mapping and entity_type != "O":
-                entity_type = self._normalize_entity_for_comparison(entity_type, self.entity_mapping)
+                entity_type = self._normalize_entity_for_comparison(
+                    entity_type, self.entity_mapping
+                )
             token = row["token"]
             token_start = row["start_indices"]
             token_length = len(token)

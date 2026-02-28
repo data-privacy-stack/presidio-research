@@ -4,13 +4,10 @@ import warnings
 from typing import List, Optional
 
 from presidio_analyzer import EntityRecognizer
-from presidio_analyzer.nlp_engine import SpacyNlpEngine
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import EvaluationResult, Evaluator
+from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.models import (
-    PresidioRecognizerWrapper,
-    PresidioAnalyzerWrapper,
     BaseModel,
 )
 
@@ -24,28 +21,28 @@ def score_model(
 ) -> EvaluationResult:
     """
     DEPRECATED: This function is deprecated and will be removed in a future version.
-    
+
     Please use the evaluation patterns shown in the notebooks instead:
     - See notebooks/4_Evaluate_Presidio_Analyzer.ipynb
     - See notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb
-    
+
     The new approach requires passing entity_mapping to the evaluator:
         evaluator = Evaluator(
             model=model,
             entity_mapping={'DATASET_ENTITY': 'MODEL_ENTITY'},
             entities_to_keep=entities_to_keep
         )
-    
+
     Run data through a model and gather results and stats
     """
     warnings.warn(
-        "score_model() is deprecated and will be removed in a future version. " 
+        "score_model() is deprecated and will be removed in a future version. "
         "Please use the evaluation patterns shown in notebooks/4_Evaluate_Presidio_Analyzer.ipynb. "
         "The new approach requires passing entity_mapping to the evaluator.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
-    
+
     raise NotImplementedError(
         "score_model() is no longer functional because it does not accept entity_mapping parameter. "
         "The evaluator now requires entity_mapping to be provided. "
@@ -65,11 +62,11 @@ def score_presidio_recognizer(
 ) -> EvaluationResult:
     """
     DEPRECATED: This function is deprecated.
-    
+
     Please use the evaluation patterns shown in the notebooks instead:
     - See notebooks/4_Evaluate_Presidio_Analyzer.ipynb
     - See notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb
-    
+
     The new approach requires passing entity_mapping to the evaluator:
         model = PresidioRecognizerWrapper(recognizer, ...)
         evaluator = Evaluator(
@@ -78,7 +75,7 @@ def score_presidio_recognizer(
             entities_to_keep=entities_to_keep
         )
         results = evaluator.evaluate_all(dataset)
-    
+
     Run data through one EntityRecognizer and gather results and stats
     """
     warnings.warn(
@@ -86,7 +83,7 @@ def score_presidio_recognizer(
         "Please use the evaluation patterns shown in notebooks/4_Evaluate_Presidio_Analyzer.ipynb. "
         "The new approach requires passing entity_mapping to the evaluator.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
 
     if not input_samples:
