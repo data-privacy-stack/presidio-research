@@ -7,10 +7,10 @@ suggest mappings, and allow users to review/modify mappings before running exper
 
 from typing import Dict, List, Optional, Union, Tuple, Any, Callable
 from collections import Counter
+import html
 import json
 import logging
 from pathlib import Path
-from copy import deepcopy
 
 try:
     from IPython.display import HTML, display
@@ -21,8 +21,6 @@ except ImportError:
 from presidio_evaluator.data_objects import InputSample
 from .mapper import (
     create_presidio_mapper,
-    SemanticEntityMapper,
-    DictEntityMapper,
     EntityMapper,
 )
 
@@ -276,8 +274,9 @@ class EntityMappingHelper:
         for entity in sorted_dataset_entities:
             count = self._dataset_entity_counts.get(entity, 0)
             percentage = (count / total_samples * 100) if total_samples > 0 else 0
+            entity_escaped = html.escape(entity)
             html.append(f'<span style="display: inline-block; background: #ffffff; border: 1px solid #d0d7de; padding: 4px 8px; margin: 3px; border-radius: 4px; font-family: monospace; font-size: 12px;">'
-                       f'{entity} <span style="color: #57606a; font-size: 11px;">({count} samples, {percentage:.1f}%)</span></span>')
+                       f'{entity_escaped} <span style="color: #57606a; font-size: 11px;">({count} samples, {percentage:.1f}%)</span></span>')
         html.append('</div></details>')
         
         # Model entities (collapsible)
@@ -285,7 +284,8 @@ class EntityMappingHelper:
         html.append(f'<summary style="cursor: pointer; font-weight: 600; padding: 5px;">📦 Model Entities ({len(active_model_entities)})</summary>')
         html.append('<div style="margin-top: 10px; padding-left: 10px;">')
         for entity in sorted(active_model_entities):
-            html.append(f'<span style="display: inline-block; background: #ffffff; border: 1px solid #d0d7de; padding: 4px 8px; margin: 3px; border-radius: 4px; font-family: monospace; font-size: 12px;">{entity}</span>')
+            entity_escaped = html.escape(entity)
+            html.append(f'<span style="display: inline-block; background: #ffffff; border: 1px solid #d0d7de; padding: 4px 8px; margin: 3px; border-radius: 4px; font-family: monospace; font-size: 12px;">{entity_escaped}</span>')
         html.append('</div></details>')
         
         # Mapping table
@@ -355,15 +355,16 @@ class EntityMappingHelper:
                 bg_color = "#d1f4e0"  # Green for high confidence
                 border_color = "#a2ddb8"
                 status = "✓"
-                mapping_text = model_entity
+                mapping_text = html.escape(model_entity)
             else:
                 bg_color = "#fff3cd"  # Light yellow for low confidence
                 border_color = "#e5c365"
                 status = "⚠"
-                mapping_text = model_entity
+                mapping_text = html.escape(model_entity)
             
+            dataset_entity_escaped = html.escape(dataset_entity)
             html.append(f'<tr style="background: {bg_color}; border: 1px solid {border_color};">')
-            html.append(f'<td style="padding: 8px; border: 1px solid {border_color}; font-family: monospace; font-weight: 600;">{status} {dataset_entity}</td>')
+            html.append(f'<td style="padding: 8px; border: 1px solid {border_color}; font-family: monospace; font-weight: 600;">{status} {dataset_entity_escaped}</td>')
             html.append(f'<td style="padding: 8px; border: 1px solid {border_color}; font-family: monospace;">{mapping_text}</td>')
             html.append(f'<td style="padding: 8px; border: 1px solid {border_color}; text-align: center;">{count}</td>')
             
@@ -403,12 +404,14 @@ class EntityMappingHelper:
                 html.append('<p style="margin: 5px 0; font-weight: 600;">Dataset entities (excluded from evaluation):</p>')
                 for entity in sorted(self._excluded_dataset_entities):
                     count = self._dataset_entity_counts.get(entity, 0)
-                    html.append(f'<div style="padding: 4px 8px; margin: 3px 0; background: white; border: 1px solid #ffccc7; border-radius: 4px;">✗ {entity} ({count} samples)</div>')
+                    entity_escaped = html.escape(entity)
+                    html.append(f'<div style="padding: 4px 8px; margin: 3px 0; background: white; border: 1px solid #ffccc7; border-radius: 4px;">✗ {entity_escaped} ({count} samples)</div>')
             
             if self._excluded_model_entities:
                 html.append('<p style="margin: 15px 0 5px 0; font-weight: 600;">Model entities (predictions will be ignored):</p>')
                 for entity in sorted(self._excluded_model_entities):
-                    html.append(f'<div style="padding: 4px 8px; margin: 3px 0; background: white; border: 1px solid #ffccc7; border-radius: 4px;">✗ {entity}</div>')
+                    entity_escaped = html.escape(entity)
+                    html.append(f'<div style="padding: 4px 8px; margin: 3px 0; background: white; border: 1px solid #ffccc7; border-radius: 4px;">✗ {entity_escaped}</div>')
             
             html.append('</div></details>')
         
@@ -420,7 +423,8 @@ class EntityMappingHelper:
             html.append('<ul style="margin: 10px 0; padding-left: 25px;">')
             for entity in sorted(self._unmapped_entities):
                 count = self._dataset_entity_counts.get(entity, 0)
-                html.append(f'<li style="font-family: monospace; font-weight: 600;">{entity} <span style="color: #57606a;">({count} samples)</span></li>')
+                entity_escaped = html.escape(entity)
+                html.append(f'<li style="font-family: monospace; font-weight: 600;">{entity_escaped} <span style="color: #57606a;">({count} samples)</span></li>')
             html.append('</ul><p style="margin: 10px 0; font-weight: 600;">You must take action:</p>')
             html.append('<ol style="margin: 5px 0; line-height: 1.6;">')
             html.append('<li><strong>Map to a model entity:</strong> <code>helper.set_mapping(\'ENTITY\', \'TARGET\')</code><br><span style="color: #57606a; font-size: 12px;">The model will evaluate these entities using the mapped target entity.</span></li>')

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Any, Tuple
 from collections import Counter
+import logging
 
 import pandas as pd
 import spacy
@@ -11,6 +12,8 @@ from spacy.training import iob_to_biluo
 from tqdm import tqdm
 
 from presidio_evaluator import span_to_tag, tokenize
+
+logger = logging.getLogger("presidio-evaluator")
 
 SPACY_PRESIDIO_ENTITIES = dict(
     ORG="ORGANIZATION",
@@ -510,19 +513,19 @@ class InputSample(object):
                 ents = []
                 for start, end, label in annotations["entities"]:
                     if start >= end:
-                        print(
-                            f"Span has zero or negative size, skipping. {(start, end, label)} in text={text}"
+                        logger.warning(
+                            "Span has zero or negative size, skipping. %s in text=%s", (start, end, label), text
                         )
                         continue
                     if label == "O" or not label:
-                        print("Skipping missing or non-entity ('O') spans")
+                        logger.warning("Skipping missing or non-entity ('O') spans")
                         continue
                     span = doc.char_span(
                         start, end, label=label, alignment_mode=alignment_mode
                     )
                     if not span:
-                        print(
-                            f"Skipping illegal span {(start, end, label)}, text={text[start:end]}, full text={text}"
+                        logger.warning(
+                            "Skipping illegal span %s, text=%s, full text=%s", (start, end, label), text[start:end], text
                         )
                         continue
                     ents.append(span)
@@ -681,7 +684,7 @@ class InputSample(object):
                 if span.entity_type not in entity_mapping.keys():
                     supported = False
                     if span.entity_type not in excluded_entities:
-                        print(f"Filtering out unsupported entity {span.entity_type}")
+                        logger.warning("Filtering out unsupported entity %s", span.entity_type)
                     excluded_entities.add(span.entity_type)
             if supported:
                 filtered_records.append(sample)

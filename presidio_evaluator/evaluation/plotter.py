@@ -103,13 +103,13 @@ class Plotter:
     def _plot_one_metric(self, df: pd.DataFrame, metric: str) -> Figure:
         fig = px.bar(
             df,
-            text_auto=".2",
+            text_auto=".15",
             y="entity",
             orientation="h",
             x=metric,
             color="count",
             barmode="group",
-            height=max(20 * len(set(df["entity"])), 500),
+            height=max(25 * len(set(df["entity"])), 600),
             title=f"Per-entity {metric} for {self.model_name}",
         )
 
@@ -250,7 +250,7 @@ class Plotter:
 
         fg.update_layout(yaxis_title="count", xaxis_title="PII Entity")
         fg.update_traces(
-            textfont_size=8,
+            textfont_size=6,
             textangle=0,
             textposition="outside",
             cliponaxis=True,
@@ -305,8 +305,8 @@ class Plotter:
             text_auto=True,
         )
         fig.update_xaxes(tickangle=90, side="top", title_standoff=10)
-        fig.update_traces(textfont=dict(size=10))
-        fig.update_layout(width=800, height=800)
+        fig.update_traces(textfont=dict(size=6))
+        fig.update_layout(width=1000, height=1000)
 
         if output_folder is not None:
             self.save_fig_to_file(

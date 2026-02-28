@@ -2,6 +2,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections import Counter
 from typing import List, Optional, Dict, Union, Tuple
+import logging
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,8 @@ from presidio_evaluator.evaluation import EvaluationResult, ModelError, ErrorTyp
 from presidio_evaluator.evaluation.skipwords import get_skip_words
 from presidio_evaluator.models import BaseModel, PresidioAnalyzerWrapper
 
+logger = logging.getLogger(__name__)
+
 GENERIC_ENTITIES = ("PII", "ID", "PII", "PHI", "ID_NUM", "NUMBER", "NUM", "GENERIC_PII")
 
 
@@ -20,7 +23,7 @@ class BaseEvaluator(ABC):
     def __init__(
         self,
         model: Optional[Union[BaseModel, AnalyzerEngine]],
-        entity_mapping: Dict[str, str],
+        entity_mapping: Dict[str, Optional[str]],
         verbose: bool = False,
         compare_by_io: bool = True,
         entities_to_keep: Optional[List[str]] = None,
@@ -123,7 +126,7 @@ class BaseEvaluator(ABC):
         tokens = input_sample.tokens
 
         if len(annotation) != len(prediction):
-            print(
+            logger.warning(
                 "Annotation and prediction do not have the"
                 "same length. Sample={}".format(input_sample)
             )
@@ -164,10 +167,10 @@ class BaseEvaluator(ABC):
             results[(cur_normalized_annotation, cur_prediction)] += 1
 
             if self.verbose:
-                print("Annotation:", cur_annotation)
-                print("Normalized Annotation:", cur_normalized_annotation)
-                print("Prediction:", cur_prediction)
-                print(results)
+                logger.info("Annotation: %s", cur_annotation)
+                logger.info("Normalized Annotation: %s", cur_normalized_annotation)
+                logger.info("Prediction: %s", cur_prediction)
+                logger.info("Results: %s", results)
 
             # check if there was an error (using normalized annotation)
             is_error = cur_normalized_annotation != cur_prediction
@@ -302,7 +305,7 @@ class BaseEvaluator(ABC):
         self, sample: InputSample, prediction: List[str]
     ) -> EvaluationResult:
         if self.verbose:
-            print("Input sentence: {}".format(sample.full_text))
+            logger.debug("Input sentence: {}".format(sample.full_text))
 
         if not self.model:
             raise ValueError(
@@ -339,11 +342,11 @@ class BaseEvaluator(ABC):
         
         # Note: entity_mapping is now applied during comparison, not before prediction
         # This preserves original dataset entity types in results
-        print(f"Using entity mapping for comparison: {self.entity_mapping}")
+        logger.info("Using entity mapping for comparison: %s", self.entity_mapping)
 
-        print(f"Running model {self.model.__class__.__name__} on dataset...")
+        logger.info("Running model %s on dataset...", self.model.__class__.__name__)
         predictions = self.model.batch_predict(dataset, **kwargs)
-        print("Finished running model on dataset")
+        logger.info("Finished running model on dataset")
 
         for prediction, sample in zip(predictions, dataset):
             # Remove entities not requested (in model.entities_to_keep))
@@ -398,23 +401,25 @@ class BaseEvaluator(ABC):
         rows_list = []
         for i, res in enumerate(evaluation_results):
             tokens = res.tokens
-            
+            predictions = res.predicted_tags
             # Normalize annotations to model entity types before filtering
             # This ensures that when entities filter contains model names,
             # it matches dataset names that map to it
             annotations = res.actual_tags
             if self.compare_by_io:
                 annotations = self._to_io(annotations)
+                predictions = self._to_io(predictions)
             annotations = [
                 self._normalize_entity_for_comparison(tag, self.entity_mapping)
                 for tag in annotations
             ]
             if self.entities_to_keep:
                 annotations = self._adjust_per_entities(annotations)
+                predictions = self._adjust_per_entities(predictions)
             
             # Now filter by entities if provided
             annotations = self._filter_entities(annotations, entities)
-            predictions = self._filter_entities(res.predicted_tags, entities)
+            predictions = self._filter_entities(predictions, entities)
             start_indices = res.start_indices
             for j in range(len(tokens)):
                 rows_list.append(

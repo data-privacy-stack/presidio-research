@@ -7,9 +7,6 @@ import logging
 import re
 
 import numpy as np
-from torch import Tensor
-
-from presidio_evaluator.data_objects import InputSample
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -150,7 +147,7 @@ class SemanticEntityMapper:
                 )
         return self._model
 
-    def _get_embedding(self, text: str) -> Tensor:
+    def _get_embedding(self, text: str) -> np.ndarray:
         """Get embedding for a text, using cache if enabled."""
         if self.cache_embeddings and text in self._embedding_cache:
             return self._embedding_cache[text]
@@ -561,7 +558,6 @@ def create_presidio_mapper() -> Callable[[str, List[str]], Optional[Tuple[str, f
         "NAME": "PERSON",
         "PATIENT": "PERSON",
         "DOCTOR": "PERSON",
-        "NRP": "PERSON",
         # IDs
         "SSN": "US_SSN",
         "US_SSN": "US_SSN",
