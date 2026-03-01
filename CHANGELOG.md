@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## Unreleased
+
+### Breaking changes
+- **Entity mapping refactored**: `entity_mapping` parameter removed from `BaseModel` and now REQUIRED in evaluator constructors (`BaseEvaluator`, `SpanEvaluator`, `TokenEvaluator`). This provides better separation of concerns between model predictions and evaluation logic.
+  - Old: `model = BaseModel(entity_mapping={...})`  
+  - New: `evaluator = SpanEvaluator(model=model, entity_mapping={...})`
+- Removed methods from `BaseModel`: `align_entity_types()`, `align_prediction_types()`, and `prepare_dataset()` - entity alignment is now handled during evaluation
+
+### Improvements
+- **EntityMappingHelper**: New interactive helper class for automatic entity mapping between dataset and model entities. Includes:
+  - Automatic entity detection from both dataset and model
+  - Suggested mappings with manual override capability
+  - Interactive HTML-based review interface
+  - Dataset filtering based on entity exclusions
+- **Smart entity filtering**: `calculate_score()` in `SpanEvaluator` and `TokenEvaluator` now defaults the `entities` parameter to `entities_to_keep` (from evaluator constructor) when not explicitly provided, ensuring consistent filtering across token-level and span-level metrics
+- Enhanced entity normalization in comparison logic with support for None values (identity mapping)
+- New entity mapping utilities: `DictEntityMapper`, `SemanticEntityMapper`, `HybridEntityMapper`, and `create_presidio_mapper()` for flexible entity mapping strategies
+- Updated notebooks (4 & 5) to demonstrate new `EntityMappingHelper` workflow
+- Improved logging: replaced print statements with proper logger calls
+- **Replaced example model**: New model yields better accuracy than before.
+
 ## Version 0.2.5
 
 ### Improvements
