@@ -359,21 +359,6 @@ class TestSuggestMapping:
                 scores[entity] == 1.0
             ), f"{entity} (exact match) should have confidence 1.0, got {scores[entity]}"
 
-    def test_unmapped_entities(self):
-        """Test entities that don't map."""
-        from presidio_evaluator.entity_mapping import DictEntityMapper
-
-        dataset_entities = ["UNKNOWN_TYPE", "CUSTOM_ENTITY"]
-        model_entities = ["PERSON", "LOCATION"]
-
-        mapper = DictEntityMapper({})  # Empty mapping
-        mapping = suggest_mapping(
-            dataset_entities, model_entities, mapper=mapper, return_scores=False
-        )
-
-        assert mapping["UNKNOWN_TYPE"] is None
-        assert mapping["CUSTOM_ENTITY"] is None
-
 
 class TestSaveLoadMapping:
     """Tests for save and load mapping functions."""

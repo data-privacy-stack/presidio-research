@@ -11,9 +11,7 @@ This package provides tools for:
 # Import from mapper module
 from presidio_evaluator.entity_mapping.mapper import (
     EntityMapper,
-    DictEntityMapper,
     SemanticEntityMapper,
-    HybridEntityMapper,
     create_hierarchical_mapper,
     create_presidio_mapper,
 )
@@ -32,9 +30,7 @@ from presidio_evaluator.entity_mapping.interactive import (
 __all__ = [
     # Mapper classes
     "EntityMapper",
-    "DictEntityMapper",
     "SemanticEntityMapper",
-    "HybridEntityMapper",
     # Mapper factory functions
     "create_hierarchical_mapper",
     "create_presidio_mapper",

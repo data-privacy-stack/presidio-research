@@ -18,7 +18,6 @@ from presidio_evaluator.entity_mapping import (
     SemanticEntityMapper,
     create_hierarchical_mapper,
     create_presidio_mapper,
-    HybridEntityMapper,
     EntityMappingHelper,
 )
 from tests.mocks import MockTokensModel
@@ -153,16 +152,6 @@ class TestEntityMappers:
         entity, confidence = mapper("PHONE", ["PHONE_NUMBER", "PERSON", "LOCATION"])
         assert entity == "PHONE_NUMBER"
         assert confidence > 0
-
-    def test_hybrid_mapper_basic(self):
-        """Test HybridEntityMapper basic functionality."""
-        mapper = HybridEntityMapper()
-
-        mapper.add_exact_mapping("SSN", "ID")
-        mapper.add_pattern("NAME", "PERSON")
-
-        assert mapper.map("SSN", ["PERSON", "ID"]) == "ID"
-        assert mapper.map("FIRST_NAME", ["PERSON", "ID"]) == "PERSON"
 
     def test_case_insensitive_matching(self):
         """Test that matching is case-insensitive."""
