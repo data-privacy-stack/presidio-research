@@ -84,14 +84,6 @@ class BaseEvaluator(ABC):
         elif isinstance(model, BaseModel):
             self.model = model
 
-            # Check if model has deprecated entity_mapping and raise error
-            if hasattr(model, "entity_mapping") and model.entity_mapping:
-                raise ValueError(
-                    "Passing entity_mapping to the model is deprecated. "
-                    "Please pass entity_mapping to the evaluator instead.\n"
-                    f"Remove entity_mapping={model.entity_mapping} from model constructor and "
-                    f"add entity_mapping={model.entity_mapping} to evaluator constructor."
-                )
         else:
             raise ValueError(
                 "Model should be an instance of BaseModel or Presidio Analyzer, or None."
