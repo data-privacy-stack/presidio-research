@@ -23,6 +23,7 @@ class TokenEvaluator(BaseEvaluator):
 
         :param evaluation_results: List of EvaluationResult objects containing the results of the evaluation.
         :param entities: Optional list of entities to filter the evaluation results.
+        If None, defaults to the evaluator's entities_to_keep (set in constructor).
         :return: An EvaluationResult object containing the aggregated results.
 
         Returns the pii_precision, pii_recall, f_measure either and number of records for each entity
@@ -35,6 +36,10 @@ class TokenEvaluator(BaseEvaluator):
 
         :return: EvaluationResult with precision, recall and f measures
         """
+
+        # Default to entities_to_keep if no explicit entities provided
+        if entities is None:
+            entities = self.entities_to_keep
 
         for res in evaluation_results:
             if not res.results:

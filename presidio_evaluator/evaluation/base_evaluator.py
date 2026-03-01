@@ -418,9 +418,6 @@ class BaseEvaluator(ABC):
                 self._normalize_entity_for_comparison(tag, self.entity_mapping)
                 for tag in annotations
             ]
-            if self.entities_to_keep:
-                annotations = self._adjust_per_entities(annotations)
-                predictions = self._adjust_per_entities(predictions)
 
             # Now filter by entities if provided
             annotations = self._filter_entities(annotations, entities)

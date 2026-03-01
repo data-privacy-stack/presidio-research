@@ -31,10 +31,15 @@ class Plotter:
                                  If specified, plots are saved in the given format.
                                  It has to be specified if output_folder is passed
                                  as input to the plotting functions.
+        display_mode (str): How to display plots. Options:
+                           - "interactive" (default): Show interactive Plotly plots
+                           - "static": Render as static images (suitable for GitHub)
 
     Notes:
-        - plots are always displayed interactively using the default
-          Plotly viewer, regardless of the `save_as` value.
+        - When display_mode="static", plots render as static images in notebooks
+          that will display properly on GitHub.
+        - When display_mode="interactive", plots are shown using the default
+          Plotly interactive viewer.
         - The `output_folder` is created automatically if it does not exist.
     """
 
@@ -44,11 +49,16 @@ class Plotter:
         model_name: str = "PresidioAnalyzerWrapper",
         beta: float = 2,
         save_as: Optional[str] = None,
+        display_mode: str = "interactive",
     ):
         self.results = results
         self.save_as = save_as
         self.model_name = model_name.replace("/", "-")
         self.beta = beta
+        self.display_mode = display_mode
+        
+        if display_mode not in ["interactive", "static"]:
+            raise ValueError("display_mode must be either 'interactive' or 'static'")
 
     def plot_scores(self, output_folder: Optional[Union[Path, str]] = None) -> None:
         """
@@ -96,14 +106,12 @@ class Plotter:
                     output_folder=output_folder,
                     file_name=f"scores-{file_name}",
                 )
-                fig.show()
-            else:
-                fig.show()
+            self._display_figure(fig)
 
     def _plot_one_metric(self, df: pd.DataFrame, metric: str) -> Figure:
         fig = px.bar(
             df,
-            text_auto=".15",
+            text_auto=".2",
             y="entity",
             orientation="h",
             x=metric,
@@ -216,9 +224,7 @@ class Plotter:
                     output_folder=output_folder,
                     file_name=f"common-errors-{fig_name}",
                 )
-                fig.show()
-            else:
-                fig.show()
+            self._display_figure(fig)
 
     @staticmethod
     def _group_tokens(df, key: str = "annotation"):
@@ -312,9 +318,7 @@ class Plotter:
             self.save_fig_to_file(
                 fig=fig, output_folder=output_folder, file_name="confusion-matrix"
             )
-            fig.show()
-        else:
-            fig.show()
+        self._display_figure(fig)
 
     def save_fig_to_file(
         self,
@@ -330,9 +334,11 @@ class Plotter:
             file_name (str): The name of the file to save the plot as.
         """
         if not output_folder:
-            raise ValueError("output_folder is missing, cannot save figure."
-                             "If you do not wish to save figures, "
-                             "configure the Plotter with `save_as = None`")
+            raise ValueError(
+                "output_folder is missing, cannot save figure."
+                "If you do not wish to save figures, "
+                "configure the Plotter with `save_as = None`"
+            )
 
         output_folder = Path(output_folder)
 
@@ -349,3 +355,15 @@ class Plotter:
             raise ValueError(
                 "save_as must be either 'html' or a valid image format (e.g., 'png', 'svg')."
             )
+    
+    def _display_figure(self, fig: Figure) -> None:
+        """
+        Display a figure according to the specified display_mode.
+        :param fig: The figure to display.
+        """
+        if self.display_mode == "static":
+            # Display as static image in notebook
+            fig.show(renderer="png")
+        else:
+            # Display as interactive plot
+            fig.show()

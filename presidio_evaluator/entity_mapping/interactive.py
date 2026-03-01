@@ -10,6 +10,7 @@ from collections import Counter
 import json
 import logging
 from pathlib import Path
+import html
 
 try:
     from IPython.display import HTML, display
@@ -266,61 +267,61 @@ class EntityMappingHelper:
         unmapped_count = len(self._unmapped_entities)
 
         # Build HTML
-        html = []
-        html.append(
+        html_parts = []
+        html_parts.append(
             '<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif;">'
         )
 
         # Header
-        html.append(
+        html_parts.append(
             '<h3 style="margin-top: 0; color: #24292f;">🗺️ Entity Mapping Review</h3>'
         )
 
         # Zero-shot indicator
         if self._is_zero_shot:
-            html.append(
+            html_parts.append(
                 '<div style="background: #ddf4ff; border-left: 4px solid #0969da; padding: 12px; margin: 10px 0; border-radius: 6px;">'
             )
-            html.append(
+            html_parts.append(
                 "<strong>🔄 ZERO-SHOT mode:</strong> Dataset entities will be passed to the model during evaluation."
             )
-            html.append("</div>")
+            html_parts.append("</div>")
 
         # Summary stats
-        html.append(
+        html_parts.append(
             '<div style="display: flex; gap: 20px; margin: 15px 0; flex-wrap: wrap;">'
         )
-        html.append(
+        html_parts.append(
             '<div style="background: #f6f8fa; padding: 10px 15px; border-radius: 6px; border: 1px solid #d0d7de;">'
         )
-        html.append(
+        html_parts.append(
             f"<strong>Dataset:</strong> {len(active_dataset_entities)} active, {len(self._excluded_dataset_entities)} excluded</div>"
         )
-        html.append(
+        html_parts.append(
             '<div style="background: #f6f8fa; padding: 10px 15px; border-radius: 6px; border: 1px solid #d0d7de;">'
         )
-        html.append(
+        html_parts.append(
             f"<strong>Model:</strong> {len(active_model_entities)} entities</div>"
         )
-        html.append(
+        html_parts.append(
             f'<div style="background: {"#d1f4e0" if unmapped_count == 0 else "#fff8c5"}; padding: 10px 15px; border-radius: 6px; border: 1px solid {"#a2ddb8" if unmapped_count == 0 else "#d4a72c"};">'
         )
-        html.append(
+        html_parts.append(
             f"<strong>Status:</strong> {mapped_count} mapped, {unmapped_count} unmapped</div>"
         )
-        html.append("</div>")
+        html_parts.append("</div>")
 
         # Calculate total samples for percentage calculation
         total_samples = len(self.dataset)
 
         # Dataset entities (collapsible)
-        html.append(
+        html_parts.append(
             '<details style="margin: 15px 0; background: #f6f8fa; padding: 10px; border-radius: 6px; border: 1px solid #d0d7de;">'
         )
-        html.append(
+        html_parts.append(
             f'<summary style="cursor: pointer; font-weight: 600; padding: 5px;">📊 Dataset Entities ({len(active_dataset_entities)})</summary>'
         )
-        html.append('<div style="margin-top: 10px; padding-left: 10px;">')
+        html_parts.append('<div style="margin-top: 10px; padding-left: 10px;">')
         # Sort by count (most common first)
         sorted_dataset_entities = sorted(
             active_dataset_entities,
@@ -331,50 +332,50 @@ class EntityMappingHelper:
             count = self._dataset_entity_counts.get(entity, 0)
             percentage = (count / total_samples * 100) if total_samples > 0 else 0
             entity_escaped = html.escape(entity)
-            html.append(
+            html_parts.append(
                 f'<span style="display: inline-block; background: #ffffff; border: 1px solid #d0d7de; padding: 4px 8px; margin: 3px; border-radius: 4px; font-family: monospace; font-size: 12px;">'
                 f'{entity_escaped} <span style="color: #57606a; font-size: 11px;">({count} samples, {percentage:.1f}%)</span></span>'
             )
-        html.append("</div></details>")
+        html_parts.append("</div></details>")
 
         # Model entities (collapsible)
-        html.append(
+        html_parts.append(
             '<details style="margin: 15px 0; background: #f6f8fa; padding: 10px; border-radius: 6px; border: 1px solid #d0d7de;">'
         )
-        html.append(
+        html_parts.append(
             f'<summary style="cursor: pointer; font-weight: 600; padding: 5px;">📦 Model Entities ({len(active_model_entities)})</summary>'
         )
-        html.append('<div style="margin-top: 10px; padding-left: 10px;">')
+        html_parts.append('<div style="margin-top: 10px; padding-left: 10px;">')
         for entity in sorted(active_model_entities):
             entity_escaped = html.escape(entity)
-            html.append(
+            html_parts.append(
                 f'<span style="display: inline-block; background: #ffffff; border: 1px solid #d0d7de; padding: 4px 8px; margin: 3px; border-radius: 4px; font-family: monospace; font-size: 12px;">{entity_escaped}</span>'
             )
-        html.append("</div></details>")
+        html_parts.append("</div></details>")
 
         # Mapping table
-        html.append(
+        html_parts.append(
             '<h4 style="margin-top: 20px; color: #24292f;">📋 Entity Mapping</h4>'
         )
-        html.append(
+        html_parts.append(
             '<table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px;">'
         )
-        html.append(
+        html_parts.append(
             '<thead><tr style="background: #f6f8fa; border-bottom: 2px solid #d0d7de;">'
         )
-        html.append(
+        html_parts.append(
             '<th style="padding: 8px; text-align: left; border: 1px solid #d0d7de;">Dataset Entity</th>'
         )
-        html.append(
+        html_parts.append(
             '<th style="padding: 8px; text-align: left; border: 1px solid #d0d7de;">→ Model Entity</th>'
         )
-        html.append(
+        html_parts.append(
             '<th style="padding: 8px; text-align: center; border: 1px solid #d0d7de;">Samples</th>'
         )
-        html.append(
+        html_parts.append(
             '<th style="padding: 8px; text-align: center; border: 1px solid #d0d7de;">Confidence</th>'
         )
-        html.append("</tr></thead><tbody>")
+        html_parts.append("</tr></thead><tbody>")
 
         # Sort by confidence (low to high): unmapped (0.0) first, then mapped to None, then by score ascending, then manual (1.0)
         def get_sort_key(entity):
@@ -443,16 +444,16 @@ class EntityMappingHelper:
                 mapping_text = html.escape(model_entity)
 
             dataset_entity_escaped = html.escape(dataset_entity)
-            html.append(
+            html_parts.append(
                 f'<tr style="background: {bg_color}; border: 1px solid {border_color};">'
             )
-            html.append(
+            html_parts.append(
                 f'<td style="padding: 8px; border: 1px solid {border_color}; font-family: monospace; font-weight: 600;">{status} {dataset_entity_escaped}</td>'
             )
-            html.append(
+            html_parts.append(
                 f'<td style="padding: 8px; border: 1px solid {border_color}; font-family: monospace;">{mapping_text}</td>'
             )
-            html.append(
+            html_parts.append(
                 f'<td style="padding: 8px; border: 1px solid {border_color}; text-align: center;">{count}</td>'
             )
 
@@ -471,119 +472,119 @@ class EntityMappingHelper:
                 conf_badge = f'<span style="background: {conf_color}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-family: monospace;">{confidence:.2f}</span>'
                 if is_manual and confidence == 1.0:
                     conf_badge = '<span style="background: #0969da; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-family: monospace;">1.00 ✎</span>'
-            html.append(
+            html_parts.append(
                 f'<td style="padding: 8px; border: 1px solid {border_color}; text-align: center;">{conf_badge}</td>'
             )
-            html.append("</tr>")
+            html_parts.append("</tr>")
 
-        html.append("</tbody></table>")
+        html_parts.append("</tbody></table>")
 
         # Add legend for confidence scores
-        html.append(
+        html_parts.append(
             '<div style="margin: 10px 0; padding: 10px; background: #f6f8fa; border-radius: 6px; border: 1px solid #d0d7de; font-size: 12px;">'
         )
-        html.append("<strong>Confidence legend:</strong> ")
-        html.append(
+        html_parts.append("<strong>Confidence legend:</strong> ")
+        html_parts.append(
             '<span style="background: #0969da; color: white; padding: 2px 6px; margin: 0 5px; border-radius: 3px;">1.00 ✎ Manual</span>'
         )
-        html.append(
+        html_parts.append(
             '<span style="background: #57606a; color: white; padding: 2px 6px; margin: 0 5px; border-radius: 3px;">None ✎ Mapped to None</span>'
         )
-        html.append(
+        html_parts.append(
             '<span style="background: #2da44e; color: white; padding: 2px 6px; margin: 0 5px; border-radius: 3px;">≥0.70 High</span>'
         )
-        html.append(
+        html_parts.append(
             '<span style="background: #d4a72c; color: white; padding: 2px 6px; margin: 0 5px; border-radius: 3px;">0.01-0.69 Low</span>'
         )
-        html.append(
+        html_parts.append(
             '<span style="background: #cf222e; color: white; padding: 2px 6px; margin: 0 5px; border-radius: 3px;">0.00 Unmapped</span>'
         )
-        html.append("</div>")
+        html_parts.append("</div>")
 
         # Excluded entities (collapsible)
         if show_excluded and (
             self._excluded_dataset_entities or self._excluded_model_entities
         ):
-            html.append(
+            html_parts.append(
                 '<details style="margin: 15px 0; background: #fff1f0; padding: 10px; border-radius: 6px; border: 1px solid #ffccc7;">'
             )
-            html.append(
+            html_parts.append(
                 '<summary style="cursor: pointer; font-weight: 600; padding: 5px;">🚫 Excluded Entities</summary>'
             )
-            html.append('<div style="margin-top: 10px;">')
+            html_parts.append('<div style="margin-top: 10px;">')
 
             if self._excluded_dataset_entities:
-                html.append(
+                html_parts.append(
                     '<p style="margin: 5px 0; font-weight: 600;">Dataset entities (excluded from evaluation):</p>'
                 )
                 for entity in sorted(self._excluded_dataset_entities):
                     count = self._dataset_entity_counts.get(entity, 0)
                     entity_escaped = html.escape(entity)
-                    html.append(
+                    html_parts.append(
                         f'<div style="padding: 4px 8px; margin: 3px 0; background: white; border: 1px solid #ffccc7; border-radius: 4px;">✗ {entity_escaped} ({count} samples)</div>'
                     )
 
             if self._excluded_model_entities:
-                html.append(
+                html_parts.append(
                     '<p style="margin: 15px 0 5px 0; font-weight: 600;">Model entities (predictions will be ignored):</p>'
                 )
                 for entity in sorted(self._excluded_model_entities):
                     entity_escaped = html.escape(entity)
-                    html.append(
+                    html_parts.append(
                         f'<div style="padding: 4px 8px; margin: 3px 0; background: white; border: 1px solid #ffccc7; border-radius: 4px;">✗ {entity_escaped}</div>'
                     )
 
-            html.append("</div></details>")
+            html_parts.append("</div></details>")
 
         # Warning for unmapped entities
         if self._unmapped_entities:
-            html.append(
+            html_parts.append(
                 '<div style="background: #fff8c5; border: 2px solid #d4a72c; padding: 15px; margin: 20px 0; border-radius: 6px;">'
             )
-            html.append(
+            html_parts.append(
                 f'<h4 style="margin: 0 0 10px 0; color: #9a6700;">⚠️  Action Required: {len(self._unmapped_entities)} Unmapped Entities</h4>'
             )
-            html.append(
+            html_parts.append(
                 '<p style="margin: 5px 0;">The following entities exist in your dataset but have no mapping:</p>'
             )
-            html.append('<ul style="margin: 10px 0; padding-left: 25px;">')
+            html_parts.append('<ul style="margin: 10px 0; padding-left: 25px;">')
             for entity in sorted(self._unmapped_entities):
                 count = self._dataset_entity_counts.get(entity, 0)
                 entity_escaped = html.escape(entity)
-                html.append(
+                html_parts.append(
                     f'<li style="font-family: monospace; font-weight: 600;">{entity_escaped} <span style="color: #57606a;">({count} samples)</span></li>'
                 )
-            html.append(
+            html_parts.append(
                 '</ul><p style="margin: 10px 0; font-weight: 600;">You must take action:</p>'
             )
-            html.append('<ol style="margin: 5px 0; line-height: 1.6;">')
-            html.append(
+            html_parts.append('<ol style="margin: 5px 0; line-height: 1.6;">')
+            html_parts.append(
                 "<li><strong>Map to a model entity:</strong> <code>helper.set_mapping('ENTITY', 'TARGET')</code><br><span style=\"color: #57606a; font-size: 12px;\">The model will evaluate these entities using the mapped target entity.</span></li>"
             )
-            html.append(
+            html_parts.append(
                 "<li><strong>Map to None:</strong> <code>helper.set_mapping('ENTITY', None)</code><br><span style=\"color: #57606a; font-size: 12px;\">Keep in dataset but penalize model for not detecting (counted as False Negatives).</span></li>"
             )
-            html.append(
+            html_parts.append(
                 "<li><strong>Exclude them:</strong> <code>helper.exclude_dataset_entities(['ENTITY'])</code><br><span style=\"color: #57606a; font-size: 12px;\">Remove these entities from evaluation entirely (samples filtered out).</span></li>"
             )
-            html.append("</ol></div>")
+            html_parts.append("</ol></div>")
         else:
-            html.append(
+            html_parts.append(
                 '<div style="background: #d1f4e0; border: 2px solid #2da44e; padding: 15px; margin: 20px 0; border-radius: 6px;">'
             )
-            html.append(
+            html_parts.append(
                 '<h4 style="margin: 0; color: #116329;">✅ All entities mapped! Ready to run experiment.</h4>'
             )
-            html.append(
+            html_parts.append(
                 '<p style="margin: 10px 0 0 0; color: #116329; font-size: 13px;">💡 Note: Entities mapped to <code>None</code> will be counted as False Negatives since the model doesn\'t support them.</p>'
             )
-            html.append("</div>")
+            html_parts.append("</div>")
 
-        html.append("</div>")
+        html_parts.append("</div>")
 
         # Display HTML
         if IPYTHON_AVAILABLE:
-            display(HTML("".join(html)))
+            display(HTML("".join(html_parts)))
         else:
             # Fallback to compact format if IPython not available
             print("⚠️  IPython not available. Falling back to compact format.")
