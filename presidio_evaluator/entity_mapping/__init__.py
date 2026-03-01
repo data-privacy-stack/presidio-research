@@ -22,9 +22,6 @@ from presidio_evaluator.entity_mapping.interactive import (
     get_model_entities,
     get_dataset_entities,
     suggest_mapping,
-    print_mapping_summary,
-    save_mapping_to_file,
-    load_mapping_from_file,
 )
 
 __all__ = [
@@ -39,7 +36,4 @@ __all__ = [
     "get_model_entities",
     "get_dataset_entities",
     "suggest_mapping",
-    "print_mapping_summary",
-    "save_mapping_to_file",
-    "load_mapping_from_file",
 ]

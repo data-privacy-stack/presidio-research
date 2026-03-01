@@ -3,17 +3,12 @@ Tests for interactive entity mapping utilities.
 """
 
 import pytest
-from pathlib import Path
 from unittest.mock import Mock
-import tempfile
 
 from presidio_evaluator.entity_mapping import (
     get_model_entities,
     get_dataset_entities,
     suggest_mapping,
-    print_mapping_summary,
-    save_mapping_to_file,
-    load_mapping_from_file,
 )
 from presidio_evaluator.data_objects import InputSample, Span
 
@@ -358,77 +353,3 @@ class TestSuggestMapping:
             assert (
                 scores[entity] == 1.0
             ), f"{entity} (exact match) should have confidence 1.0, got {scores[entity]}"
-
-
-class TestSaveLoadMapping:
-    """Tests for save and load mapping functions."""
-
-    def test_save_and_load_mapping(self):
-        """Test saving and loading a mapping."""
-        mapping = {"FIRST_NAME": "PERSON", "EMAIL": "CONTACT", "SSN": "ID"}
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            temp_path = f.name
-
-        try:
-            # Save
-            save_mapping_to_file(mapping, temp_path)
-
-            # Load
-            loaded_mapping = load_mapping_from_file(temp_path)
-
-            assert loaded_mapping == mapping
-        finally:
-            Path(temp_path).unlink(missing_ok=True)
-
-    def test_load_nonexistent_file(self):
-        """Test loading from non-existent file raises error."""
-        with pytest.raises(FileNotFoundError):
-            load_mapping_from_file("nonexistent_file.json")
-
-
-class TestPrintMappingSummary:
-    """Tests for print_mapping_summary function."""
-
-    def test_print_mapping_summary_basic(self, capsys):
-        """Test basic summary printing."""
-        dataset_entities = ["FIRST_NAME", "EMAIL", "UNKNOWN"]
-        model_entities = ["PERSON", "CONTACT"]
-        mapping = {"FIRST_NAME": "PERSON", "EMAIL": "CONTACT", "UNKNOWN": None}
-
-        print_mapping_summary(dataset_entities, model_entities, mapping)
-
-        captured = capsys.readouterr()
-        assert "ENTITY MAPPING SUMMARY" in captured.out
-        assert "FIRST_NAME" in captured.out
-        assert "EMAIL" in captured.out
-        assert "UNKNOWN" in captured.out
-        assert "PERSON" in captured.out
-        assert "CONTACT" in captured.out
-
-    def test_print_mapping_summary_with_counts(self, capsys):
-        """Test summary printing with counts."""
-        dataset_entities = {"FIRST_NAME": 100, "EMAIL": 50}
-        model_entities = ["PERSON", "CONTACT"]
-        mapping = {
-            "FIRST_NAME": "PERSON",
-            "EMAIL": "CONTACT",
-        }
-
-        print_mapping_summary(dataset_entities, model_entities, mapping)
-
-        captured = capsys.readouterr()
-        assert "100" in captured.out
-        assert "50" in captured.out
-
-    def test_print_mapping_summary_with_scores(self, capsys):
-        """Test summary printing with scores."""
-        dataset_entities = ["FIRST_NAME"]
-        model_entities = ["PERSON"]
-        mapping = {"FIRST_NAME": "PERSON"}
-        scores = {"FIRST_NAME": 0.95}
-
-        print_mapping_summary(dataset_entities, model_entities, mapping, scores)
-
-        captured = capsys.readouterr()
-        assert "0.95" in captured.out

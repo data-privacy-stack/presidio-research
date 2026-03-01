@@ -301,20 +301,6 @@ class TestEntityMappingHelper:
         assert "EMAIL" in entities  # Should include original name when mapped to None
         assert "US_SSN" in entities
 
-    def test_reset(self):
-        """Test resetting all modifications."""
-        dataset = create_sample_dataset()
-        analyzer = create_mock_analyzer()
-        helper = EntityMappingHelper(dataset=dataset, model=analyzer)
-
-        helper.set_mapping("EMAIL", "EMAIL_ADDRESS")
-        helper.exclude_dataset_entities("SSN")
-
-        helper.reset()
-
-        assert len(helper._manual_mappings) == 0
-        assert len(helper._excluded_dataset_entities) == 0
-
 
 # ============================================================================
 # PART 3: Entity Mapping During Comparison Tests
