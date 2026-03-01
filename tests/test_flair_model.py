@@ -12,7 +12,7 @@ from presidio_evaluator.models.flair_model import FlairModel
 def test_flair_simple(small_dataset):
 
     flair_model = FlairModel(model_path="ner", entities_to_keep=["PERSON"])
-    evaluator = Evaluator(model=flair_model)
+    evaluator = Evaluator(model=flair_model, entity_mapping = {})
     evaluation_results = evaluator.evaluate_all(small_dataset)
     scores = evaluator.calculate_score(evaluation_results)
 
