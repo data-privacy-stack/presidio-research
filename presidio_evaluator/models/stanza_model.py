@@ -40,7 +40,7 @@ class StanzaModel(SpacyModel):
     ):
         warnings.warn(
             "StanzaModel is deprecated and will be removed in a future version. "
-            "Use Stanza models through Presidio Analyzer instead. "
+            "Use Stanza models through Presidio Analyzer instead. ",
             DeprecationWarning,
             stacklevel=2,
         )
