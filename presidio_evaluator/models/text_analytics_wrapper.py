@@ -40,7 +40,7 @@ class TextAnalyticsWrapper(BaseModel):
 
         warnings.warn(
             f"{self.__class__.__name__} is deprecated and will be removed in a future version. "
-            f"Please use the dedicated recognizer within Presidio Analyzer instead. "
+            f"Please use the dedicated recognizer within Presidio Analyzer instead. ",
             DeprecationWarning,
             stacklevel=2,
         )
