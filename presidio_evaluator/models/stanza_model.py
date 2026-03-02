@@ -1,4 +1,5 @@
 from typing import List, Optional, Dict
+import warnings
 
 import spacy
 
@@ -17,6 +18,9 @@ class StanzaModel(SpacyModel):
     """
     Class wrapping Stanza models, using spacy_stanza.
 
+    .. deprecated::
+        StanzaModel is deprecated. Use Stanza models through Presidio Analyzer instead.
+
     :param model: spaCy Language object representing a stanza model
     :param model_name: Name of model, e.g. "en"
     :param entities_to_keep: List of entities to predict on
@@ -34,6 +38,12 @@ class StanzaModel(SpacyModel):
         labeling_scheme: str = "BIO",
         entity_mapping: Optional[Dict[str, str]] = PRESIDIO_SPACY_ENTITIES,
     ):
+        warnings.warn(
+            "StanzaModel is deprecated and will be removed in a future version. "
+            "Use Stanza models through Presidio Analyzer instead. "
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not model and not model_name:
             raise ValueError("Either model_name or model object must be supplied")
         if not model:

@@ -1,4 +1,5 @@
 from typing import List, Dict
+import warnings
 
 import spacy
 
@@ -18,6 +19,11 @@ from presidio_evaluator.models import BaseModel
 class FlairModel(BaseModel):
     """
     Evaluator for Flair models
+
+    .. deprecated::
+        FlairModel is deprecated. Use Flair models through Presidio Analyzer instead.
+        See: https://microsoft.github.io/presidio/analyzer/nlp_engines/flair/
+
     :param model: model of type SequenceTagger
     :param model_path:
     :param entities_to_keep:
@@ -33,6 +39,13 @@ class FlairModel(BaseModel):
         verbose: bool = False,
         entity_mapping: Dict[str, str] = PRESIDIO_SPACY_ENTITIES,
     ):
+        warnings.warn(
+            "FlairModel is deprecated and will be removed in a future version. "
+            "Use Flair models through Presidio Analyzer instead. "
+            "See: https://microsoft.github.io/presidio/analyzer/nlp_engines/flair/",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(
             entities_to_keep=entities_to_keep,
             verbose=verbose,
