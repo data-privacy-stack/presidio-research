@@ -335,8 +335,6 @@ class BaseEvaluator(ABC):
 
         evaluation_results = []
 
-        # Note: entity_mapping is now applied during comparison, not before prediction
-        # This preserves original dataset entity types in results
         logger.info("Using entity mapping for comparison: %s", self.entity_mapping)
 
         logger.info("Running model %s on dataset...", self.model.__class__.__name__)
