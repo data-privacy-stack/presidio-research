@@ -1,0 +1,8 @@
+## Codebase Patterns
+- entity_mapping module lives in presidio_evaluator/entity_mapping/ with mapper.py, hierarchy.py, __init__.py
+- EntityHierarchy._normalize() strips hyphens and underscores and uppercases; so "B-PERSON" normalizes to "BPERSON" (not "PERSON")
+- BIO stripping must happen BEFORE hierarchy resolution, using original label as dict key
+- ruff is the linter: run `ruff check <file>` or `ruff check presidio_evaluator/entity_mapping/ tests/`
+- Tests for entity_mapping must be run without conftest.py (it requires spacy/pandas/presidio_analyzer); use: python -m pytest tests/test_canonical_mapper.py --ignore=tests/conftest.py
+- Log messages use ASCII `->` not Unicode `→` per spec
+- The __init__.py had a stale CANONICAL_DEPTH import (doesn't exist at module level in hierarchy.py)

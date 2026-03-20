@@ -87,7 +87,7 @@
         "Tests pass"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on US-001. InputSample is imported from presidio_evaluator.data_objects."
     },
     {
@@ -107,7 +107,7 @@
         "Tests pass"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on US-001. IPython is an optional import \u2014 catch ImportError and fall back to print()."
     },
     {
@@ -138,7 +138,7 @@
         "Tests pass"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on US-001 through US-005. from_dataset eager-return tested with both happy path (dict returned) and pending path (instance returned)."
     }
   ]
