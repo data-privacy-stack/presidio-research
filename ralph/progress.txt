@@ -6,3 +6,27 @@
 - Tests for entity_mapping must be run without conftest.py (it requires spacy/pandas/presidio_analyzer); use: python -m pytest tests/test_canonical_mapper.py --ignore=tests/conftest.py
 - Log messages use ASCII `->` not Unicode `→` per spec
 - The __init__.py had a stale CANONICAL_DEPTH import (doesn't exist at module level in hierarchy.py)
+
+## 2026-03-20 - US-001 through US-006
+- What was implemented:
+  - BIO/BIOES/BILOU/BILUO prefix/suffix stripping in CanonicalMapper (_strip_bio function)
+  - O (outside token) auto-mapping to None tier
+  - Fixed log messages to use ASCII `->` instead of Unicode `→`
+  - Fixed UNRESOLVED log message (removed stale "prompting user" suffix)
+  - Removed stale CANONICAL_DEPTH import from __init__.py
+  - Expanded ALL_CANONICAL_ENTITIES to include intermediate hierarchy nodes (PERSON, LOCATION, etc.)
+  - Removed stale duplicate canonicalize() stub from hierarchy.py
+  - Added from_dataset() classmethod for constructing from InputSample list
+  - Added comprehensive tests: BIO stripping, O token, BANK_ACCOUNT, from_dataset, render_html
+- Files changed:
+  - presidio_evaluator/entity_mapping/mapper.py
+  - presidio_evaluator/entity_mapping/__init__.py
+  - presidio_evaluator/entity_mapping/hierarchy.py
+  - tests/test_canonical_mapper.py
+- **Learnings for future iterations:**
+  - MY_UNKNOWN is auto-resolved as NATIONAL_ID (MY = Malaysia country code) — use XYZZY_UNKNOWN for pending tests
+  - ALL_CANONICAL_ENTITIES at depth=3 excludes intermediate nodes like PERSON — needed union with raw_to_canonical.values()
+  - hierarchy.py had a duplicate canonicalize() method (dead code) — removed
+  - __init__.py imported CANONICAL_DEPTH which never existed at module level in hierarchy.py
+  - BIO stripping regex must require hyphen: ^[BIOELSU]-(.+)$ — ensures BANK_ACCOUNT is not stripped
+---
