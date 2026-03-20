@@ -1,0 +1,145 @@
+{
+  "project": "presidio-research",
+  "branchName": "ralph/canonical-mapper",
+  "description": "Entity Mapping Workflow \u2014 stateful CanonicalMapper that resolves user-defined entity labels to canonical EntityHierarchy entities via exact, country-prefix, and fuzzy matching.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "CanonicalMapper core implementation",
+      "description": "As a developer, I need the foundational CanonicalMapper class with BIO stripping, auto-resolve pass, and get_mapping() so the rest of the API can be built on top of it.",
+      "acceptanceCriteria": [
+        "In mapper.py: define IncompleteMapping(RuntimeError) with a .pending: list[str] attribute and a message that includes the count of pending labels",
+        "In mapper.py: define EntityMapper Protocol with pending property, map(), resolve_interactively(), get_mapping(), render_html() methods",
+        "In mapper.py: define _Resolution dataclass with tier (str), canonical (str | None), and score (float | None) fields",
+        "CanonicalMapper.__init__(labels, hierarchy=None, fuzzy_threshold=0.80) deduplicates input labels before processing",
+        "Before resolution, strip BIO/BIOES/BILOU/BILUO prefixes (B-, I-, O-, E-, L-, S-, U-) and suffixes (-B, -I, -O, -E, -L, -S, -U) case-insensitively; original label is used as dict key",
+        "The special outside token 'O' (after stripping) is auto-mapped to None without entering the resolution pipeline, logged as [NONE] O -> None  (outside token)",
+        "Labels that merely start with B are not stripped (e.g. BANK_ACCOUNT unchanged)",
+        "Auto-resolve pass runs in order: EXACT -> COUNTRY -> COUNTRY_FALLBACK -> FUZZY",
+        "Each resolved label is logged at INFO level with its tier, e.g. '[EXACT]   EMAIL_ADDRESS -> EMAIL_ADDRESS', '[FUZZY 87%] EMAILADRES -> EMAIL_ADDRESS', '[COUNTRY] GERMAN_PASSPORT_NUMBER -> PASSPORT', '[COUNTRY-FALLBACK] NIGERIA_UNICORN_CARD -> NATIONAL_ID  \u26a0 document type not recognised'",
+        "COUNTRY-FALLBACK resolution emits at WARNING level",
+        "Labels that fail all tiers are logged at WARNING as '[UNRESOLVED] {label}  \u2014 no automatic match found'",
+        "After auto-resolve pass a summary INFO line is logged: 'Resolved N/M labels automatically (K fuzzy, J country-fallback). P require manual mapping.'",
+        "Logger name is 'presidio_evaluator.entity_mapping'",
+        "pending property returns a sorted list of labels that failed all resolution tiers",
+        "get_mapping() returns dict[str, str | None] covering every input label when pending is empty",
+        "get_mapping() raises IncompleteMapping(pending) when pending is non-empty",
+        "Update presidio_evaluator/entity_mapping/__init__.py to export CanonicalMapper, EntityMapper, IncompleteMapping",
+        "ruff check passes with zero errors on mapper.py and __init__.py",
+        "Tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "hierarchy defaults to EntityHierarchy.default() when None. Uses EntityHierarchy.canonicalize() for all resolution. EntityNotMappedError from hierarchy is caught and routes label to pending."
+    },
+    {
+      "id": "US-002",
+      "title": "CanonicalMapper.map() programmatic method",
+      "description": "As a developer, I want to supply all label->canonical assignments programmatically in one atomic batch so the workflow runs without interactive prompts.",
+      "acceptanceCriteria": [
+        "map(mappings: dict[str, str | None]) validates all entries before applying any (atomic)",
+        "Raises ValueError if any key is not in the original input labels",
+        "Raises ValueError if any value is not in ALL_CANONICAL_ENTITIES and is not None",
+        "When validation fails, no mappings are applied (no partial state change)",
+        "Applies all mappings atomically on success, updating their resolution tier to MANUAL",
+        "Can override an already-resolved label (corrects the existing resolution)",
+        "Returns self to allow chaining: mapper.map({...}).map({...})",
+        "Mapped labels are logged at INFO level as '[MANUAL]  {label} -> {canonical}'",
+        "Labels mapped to None are logged as '[NONE]    {label} -> None  (suppressed from evaluation)'",
+        "ruff check passes with zero errors on mapper.py",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Depends on US-001. ALL_CANONICAL_ENTITIES is imported from hierarchy module."
+    },
+    {
+      "id": "US-003",
+      "title": "CanonicalMapper.resolve_interactively() method",
+      "description": "As a user, I want to be prompted for each pending label with ranked fuzzy suggestions so I can resolve unresolvable labels quickly in a terminal or notebook.",
+      "acceptanceCriteria": [
+        "resolve_interactively(prompt_fn=input) is a no-op when pending is empty",
+        "For each pending label, shows a warning that no automatic match was found",
+        "Shows up to 5 ranked fuzzy-match suggestions using difflib.get_close_matches at cutoff=0.40 against ALL_CANONICAL_ENTITIES, with canonical name and similarity score",
+        "Prompt accepts: a suggestion number (1-5), a free-text canonical entity name, or 'NONE' to suppress",
+        "Re-prompts on invalid input (number out of range, unrecognised canonical name) until valid choice is made",
+        "'NONE' input maps the label to None (suppressed from evaluation)",
+        "Free-text canonical is validated against ALL_CANONICAL_ENTITIES; re-prompts if not found",
+        "prompt_fn parameter is injectable (replaces built-in input) to allow non-interactive testing",
+        "Returns self to allow chaining",
+        "ruff check passes with zero errors on mapper.py",
+        "Tests pass"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Depends on US-001. The prompt_fn injection is the mechanism for all tests \u2014 no monkey-patching of builtins."
+    },
+    {
+      "id": "US-004",
+      "title": "CanonicalMapper.from_dataset() named constructor",
+      "description": "As a user, I want to construct a CanonicalMapper directly from a list of InputSample objects so I don't have to manually extract the unique entity label vocabulary.",
+      "acceptanceCriteria": [
+        "from_dataset(samples: list[InputSample], **kwargs) extracts unique entity_type values from all InputSample.spans",
+        "Delegates to __init__ with the extracted labels; **kwargs (hierarchy, fuzzy_threshold) are passed through",
+        "If pending is empty after construction, returns get_mapping() directly (a dict[str, str | None])",
+        "If pending is non-empty, returns the CanonicalMapper instance",
+        "ruff check passes with zero errors on mapper.py",
+        "Tests pass"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Depends on US-001. InputSample is imported from presidio_evaluator.data_objects."
+    },
+    {
+      "id": "US-005",
+      "title": "CanonicalMapper.render_html() visual audit table",
+      "description": "As a user, I want to call render_html() on the mapper to see a styled table of all labels, their resolution tier, canonical target, and score so I can audit the mapping at any point.",
+      "acceptanceCriteria": [
+        "render_html() renders via IPython.display.HTML in Jupyter environments; falls back to print() plain-text in non-Jupyter environments",
+        "Never raises an exception regardless of environment",
+        "Columns: Raw Label | Tier badge | Canonical | Score",
+        "Row sort order: PENDING -> COUNTRY_FALLBACK -> FUZZY -> EXACT/COUNTRY/MANUAL -> NONE",
+        "Tier badge colours (inline styles): EXACT/COUNTRY = green, FUZZY = amber, COUNTRY_FALLBACK = amber with \u26a0, MANUAL = blue, NONE = grey, PENDING = red",
+        "A summary bar above the table shows counts per tier",
+        "HTML is fully self-contained (inline styles only, no external CSS or JS)",
+        "Can be called at any point \u2014 before, during, or after resolution \u2014 to reflect current state",
+        "ruff check passes with zero errors on mapper.py",
+        "Tests pass"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Depends on US-001. IPython is an optional import \u2014 catch ImportError and fall back to print()."
+    },
+    {
+      "id": "US-006",
+      "title": "Test suite for CanonicalMapper",
+      "description": "As a developer, I want a complete test suite for CanonicalMapper so the implementation is verifiable and regressions are caught.",
+      "acceptanceCriteria": [
+        "tests/test_canonical_mapper.py covers from_dataset() extracting unique span entity types from InputSample list",
+        "Tests cover construction and auto-resolve for each tier independently (EXACT, COUNTRY, COUNTRY_FALLBACK, FUZZY)",
+        "Tests cover BIO prefix stripping: B-PERSON resolves as PERSON; key in get_mapping() dict is B-PERSON",
+        "Tests cover suffix stripping: PERSON-I resolves as PERSON",
+        "Tests cover O token auto-mapped to None without prompting",
+        "Tests cover non-scheme labels starting with B are not stripped (BANK_ACCOUNT unchanged)",
+        "Tests cover pending content and alphabetical ordering",
+        "Tests cover map() happy path (single and batch)",
+        "Tests cover map() invalid label raises ValueError with no partial apply",
+        "Tests cover map() invalid canonical raises ValueError with no partial apply",
+        "Tests cover map() override of already-resolved label",
+        "Tests cover get_mapping() raises IncompleteMapping when pending non-empty",
+        "Tests cover get_mapping() returns correct dict when complete",
+        "Tests cover resolve_interactively() number selection, NONE keyword, free-text, re-prompt on invalid input",
+        "Tests cover resolve_interactively() is a no-op when pending is empty",
+        "Tests cover render_html() does not raise when IPython is unavailable",
+        "Tests cover CanonicalMapper satisfies EntityMapper Protocol (isinstance check)",
+        "Tests cover IncompleteMapping stores pending list and includes count in message",
+        "All tests are non-interactive: use prompt_fn injection, no monkey-patching of builtins",
+        "ruff check passes with zero errors on tests/test_canonical_mapper.py",
+        "Tests pass"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Depends on US-001 through US-005. from_dataset eager-return tested with both happy path (dict returned) and pending path (instance returned)."
+    }
+  ]
+}

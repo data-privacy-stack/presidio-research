@@ -162,6 +162,7 @@ class TestResolveInteractively:
             assert mapper.pending == []
 
 
+
 class TestProtocolCompliance:
     def test_canonical_mapper_satisfies_entity_mapper_protocol(self):
         mapper = CanonicalMapper(["EMAIL_ADDRESS"])
@@ -176,3 +177,92 @@ class TestIncompleteMappingException:
     def test_message_contains_count(self):
         exc = IncompleteMapping(["A", "B"])
         assert "2" in str(exc)
+
+
+class TestBIOStripping:
+    def test_bio_prefix_b_resolves_correctly(self):
+        mapper = CanonicalMapper(["B-PERSON"])
+        assert "B-PERSON" not in mapper.pending
+        assert mapper._records["B-PERSON"].canonical == "PERSON"
+
+    def test_bio_prefix_key_is_original_label(self):
+        mapper = CanonicalMapper(["B-PERSON"])
+        result = mapper.get_mapping()
+        assert "B-PERSON" in result
+        assert result["B-PERSON"] == "PERSON"
+
+    def test_bio_suffix_stripping(self):
+        mapper = CanonicalMapper(["PERSON-I"])
+        assert "PERSON-I" not in mapper.pending
+        assert mapper._records["PERSON-I"].canonical == "PERSON"
+
+    def test_non_bio_label_starting_with_b_unchanged(self):
+        mapper = CanonicalMapper(["BANK_ACCOUNT"])
+        # BANK_ACCOUNT should NOT be stripped (no hyphen after B)
+        assert mapper._stripped["BANK_ACCOUNT"] == "BANK_ACCOUNT"
+
+    def test_o_token_auto_mapped_to_none(self):
+        mapper = CanonicalMapper(["O"])
+        assert "O" not in mapper.pending
+        assert mapper._records["O"].canonical is None
+        assert mapper._records["O"].tier == "NONE"
+
+    def test_o_token_not_interactive(self):
+        # O should be resolved without ever prompting
+        called = []
+        mapper = CanonicalMapper(["O"])
+        mapper.resolve_interactively(prompt_fn=lambda _: called.append(1) or "PERSON")
+        assert called == []
+
+
+class TestFromDataset:
+    def _make_samples(self, entity_types: list[str]) -> list:
+        """Create minimal InputSample objects with the given entity types."""
+        from presidio_evaluator.data_objects import Span, InputSample
+        samples = []
+        for et in entity_types:
+            span = Span(entity_type=et, entity_value="x", start_position=0, end_position=1)
+            sample = InputSample(full_text="x", masked="x", spans=[span])
+            samples.append(sample)
+        return samples
+
+    def test_from_dataset_extracts_entity_types(self):
+        samples = self._make_samples(["EMAIL_ADDRESS", "EMAIL_ADDRESS", "PERSON"])
+        result = CanonicalMapper.from_dataset(samples)
+        # Both labels should be fully resolved → a dict is returned
+        assert isinstance(result, dict)
+        assert "EMAIL_ADDRESS" in result
+        assert "PERSON" in result
+
+    def test_from_dataset_returns_mapper_when_pending(self):
+        samples = self._make_samples(["EMAIL_ADDRESS", "XYZZY_UNKNOWN"])
+        result = CanonicalMapper.from_dataset(samples)
+        assert isinstance(result, CanonicalMapper)
+        assert "XYZZY_UNKNOWN" in result.pending
+
+    def test_from_dataset_passes_kwargs(self):
+        from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
+        h = EntityHierarchy.default()
+        samples = self._make_samples(["EMAIL_ADDRESS"])
+        result = CanonicalMapper.from_dataset(samples, hierarchy=h)
+        assert isinstance(result, dict)
+
+
+class TestRenderHtml:
+    def test_render_html_does_not_raise_without_ipython(self):
+        import sys
+        # Remove IPython from path to simulate non-Jupyter environment
+        ipython = sys.modules.pop("IPython", None)
+        ipython_display = sys.modules.pop("IPython.display", None)
+        try:
+            mapper = CanonicalMapper(["EMAIL_ADDRESS", "XYZZY_UNKNOWN"])
+            mapper.render_html()  # should not raise
+        finally:
+            if ipython is not None:
+                sys.modules["IPython"] = ipython
+            if ipython_display is not None:
+                sys.modules["IPython.display"] = ipython_display
+
+    def test_render_html_can_be_called_before_resolution(self):
+        mapper = CanonicalMapper(["XYZZY_UNKNOWN"])
+        mapper.render_html()  # should not raise when pending

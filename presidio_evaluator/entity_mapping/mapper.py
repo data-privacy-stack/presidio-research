@@ -15,7 +15,6 @@ from presidio_evaluator.entity_mapping.hierarchy import (
 )
 
 logger = logging.getLogger("presidio_evaluator.entity_mapping")
-
 # ---------------------------------------------------------------------------
 # BIO/BIOES/BILOU/BILUO prefix/suffix stripping
 # ---------------------------------------------------------------------------
@@ -160,6 +159,30 @@ class CanonicalMapper:
 
         self._records: dict[str, _Resolution] = {}
         self._auto_resolve()
+
+    @classmethod
+    def from_dataset(cls, samples: list, **kwargs) -> "CanonicalMapper | dict":
+        """
+        Construct a CanonicalMapper from a list of InputSample objects.
+
+        Extracts unique entity_type values from all spans, then delegates to
+        :meth:`__init__` with those labels. ``**kwargs`` (e.g. ``hierarchy``,
+        ``fuzzy_threshold``) are passed through.
+
+        Returns the completed mapping dict when all labels are auto-resolved,
+        or the CanonicalMapper instance when manual resolution is still needed.
+        """
+        from presidio_evaluator.data_objects import InputSample  # local import to avoid heavy dep at module level
+        labels: set[str] = {
+            span.entity_type
+            for sample in samples
+            if isinstance(sample, InputSample)
+            for span in sample.spans
+        }
+        mapper = cls(labels, **kwargs)
+        if not mapper.pending:
+            return mapper.get_mapping()
+        return mapper
 
     # ── Auto-resolve pass ────────────────────────────────────────────────────
 
