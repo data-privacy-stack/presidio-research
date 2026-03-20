@@ -396,11 +396,11 @@ class BaseEvaluator(ABC):
         rows_list = []
         for i, res in enumerate(evaluation_results):
             tokens = res.tokens
-            predictions = res.predicted_tags
-            # Normalize annotations to model entity types before filtering
-            # This ensures that when entities filter contains model names,
-            # it matches dataset names that map to it
+            # Normalize annotation entities (dataset namespace) to model entities
+            # so that entity names are comparable to predictions and to entities_to_keep.
+            # Predictions are already in model namespace and need no remapping.
             annotations = res.actual_tags
+            predictions = res.predicted_tags
             if self.compare_by_io:
                 annotations = self._to_io(annotations)
                 predictions = self._to_io(predictions)
@@ -408,8 +408,11 @@ class BaseEvaluator(ABC):
                 self._normalize_entity_for_comparison(tag, self.entity_mapping)
                 for tag in annotations
             ]
+            if self.entities_to_keep:
+                annotations = self._adjust_per_entities(annotations)
+                predictions = self._adjust_per_entities(predictions)
 
-            # Now filter by entities if provided
+            # Filter to the requested entity subset (e.g. for per-entity scoring)
             annotations = self._filter_entities(annotations, entities)
             predictions = self._filter_entities(predictions, entities)
             start_indices = res.start_indices

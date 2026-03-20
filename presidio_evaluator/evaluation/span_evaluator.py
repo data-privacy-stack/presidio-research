@@ -20,7 +20,7 @@ class SpanEvaluator(BaseEvaluator):
     def __init__(
         self,
         model: Optional[Union[BaseModel, AnalyzerEngine]],
-        entity_mapping: Dict[str, str],
+        entity_mapping: Dict[str, Optional[str]],
         verbose: bool = False,
         compare_by_io: bool = True,
         entities_to_keep: Optional[List[str]] = None,

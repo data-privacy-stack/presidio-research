@@ -1,39 +1,38 @@
-"""Entity mapping utilities for aligning dataset entities to model entities.
+"""Entity mapping: resolve raw entity labels to canonical EntityHierarchy entities."""
 
-This package provides tools for:
-- Semantic similarity-based entity mapping
-- Rule-based entity mapping (exact matches, patterns, substrings)
-- Hybrid mapping strategies combining multiple approaches
-- Interactive entity mapping sessions for experiment setup
-- Automatic entity detection from models and datasets
-"""
-
-# Import from mapper module
 from presidio_evaluator.entity_mapping.mapper import (
+    CanonicalMapper,
     EntityMapper,
-    SemanticEntityMapper,
-    create_hierarchical_mapper,
-    create_presidio_mapper,
+    IncompleteMapping,
 )
 
-# Import from interactive module
-from presidio_evaluator.entity_mapping.interactive import (
-    EntityMappingHelper,
-    get_model_entities,
-    get_dataset_entities,
-    suggest_mapping,
+from presidio_evaluator.entity_mapping.hierarchy import (
+    ALL_CANONICAL_ENTITIES,
+    CANONICAL_TO_BRANCH,
+    COUNTRIES,
+    HIERARCHY,
+    RAW_TO_CANONICAL,
+    EntityHierarchy,
+    EntityNotMappedError,
+    canonicalize,
+    get_branch,
+    print_hierarchy,
 )
 
 __all__ = [
-    # Mapper classes
+    # Mapper
+    "CanonicalMapper",
     "EntityMapper",
-    "SemanticEntityMapper",
-    # Mapper factory functions
-    "create_hierarchical_mapper",
-    "create_presidio_mapper",
-    # Interactive mapping
-    "EntityMappingHelper",
-    "get_model_entities",
-    "get_dataset_entities",
-    "suggest_mapping",
+    "IncompleteMapping",
+    # Entity hierarchy
+    "ALL_CANONICAL_ENTITIES",
+    "CANONICAL_TO_BRANCH",
+    "COUNTRIES",
+    "HIERARCHY",
+    "RAW_TO_CANONICAL",
+    "EntityHierarchy",
+    "EntityNotMappedError",
+    "canonicalize",
+    "get_branch",
+    "print_hierarchy",
 ]
