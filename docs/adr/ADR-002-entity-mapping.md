@@ -64,13 +64,8 @@ CanonicalMapper(labels)
   → auto-resolve pass (EXACT → COUNTRY → COUNTRY_FALLBACK → FUZZY)
   → inspect .pending          # labels that need attention
   → .map({...})               # programmatic assignment
-  → .resolve_interactively()  # guided terminal/notebook prompts
   → .get_mapping()            # returns dict[str, str | None]
 ```
-
-When all labels auto-resolve, `.get_mapping()` can be called immediately — no additional steps
-are needed. When pending labels remain, `.get_mapping()` raises `IncompleteMapping` until every
-label is accounted for.
 
 ### Typical usage
 
@@ -82,16 +77,14 @@ label is accounted for.
 # .get_mapping().
 
 # Everything auto-resolves — mapping dict returned immediately
-mapping = CanonicalMapper.from_dataset(samples)
+dataset_mapping = CanonicalMapper.from_dataset(samples)
+model_mapping = CanonicalMapper.from_model(huggingface_model) #or PresidioAnalyzer
 
-# Some labels are pending — resolve interactively, then retrieve
-mapper = CanonicalMapper(["PERSON", "EMAIL_ADDRESS", "MY_CUSTOM_LABEL"])
-mapper.resolve_interactively()
-mapping = mapper.get_mapping()
+# If some labels are not mapped — update manually
+mapper = CanonicalMapper.update({"GGE":"ORG", "CustID":"CLIENT_ID", "MY_CUSTOM_LABEL":None})
 
-# Programmatic (batch) assignment — no prompts
-mapper.map({"MY_CUSTOM_LABEL": "PERSON", "INTERNAL_ID": None})
-mapping = mapper.get_mapping()
+# Assuming all entities are now mapped:
+mapping: Dict[str, str] = mapper.get_mapping()
 ```
 
 ### Logging
