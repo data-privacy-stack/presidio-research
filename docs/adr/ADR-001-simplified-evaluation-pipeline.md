@@ -54,13 +54,13 @@ This schema is already produced by `get_results_dataframe()` and consumed by `ca
 dataset = InputSample.read_dataset_json("data/dataset.json")
 
 # 2. Choose model and run predictions → get DataFrame directly
-model = SpacyModel(model=nlp)  # or PresidioAnalyzerWrapper, etc.
+model = PresidioAnalyzerWrapper(model=AnalyzerEngine())
 results_df = model.predict_dataset(dataset)  # NEW: returns the DataFrame directly
 
-# 3. Map entities (optional, operates on DataFrame)
-results_df = map_entities(results_df, mapping={"GPE": "LOCATION", "LOC": "LOCATION"})
+# 3. Map entities (transforms both predictions and annotations into canonical entities)
+results_df = map_entities(results_df)
 
-# 4. Score (evaluator is model-free, takes only the DataFrame)
+# 4. Score
 evaluator = SpanEvaluator()   # no model argument needed!
 results = evaluator.calculate_score_on_df(per_type=True, results_df=results_df)
 
@@ -79,39 +79,6 @@ plotter.plot_scores()
 | `evaluate_all()` | Required step in the pipeline | Becomes a convenience wrapper (calls `predict_dataset` then `calculate_score_on_df`) |
 | `EvaluationResult` (per-sample) | Carrier object for tokens/tags | Eliminated — the DataFrame IS the carrier |
 
-### `predict_dataset` method on `BaseModel`
-
-```python
-def predict_dataset(self, dataset: List[InputSample], **kwargs) -> pd.DataFrame:
-    """Run model on dataset and return a standardized results DataFrame."""
-    predictions = self.batch_predict(dataset, **kwargs)
-    rows = []
-    for i, (sample, prediction) in enumerate(zip(dataset, predictions)):
-        prediction = self.filter_tags_in_supported_entities(prediction)
-        prediction = self.to_scheme(prediction)
-        for token, tag, pred, start in zip(
-            sample.tokens, sample.tags, prediction, sample.start_indices
-        ):
-            rows.append({
-                "sentence_id": i,
-                "token": str(token),
-                "annotation": tag,
-                "prediction": pred,
-                "start_indices": start,
-            })
-    return pd.DataFrame(rows)
-```
-
-### `map_entities` utility function
-
-```python
-def map_entities(df: pd.DataFrame, mapping: Dict[str, str]) -> pd.DataFrame:
-    """Map entity types in both annotation and prediction columns."""
-    df = df.copy()
-    df["annotation"] = df["annotation"].replace(mapping)
-    df["prediction"] = df["prediction"].replace(mapping)
-    return df
-```
 
 ## Consequences
 
