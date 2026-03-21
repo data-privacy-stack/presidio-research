@@ -165,9 +165,11 @@ and allows the same model output to be evaluated under different mapping configu
 
 ## Proposed hierarchical entity mapping dictionary
 All entities are mapped to the 3rd level (canonoical)
-2nd level: PERSON, DEMOGRAPHIC, CONTACT, LOCATION, ORGANIZATION, EMPLOYMENT, GOVERNMENT_ID, FINANCIAL_PII, DEVICE_IDENTIFIER, BIOMETRIC, NETWORK_IDENTIFIER, AUTHENTICATION, PHI, VEHICLE_PII, LEGAL_PII, TRAVEL_PII, EDUCATION, DATE_TIME
-3rd level: NAME, ..., TITLE, USERNAME, ..., AGE, GENDER, ..., ADDRESS, ..., COMPANY, 
-Although the user can choose a different level of granularity (coarser or broader
+- The 2nd level: `PERSON, DEMOGRAPHIC, CONTACT, LOCATION, ORGANIZATION, EMPLOYMENT, GOVERNMENT_ID, FINANCIAL_PII, DEVICE_IDENTIFIER, BIOMETRIC, NETWORK_IDENTIFIER, AUTHENTICATION, PHI, VEHICLE_PII, LEGAL_PII, TRAVEL_PII, EDUCATION, DATE_TIME`.
+- The 3rd level: `NAME, ..., TITLE, USERNAME, ..., AGE, GENDER, ..., ADDRESS, ..., COMPANY, SSN, PASSPORT, TAX_ID, NATIONAL_ID, FINANCIAL, DEVICE_ID,...`
+
+
+The user can choose a different level of granularity (coarser or broader), add a new mapping or change mappings.
 
 ```py
 HIERARCHY: dict = {
