@@ -27,7 +27,7 @@ This design has four concrete pain points:
 
 2. **`evaluate_all()` does two things** — it runs model inference AND builds per-sample `EvaluationResult` objects. These objects are simple data carriers holding `(tokens, actual_tags, predicted_tags, start_indices)`, yet they require callers to go through the evaluator just to get predictions into a usable shape.
 
-3. **The real interface already exists but is buried** — `SpanEvaluator.calculate_score()` and `TokenEvaluator.calculate_score()` internally call `get_results_dataframe()` to convert `List[EvaluationResult]` to a DataFrame, and then call `calculate_score_on_df()`. The `EvaluationResult` list is a wasteful intermediate step; the DataFrame is the actual computational surface.
+3. **The real interface already exists but is buried** — for span-level evaluation, `SpanEvaluator.calculate_score()` internally calls `get_results_dataframe()` to convert `List[EvaluationResult]` to a DataFrame, and then calls `SpanEvaluator.calculate_score_on_df()`. The `EvaluationResult` list is a wasteful intermediate step; the DataFrame is the actual computational surface.
 
 4. **Entity mapping logic is scattered** — entity type remapping lives in `BaseModel.align_entity_types`, `BaseEvaluator.align_entity_types` (static method), and is applied independently in both models and evaluators. There is no single, composable entry point for this transformation.
 
