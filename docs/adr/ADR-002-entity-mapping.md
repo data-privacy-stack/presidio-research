@@ -229,8 +229,6 @@ HIERARCHY: dict = {
             "PHONE_NUMBER": ["PHONE", "TEL", "TELEPHONENUM", "PHONENUMBER", "PHN", "MOBILE"],
             "FAX": ["FAX_NUMBER"],
             "SOCIAL_HANDLE": ["QQ"],  # QQ: Chinese messaging platform ID
-            # URL lives only under NETWORK_IDENTIFIER to avoid ambiguity
-            "WEBSITE": ["DOMAIN", "WEB"],
         },
         "LOCATION": {
             "ADDRESS": {
@@ -483,8 +481,9 @@ HIERARCHY: dict = {
         },
         "NETWORK_IDENTIFIER": {
             "IP_ADDRESS": ["IPADDRESS", "IP", "IPV4", "IPV6"],
-            "URL": [],
-            "DOMAIN": [],
+            "URL": ["URI", "HYPERLINK"],
+            "DOMAIN": ["DOMAINNAME", "DOMAIN_NAME"],
+            "WEBSITE": ["WEB", "WEBPAGE", "WEBADDRESS"],
             "HTTP_COOKIE": ["COOKIE_ID", "HTTP_COOKIE_ID"],
             "CONNECTION_STRING": [],
         },
