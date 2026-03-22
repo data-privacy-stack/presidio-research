@@ -26,13 +26,14 @@ The current approach has two pain points:
 ## Decision
 
 Introduce a single, stateful class — `CanonicalMapper` — as the sole entry point for resolving
-user-defined labels to **canonical entities**. A canonical entity is a normalised, taxonomy-defined
-label drawn from the `EntityHierarchy` vocabulary (e.g. `PERSON`, `EMAIL_ADDRESS`,
-`PASSPORT`). Mapping a raw label to a canonical entity means finding the single taxonomy entry that
-best represents the concept the raw label describes. Once every label on both sides of an evaluation
-— dataset annotations and model predictions — has been mapped to a canonical entity, scores can be
-computed fairly: identical canonical entities count as matches regardless of how the two sides
-originally spelled or tagged them.
+user-defined labels to **canonical entities**. In this ADR, a canonical entity is a normalised,
+taxonomy-defined label corresponding to a 3rd-level (leaf) node in the `EntityHierarchy`
+vocabulary (e.g. `NAME`, `AGE`, `ADDRESS`). Mapping a raw label to a canonical entity means
+finding the single 3rd-level taxonomy entry that best represents the concept the raw label
+describes. Once every label on both sides of an evaluation — dataset annotations and model
+predictions — has been mapped to a canonical entity, scores can be computed fairly: identical
+canonical entities count as matches regardless of how the two sides originally spelled or tagged
+them.
 
 The same class is used for both sides of an evaluation: the dataset's label vocabulary and the
 model's output label vocabulary. Both are resolved independently; evaluation then compares
@@ -157,7 +158,7 @@ and allows the same model output to be evaluated under different mapping configu
 
 
 ## Proposed hierarchical entity mapping dictionary
-All entities are mapped to the 3rd level (canonoical)
+All entities are mapped to the 3rd level (canonical)
 - The 2nd level: `PERSON, DEMOGRAPHIC, CONTACT, LOCATION, ORGANIZATION, EMPLOYMENT, GOVERNMENT_ID, FINANCIAL_PII, DEVICE_IDENTIFIER, BIOMETRIC, NETWORK_IDENTIFIER, AUTHENTICATION, PHI, VEHICLE_PII, LEGAL_PII, TRAVEL_PII, EDUCATION, DATE_TIME`.
 - The 3rd level: `NAME, ..., TITLE, USERNAME, ..., AGE, GENDER, ..., ADDRESS, ..., COMPANY, SSN, PASSPORT, TAX_ID, NATIONAL_ID, FINANCIAL, DEVICE_ID,...`
 
