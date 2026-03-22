@@ -88,7 +88,7 @@ plotter.plot_scores()
 - **Decoupled model and evaluator** — models and evaluators can be developed, tested, and swapped independently. `SpanEvaluator` and `TokenEvaluator` no longer require a `model` instance.
 - **Composable entity mapping** — `map_entities` is a pure function on DataFrames; it can be chained, applied selectively, or omitted without touching model or evaluator configuration.
 - **Easier offline/batch evaluation** — a results DataFrame can be saved to disk and re-evaluated later without re-running inference. This is currently impossible without serializing `List[EvaluationResult]` objects.
-- **`calculate_score_on_df` already exists and is tested** — `SpanEvaluator.calculate_score_on_df` and `TokenEvaluator.calculate_score_on_df` are already implemented and covered by tests in `test_span_evaluator.py`. The new pipeline plugs directly into existing code.
+- **`calculate_score_on_df` already exists and is tested for spans** — `SpanEvaluator.calculate_score_on_df` is already implemented and covered by tests in `test_span_evaluator.py`. A similar API can be added for `TokenEvaluator` as part of this ADR.
 - **Eliminates the `EvaluationResult` per-sample carrier** — removes a class whose only purpose is to ferry data between `evaluate_all()` and `get_results_dataframe()`.
 
 ### Negative / Trade-offs
