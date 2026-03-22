@@ -58,7 +58,8 @@ model = PresidioAnalyzerWrapper(model=AnalyzerEngine())
 results_df = model.predict_dataset(dataset)  # NEW: returns the DataFrame directly
 
 # 3. Map entities (transforms both predictions and annotations into canonical entities)
-results_df = map_entities(results_df)
+#    ENTITY_MAPPING can be defined in config or as a shared constant.
+results_df = map_entities(results_df, mapping=ENTITY_MAPPING)
 
 # 4. Score
 evaluator = SpanEvaluator()   # no model argument needed!

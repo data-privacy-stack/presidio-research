@@ -60,30 +60,30 @@ all outputs.
 ### Workflow
 
 ```
-CanonicalMapper(labels)
+CanonicalMapper.from_dataset(dataset) / CanonicalMapper.from_model(label_extractor)
   → auto-resolve pass (EXACT → COUNTRY → COUNTRY_FALLBACK → FUZZY)
-  → inspect .pending          # labels that need attention
-  → .map({...})               # programmatic assignment
-  → .get_mapping()            # returns dict[str, str | None]
+  → mapper.get_mapping(mode='html')   # inspect gaps as an HTML table
+  → mapper.map({...})                 # programmatic assignment for pending labels
+  → mapper.get_mapping()              # returns dict[str, str | None]
 ```
 
 ### Typical usage
 
 ```python
-# `from_dataset` is a convenience constructor: it extracts entity labels from the
-# dataset's spans, runs the auto-resolve pass, and returns the mapping dict directly
-# if every label resolves automatically. When labels are still pending it returns
-# the CanonicalMapper instance so the caller can resolve them before calling
-# .get_mapping().
+# Construct the mapper from a dataset or a model.
+# Both constructors extract the label vocabulary, run the auto-resolve pass,
+# and return a CanonicalMapper instance.
+mapper = CanonicalMapper.from_dataset(dataset)  # dataset: List[InputSample] | pd.DataFrame
+# or
+mapper = CanonicalMapper.from_model(label_extractor)  # label_extractor: LabelExtractor
 
-# Everything auto-resolves — mapping dict returned immediately
-dataset_mapping = CanonicalMapper.from_dataset(samples)
-model_mapping = CanonicalMapper.from_model(huggingface_model) #or PresidioAnalyzer
+# Inspect unmapped labels — renders an HTML table highlighting gaps
+mapper.get_mapping(mode='html')
 
-# If some labels are not mapped — update manually
-mapper = CanonicalMapper.update({"GGE":"ORG", "CustID":"CLIENT_ID", "MY_CUSTOM_LABEL":None})
+# Resolve pending labels manually
+mapper.map({"GGE": "ORG", "CustID": "CLIENT_ID", "MY_CUSTOM_LABEL": None})
 
-# Assuming all entities are now mapped:
+# Retrieve the final mapping dict once all labels are resolved
 mapping: Dict[str, str] = mapper.get_mapping()
 ```
 
