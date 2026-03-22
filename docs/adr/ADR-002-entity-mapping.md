@@ -283,7 +283,6 @@ HIERARCHY: dict = {
                 "COMPANY_NAME",
                 "CORPORATION",
                 "VENDOR",
-                "HOSPITAL",
             ],
             "GOVERNMENT_AGENCY": ["GOVERNMENT"],
             "SCHOOL": ["SCHOOL_ID"],
