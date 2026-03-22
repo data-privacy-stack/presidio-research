@@ -497,7 +497,6 @@ HIERARCHY: dict = {
         "PHI": {
             "PATIENT_ID": [
                 "PATIENT",
-                "MRN",
                 "MEDICALRECORD",
                 "MEDICAL_RECORD_NUMBER",
                 "MEDICAL_RECORD",
