@@ -64,13 +64,12 @@ mapper = CanonicalMapper()
 
 # 4. Map to hierarchy (PII, High level, canonical, specific) and evaluate
 evaluator = SpanEvaluator()
-results_per_hierarchy = []
-for hierarchy in [1,2,3]):
-    results_df_hierarchy = mapper.map_entities(results_df, hierarchy=hierarchy)
-    results_per_hierarchy = evaluator.calculate_score_on_df(per_type=True, results_df=results_df)
+
+results_df_mapped = mapper.map_entities(results_df)
+results = evaluator.calculate_score_on_df(results_df=results_df_mapped)
 
 # 5. Analyze/plot
-plotter = Plotter(results=results_per_hierarchy[0])
+plotter = Plotter(results=results)
 plotter.plot_scores()
 ```
 
