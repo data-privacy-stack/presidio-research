@@ -1,14 +1,13 @@
+import json
+from collections import Counter
 from pathlib import Path
 from pprint import pprint
-from collections import Counter
-from typing import Dict, List
-import json
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import TokenEvaluator, ModelError
+from presidio_evaluator.entity_mapping.mapper import CanonicalMapper
+from presidio_evaluator.evaluation import ModelError, TokenEvaluator
 from presidio_evaluator.evaluation.plotter import Plotter
 from presidio_evaluator.evaluation.span_evaluator import SpanEvaluator
-from presidio_evaluator.entity_mapping.mapper import CanonicalMapper
 from presidio_evaluator.experiment_tracking import get_experiment_tracker
 from presidio_evaluator.models import PresidioAnalyzerWrapper
 
@@ -19,7 +18,7 @@ def test_notebook():
     dataset = InputSample.read_dataset_json(data_path)
     print(len(dataset))
 
-    def get_entity_counts(dataset: List[InputSample]) -> Dict:
+    def get_entity_counts(dataset: list[InputSample]) -> dict:
         """Return a dictionary with counter per entity type."""
         entity_counter = Counter()
         for sample in dataset:
@@ -180,13 +179,20 @@ def test_full_pipeline_integration():
     dataset = InputSample.read_dataset_json(data_path)[:20]  # small slice
 
     from presidio_analyzer import AnalyzerEngine
+
     analyzer = AnalyzerEngine(default_score_threshold=0.4)
-    model = PresidioAnalyzerWrapper(analyzer_engine=analyzer, entities_to_keep=["PERSON"])
+    model = PresidioAnalyzerWrapper(
+        analyzer_engine=analyzer, entities_to_keep=["PERSON"]
+    )
 
     # Step 1: predict
     results_df = model.predict_dataset(dataset)
     assert list(results_df.columns) == [
-        "sentence_id", "token", "annotation", "prediction", "start_indices"
+        "sentence_id",
+        "token",
+        "annotation",
+        "prediction",
+        "start_indices",
     ]
 
     # Step 2: map
@@ -196,7 +202,9 @@ def test_full_pipeline_integration():
 
     # Step 3a: SpanEvaluator path
     span_evaluator = SpanEvaluator(model=None, skip_words=[])
-    result_per_type = span_evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)
+    result_per_type = span_evaluator.calculate_score_on_df(
+        per_type=True, results_df=mapped_df
+    )
     global_df = SpanEvaluator.create_global_entities_df(mapped_df)
     result_global = span_evaluator.calculate_score_on_df(
         per_type=False, results_df=global_df, evaluation_result=result_per_type

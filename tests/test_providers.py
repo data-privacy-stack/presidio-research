@@ -1,9 +1,9 @@
 from faker import Faker
 
 from presidio_evaluator.data_generator.faker_extensions import (
+    HospitalProvider,
     NationalityProvider,
     OrganizationProvider,
-    HospitalProvider
 )
 
 

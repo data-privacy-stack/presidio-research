@@ -1,5 +1,5 @@
-import pytest
 import pandas as pd
+import pytest
 
 from presidio_evaluator import InputSample
 from tests.mocks import MockModel, MockTokensModel
@@ -45,8 +45,8 @@ def test_to_scheme(mock_model, tags, expected_tags, scheme):
 def test_to_log(mock_model):
     log_dict = mock_model.to_log()
 
-    assert log_dict['labeling_scheme'] == mock_model.labeling_scheme
-    assert log_dict['entities_to_keep'] == mock_model.entities
+    assert log_dict["labeling_scheme"] == mock_model.labeling_scheme
+    assert log_dict["entities_to_keep"] == mock_model.entities
 
 
 # ── predict_dataset() tests ──────────────────────────────────────────────────
@@ -140,4 +140,3 @@ def test_predict_dataset_multi_sample():
 
     assert len(df) == 3  # 1 token + 2 tokens
     assert list(df["sentence_id"]) == [10, 11, 11]
-

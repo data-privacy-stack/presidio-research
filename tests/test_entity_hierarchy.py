@@ -1,20 +1,19 @@
 import pytest
-
 from presidio_evaluator.entity_mapping.hierarchy import (
-    canonicalize,
-    get_branch,
     ALL_CANONICAL_ENTITIES,
-    RAW_TO_CANONICAL,
     CANONICAL_TO_BRANCH,
     HIERARCHY,
+    RAW_TO_CANONICAL,
     EntityHierarchy,
     EntityNotMappedError,
+    canonicalize,
+    get_branch,
 )
-
 
 # ---------------------------------------------------------------------------
 # canonicalize() – explicit aliases
 # ---------------------------------------------------------------------------
+
 
 class TestCanonicalizeExplicitAliases:
     def test_email_address(self):
@@ -69,6 +68,7 @@ class TestCanonicalizeExplicitAliases:
 # canonicalize() – country-prefix pattern
 # ---------------------------------------------------------------------------
 
+
 class TestCanonicalizeCountryPrefix:
     def test_australia_tax_id(self):
         assert canonicalize("AUSTRALIA_TAX_ID") == "TAX_ID"
@@ -120,6 +120,7 @@ class TestCanonicalizeCountryPrefix:
 # canonicalize() – unknown labels raise EntityNotMappedError
 # ---------------------------------------------------------------------------
 
+
 class TestCanonicalizePassthrough:
     def test_completely_unknown(self):
         with pytest.raises(EntityNotMappedError, match="UNKNOWN_ENTITY"):
@@ -138,51 +139,67 @@ class TestCanonicalizePassthrough:
 # canonicalize() – case and underscore agnosticism
 # ---------------------------------------------------------------------------
 
+
 class TestCanonicalizeNormalization:
-    @pytest.mark.parametrize("raw", [
-        "CREDIT_CARD",
-        "credit_card",
-        "CreditCard",
-        "creditcard",
-        "CREDITCARD",
-        "Credit_Card",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "CREDIT_CARD",
+            "credit_card",
+            "CreditCard",
+            "creditcard",
+            "CREDITCARD",
+            "Credit_Card",
+        ],
+    )
     def test_credit_card_variants(self, raw):
         assert canonicalize(raw) == "FINANCIAL"
 
-    @pytest.mark.parametrize("raw", [
-        "EMAIL_ADDRESS",
-        "email_address",
-        "EmailAddress",
-        "emailaddress",
-        "Email_Address",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "EMAIL_ADDRESS",
+            "email_address",
+            "EmailAddress",
+            "emailaddress",
+            "Email_Address",
+        ],
+    )
     def test_email_variants(self, raw):
         assert canonicalize(raw) == "EMAIL_ADDRESS"
 
-    @pytest.mark.parametrize("raw", [
-        "DATE_OF_BIRTH",
-        "date_of_birth",
-        "DateOfBirth",
-        "dateofbirth",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "DATE_OF_BIRTH",
+            "date_of_birth",
+            "DateOfBirth",
+            "dateofbirth",
+        ],
+    )
     def test_date_of_birth_variants(self, raw):
         assert canonicalize(raw) == "BIRTH_DATE"
 
-    @pytest.mark.parametrize("raw", [
-        "PHONE_NUMBER",
-        "phone_number",
-        "PhoneNumber",
-        "phonenumber",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "PHONE_NUMBER",
+            "phone_number",
+            "PhoneNumber",
+            "phonenumber",
+        ],
+    )
     def test_phone_number_variants(self, raw):
         assert canonicalize(raw) == "PHONE_NUMBER"
 
-    @pytest.mark.parametrize("raw", [
-        "SOCIAL_SECURITY_NUMBER",
-        "social_security_number",
-        "SocialSecurityNumber",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "SOCIAL_SECURITY_NUMBER",
+            "social_security_number",
+            "SocialSecurityNumber",
+        ],
+    )
     def test_ssn_variants(self, raw):
         assert canonicalize(raw) == "SSN"
 
@@ -190,6 +207,7 @@ class TestCanonicalizeNormalization:
 # ---------------------------------------------------------------------------
 # get_branch() – full path resolution
 # ---------------------------------------------------------------------------
+
 
 class TestGetBranch:
     def test_email(self):
@@ -235,12 +253,17 @@ class TestGetBranch:
 # get_branch() – country-prefix inputs
 # ---------------------------------------------------------------------------
 
+
 class TestGetBranchCountryPrefix:
     def test_australia_tax_id(self):
         assert get_branch("AUSTRALIA_TAX_ID") == ["PII", "GOVERNMENT_ID", "TAX_ID"]
 
     def test_germany_passport(self):
-        assert get_branch("GERMANY_PASSPORT_NUMBER") == ["PII", "GOVERNMENT_ID", "PASSPORT"]
+        assert get_branch("GERMANY_PASSPORT_NUMBER") == [
+            "PII",
+            "GOVERNMENT_ID",
+            "PASSPORT",
+        ]
 
     def test_canada_social_insurance(self):
         branch = get_branch("CANADA_SOCIAL_INSURANCE")
@@ -260,39 +283,52 @@ class TestGetBranchCountryPrefix:
 # get_branch() – case/underscore agnosticism
 # ---------------------------------------------------------------------------
 
+
 class TestGetBranchNormalization:
-    @pytest.mark.parametrize("raw", [
-        "CREDIT_CARD",
-        "credit_card",
-        "CreditCard",
-        "creditcard",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "CREDIT_CARD",
+            "credit_card",
+            "CreditCard",
+            "creditcard",
+        ],
+    )
     def test_credit_card_variants(self, raw):
         assert get_branch(raw) == ["PII", "FINANCIAL_PII", "FINANCIAL"]
 
-    @pytest.mark.parametrize("raw", [
-        "EMAIL_ADDRESS",
-        "email_address",
-        "EmailAddress",
-        "Email_Address",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "EMAIL_ADDRESS",
+            "email_address",
+            "EmailAddress",
+            "Email_Address",
+        ],
+    )
     def test_email_variants(self, raw):
         assert get_branch(raw) == ["PII", "CONTACT", "EMAIL_ADDRESS"]
 
-    @pytest.mark.parametrize("raw", [
-        "DATE_OF_BIRTH",
-        "date_of_birth",
-        "DateOfBirth",
-        "DATEOFBIRTH",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "DATE_OF_BIRTH",
+            "date_of_birth",
+            "DateOfBirth",
+            "DATEOFBIRTH",
+        ],
+    )
     def test_date_of_birth_variants(self, raw):
         assert get_branch(raw) == ["PII", "DATE_TIME", "BIRTH_DATE"]
 
-    @pytest.mark.parametrize("raw", [
-        "PASSPORT",
-        "passport",
-        "Passport",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "PASSPORT",
+            "passport",
+            "Passport",
+        ],
+    )
     def test_passport_variants(self, raw):
         assert get_branch(raw) == ["PII", "GOVERNMENT_ID", "PASSPORT"]
 
@@ -300,6 +336,7 @@ class TestGetBranchNormalization:
 # ---------------------------------------------------------------------------
 # get_branch() – unknown labels raise EntityNotMappedError
 # ---------------------------------------------------------------------------
+
 
 class TestGetBranchUnknown:
     def test_completely_unknown(self):
@@ -319,6 +356,7 @@ class TestGetBranchUnknown:
 # Module-level constants
 # ---------------------------------------------------------------------------
 
+
 class TestConstants:
     def test_all_canonical_entities_nonempty(self):
         assert len(ALL_CANONICAL_ENTITIES) > 50
@@ -331,7 +369,9 @@ class TestConstants:
 
     def test_canonical_to_branch_covers_all_canonical(self):
         for entity in ALL_CANONICAL_ENTITIES:
-            assert entity in CANONICAL_TO_BRANCH, f"{entity} missing from CANONICAL_TO_BRANCH"
+            assert entity in CANONICAL_TO_BRANCH, (
+                f"{entity} missing from CANONICAL_TO_BRANCH"
+            )
 
     def test_canonical_to_branch_paths_start_with_pii(self):
         for entity, branch in CANONICAL_TO_BRANCH.items():
@@ -357,6 +397,7 @@ class TestConstants:
 # ---------------------------------------------------------------------------
 # EntityHierarchy class API
 # ---------------------------------------------------------------------------
+
 
 class TestEntityHierarchyClass:
     """Tests for the EntityHierarchy class and its mutation methods."""
@@ -438,7 +479,9 @@ class TestEntityHierarchyClass:
         h = EntityHierarchy.default().copy()
         h.add_entity(["PII", "GOVERNMENT_ID"], "SOCIAL_CREDIT_SCORE")
         assert h.get_branch("SOCIAL_CREDIT_SCORE") == [
-            "PII", "GOVERNMENT_ID", "SOCIAL_CREDIT_SCORE"
+            "PII",
+            "GOVERNMENT_ID",
+            "SOCIAL_CREDIT_SCORE",
         ]
 
     def test_add_entity_bad_path_raises(self):
@@ -552,7 +595,11 @@ class TestFuzzyCanonicalize:
 
     def test_get_branch_fuzzy_country(self):
         # get_branch delegates to canonicalize(), so fuzzy works transitively
-        assert self.h.get_branch("ARGENTENIAN_TAX_ID") == ["PII", "GOVERNMENT_ID", "TAX_ID"]
+        assert self.h.get_branch("ARGENTENIAN_TAX_ID") == [
+            "PII",
+            "GOVERNMENT_ID",
+            "TAX_ID",
+        ]
 
     # ── fuzzy country token (adjective / truncation variants) ────────────────
 
@@ -622,8 +669,11 @@ class TestFuzzyCanonicalize:
     def test_custom_threshold_boundary(self):
         # Passing exactly the score of the match should still accept it
         import difflib
+
         score = difflib.SequenceMatcher(None, "ARGENTENIAN", "ARGENTINA").ratio()
-        assert self.h.fuzzy_canonicalize("ARGENTENIAN_TAX_ID", threshold=score) == "TAX_ID"
+        assert (
+            self.h.fuzzy_canonicalize("ARGENTENIAN_TAX_ID", threshold=score) == "TAX_ID"
+        )
 
     # ── complete nonsense should still raise ─────────────────────────────────
 

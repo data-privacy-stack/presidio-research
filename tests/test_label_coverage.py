@@ -69,6 +69,7 @@ KNOWN_PII_LABELS = [
 ]
 # fmt: on
 
+
 @pytest.mark.parametrize("label", KNOWN_PII_LABELS)
 def test_label_is_covered(label: str) -> None:
     """Each known PII label must resolve to a canonical entity without error."""

@@ -1,8 +1,9 @@
-import pytest
 from pathlib import Path
-import pandas as pd
-from plotly.graph_objs import Figure
 from unittest.mock import MagicMock, patch
+
+import pandas as pd
+import pytest
+from plotly.graph_objs import Figure
 
 from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.evaluation.plotter import Plotter
@@ -89,19 +90,25 @@ def test_plot_scores_respects_save_as_format(mock_evaluation_result, tmp_path):
     # Setup for SVG
     output_dir = tmp_path / "test_output_svg"
     plotter_svg = Plotter(mock_evaluation_result, save_as="svg")
-    with patch("plotly.express.bar", return_value=MagicMock(spec=Figure)) as mock_px_bar_svg:
+    with patch(
+        "plotly.express.bar", return_value=MagicMock(spec=Figure)
+    ) as mock_px_bar_svg:
         mock_fig_svg = mock_px_bar_svg.return_value
         # Execute
         plotter_svg.plot_scores(output_dir)
         # Assert - all files should be saved as .svg
         for call in mock_fig_svg.write_image.call_args_list:
             file_path = str(call[0][0])
-            assert file_path.endswith(".svg"), f"File {file_path} does not end with .svg"
+            assert file_path.endswith(".svg"), (
+                f"File {file_path} does not end with .svg"
+            )
 
     # Setup for HTML
     output_dir_html = tmp_path / "test_output_html"
     plotter_html = Plotter(mock_evaluation_result, save_as="html")
-    with patch("plotly.express.bar", return_value=MagicMock(spec=Figure)) as mock_px_bar_html:
+    with patch(
+        "plotly.express.bar", return_value=MagicMock(spec=Figure)
+    ) as mock_px_bar_html:
         mock_fig_html = mock_px_bar_html.return_value
         # Patch write_html for HTML output
         mock_fig_html.write_html = MagicMock()
@@ -110,7 +117,9 @@ def test_plot_scores_respects_save_as_format(mock_evaluation_result, tmp_path):
         # Assert - all files should be saved as .html using write_html
         for call in mock_fig_html.write_html.call_args_list:
             file_path = str(call[0][0])
-            assert file_path.endswith(".html"), f"File {file_path} does not end with .html"
+            assert file_path.endswith(".html"), (
+                f"File {file_path} does not end with .html"
+            )
 
 
 @patch("presidio_evaluator.evaluation.model_error.ModelError.get_fps_dataframe")
@@ -165,9 +174,7 @@ def test_plot_confusion_matrix_saves_figure(
     plotter.plot_confusion_matrix(entities, conf_matrix, output_dir)
 
     # Assert
-    expected_path = str(
-        Path(output_dir, f"{plotter.model_name}-confusion-matrix.png")
-    )
+    expected_path = str(Path(output_dir, f"{plotter.model_name}-confusion-matrix.png"))
     mock_fig.write_image.assert_called_once_with(
         Path(output_dir, f"{plotter.model_name}-confusion-matrix.png")
     )
@@ -177,7 +184,9 @@ def test_plot_confusion_matrix_saves_figure(
 def test_special_chars_in_model_name(mock_evaluation_result, tmp_path):
     # Setup
     output_dir = tmp_path / "test_output"
-    plotter = Plotter(mock_evaluation_result, model_name="model/with/slashes", save_as="png")
+    plotter = Plotter(
+        mock_evaluation_result, model_name="model/with/slashes", save_as="png"
+    )
     mock_fig = MagicMock(spec=Figure)
 
     # Execute

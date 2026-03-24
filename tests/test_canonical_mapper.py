@@ -92,7 +92,9 @@ class TestMap:
     def test_map_is_atomic_on_error(self):
         mapper = CanonicalMapper(["XYZZY_UNKNOWN", "ANOTHER_UNKNOWN"])
         with pytest.raises(ValueError):
-            mapper.map({"XYZZY_UNKNOWN": "PERSON", "ANOTHER_UNKNOWN": "COMPLETELY_FAKE"})
+            mapper.map(
+                {"XYZZY_UNKNOWN": "PERSON", "ANOTHER_UNKNOWN": "COMPLETELY_FAKE"}
+            )
         # Neither should be applied
         assert "XYZZY_UNKNOWN" in mapper.pending
         assert "ANOTHER_UNKNOWN" in mapper.pending
@@ -195,7 +197,6 @@ class TestResolveInteractively:
             assert mapper.pending == []
 
 
-
 class TestProtocolCompliance:
     def test_canonical_mapper_has_required_methods(self):
         mapper = CanonicalMapper(["EMAIL_ADDRESS"])
@@ -255,6 +256,7 @@ class TestBIOStripping:
 class TestRenderHtml:
     def test_render_html_does_not_raise_without_ipython(self):
         import sys
+
         # Remove IPython from path to simulate non-Jupyter environment
         ipython = sys.modules.pop("IPython", None)
         ipython_display = sys.modules.pop("IPython.display", None)
@@ -277,14 +279,17 @@ class TestGetMappedResultsDataframe:
 
     def _make_df(self, annotations, predictions):
         import pandas as pd
+
         n = len(annotations)
-        return pd.DataFrame({
-            "sentence_id": list(range(n)),
-            "token": [f"t{i}" for i in range(n)],
-            "annotation": annotations,
-            "prediction": predictions,
-            "start_indices": [0] * n,
-        })
+        return pd.DataFrame(
+            {
+                "sentence_id": list(range(n)),
+                "token": [f"t{i}" for i in range(n)],
+                "annotation": annotations,
+                "prediction": predictions,
+                "start_indices": [0] * n,
+            }
+        )
 
     def test_basic_remapping(self):
         """Labels in both columns are mapped to their canonical names."""
@@ -339,6 +344,7 @@ class TestGetMappedResultsDataframe:
     def test_mixed_level_warning(self):
         """A UserWarning is raised when annotation and prediction map to related but different entities."""
         import warnings
+
         mapper = CanonicalMapper()
         df = self._make_df(["FIRSTNAME", "O"], ["PERSON", "O"])
         with warnings.catch_warnings(record=True) as w:
@@ -351,12 +357,15 @@ class TestGetMappedResultsDataframe:
     def test_no_warning_when_same_canonical(self):
         """No warning when annotation and prediction map to the same canonical entity."""
         import warnings
+
         mapper = CanonicalMapper()
         df = self._make_df(["EMAIL_ADDRESS", "O"], ["EMAIL_ADDRESS", "O"])
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             mapper.get_mapped_results_dataframe(df)
-        user_warnings = [warning for warning in w if issubclass(warning.category, UserWarning)]
+        user_warnings = [
+            warning for warning in w if issubclass(warning.category, UserWarning)
+        ]
         assert not user_warnings, f"Unexpected warnings: {user_warnings}"
 
     def test_empty_constructor_works(self):
@@ -364,4 +373,10 @@ class TestGetMappedResultsDataframe:
         mapper = CanonicalMapper()
         df = self._make_df(["PERSON", "O"], ["PERSON", "O"])
         result = mapper.get_mapped_results_dataframe(df)
-        assert list(result.columns) == ["sentence_id", "token", "annotation", "prediction", "start_indices"]
+        assert list(result.columns) == [
+            "sentence_id",
+            "token",
+            "annotation",
+            "prediction",
+            "start_indices",
+        ]

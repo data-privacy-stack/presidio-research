@@ -1,6 +1,6 @@
 import pytest
 
-from presidio_evaluator import span_to_tag, io_to_scheme
+from presidio_evaluator import io_to_scheme, span_to_tag
 
 BILUO_SCHEME = "BILUO"
 BIO_SCHEME = "BIO"
@@ -29,7 +29,7 @@ def test_span_to_bio_single_at_end():
     end = 15
     tag = "NAME"
 
-    biluo = span_to_tag(BIO_SCHEME, text, [start], [end], [tag], )
+    biluo = span_to_tag(BIO_SCHEME, text, [start], [end], [tag] )
 
     expected = ['O', 'O', 'O', 'B-NAME']
     assert biluo == expected
@@ -255,5 +255,3 @@ def test_io_to_scheme(tags, expected_tags, scheme):
     assert actual_tags == expected_tags
 
 # fmt: on
-
-

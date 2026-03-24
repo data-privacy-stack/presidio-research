@@ -4,8 +4,16 @@ import numpy as np
 import pytest
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import TokenEvaluator, EvaluationResult, DeprecationError
-from tests.mocks import MockTokensModel, FiftyFiftyIdentityTokensMockModel, IdentityTokensMockModel
+from presidio_evaluator.evaluation import (
+    DeprecationError,
+    EvaluationResult,
+    TokenEvaluator,
+)
+from tests.mocks import (
+    FiftyFiftyIdentityTokensMockModel,
+    IdentityTokensMockModel,
+    MockTokensModel,
+)
 
 
 def test_evaluator_simple():
@@ -80,7 +88,9 @@ def test_evaluate_multiple_tokens_no_match_match_correct_statistics():
 def test_evaluate_multiple_examples_correct_statistics():
     prediction = ["PERSON", "O", "O", "PERSON", "O", "O"]
     model = MockTokensModel(prediction=prediction)
-    evaluator = TokenEvaluator(model=model, entities_to_keep=["PERSON"], skip_words=["-"])
+    evaluator = TokenEvaluator(
+        model=model, entities_to_keep=["PERSON"], skip_words=["-"]
+    )
     input_sample = InputSample("My name is Raphael or David", masked=None, spans=None)
     input_sample.tokens = ["My", "name", "is", "Raphael", "or", "David"]
     input_sample.tags = ["O", "O", "O", "PERSON", "O", "PERSON"]
@@ -97,7 +107,9 @@ def test_evaluate_multiple_examples_ignore_entity_correct_statistics():
     prediction = ["O", "O", "O", "PERSON", "O", "TENNIS_PLAYER"]
     model = MockTokensModel(prediction=prediction)
 
-    evaluator = TokenEvaluator(model=model, entities_to_keep=["PERSON", "TENNIS_PLAYER"])
+    evaluator = TokenEvaluator(
+        model=model, entities_to_keep=["PERSON", "TENNIS_PLAYER"]
+    )
     input_sample = InputSample("My name is Raphael or David", masked=None, spans=None)
     input_sample.tokens = ["My", "name", "is", "Raphael", "or", "David"]
     input_sample.tags = ["O", "O", "O", "PERSON", "O", "PERSON"]
@@ -211,7 +223,7 @@ def test_dataset_to_metric_identity_model():
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     input_samples = InputSample.read_dataset_json(
-        "{}/data/generated_small.json".format(dir_path), length=10
+        f"{dir_path}/data/generated_small.json", length=10
     )
 
     model = IdentityTokensMockModel()
@@ -228,7 +240,7 @@ def test_dataset_to_metric_50_50_model():
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     input_samples = InputSample.read_dataset_json(
-        "{}/data/generated_small.json".format(dir_path), length=100
+        f"{dir_path}/data/generated_small.json", length=100
     )
 
     # Replace 50% of the predictions with a list of "O"
@@ -301,8 +313,6 @@ def test_skip_words_are_not_counted_as_errors(
         assert final_evaluation.pii_recall == recall
 
 
-
-
 def test_results_to_dataframe():
     prediction = ["O", "EMAIL", "PHONE", "LOCATION", "PERSON"]
     tokens = ["John", "details", "john@mail.com", "123-456-7890", "today"]
@@ -314,20 +324,29 @@ def test_results_to_dataframe():
         full_text="John details john@mail.com 123-456-7890 today",
         tokens=tokens,
         start_indices=start_indices,
-        tags=tags
+        tags=tags,
     )
 
-    results = [evaluator.evaluate_sample(sample, prediction), evaluator.evaluate_sample(sample, prediction)]
+    results = [
+        evaluator.evaluate_sample(sample, prediction),
+        evaluator.evaluate_sample(sample, prediction),
+    ]
 
     df = evaluator.get_results_dataframe(results)
-    expected_columns = ["sentence_id", "token", "annotation", "prediction", "start_indices"]
+    expected_columns = [
+        "sentence_id",
+        "token",
+        "annotation",
+        "prediction",
+        "start_indices",
+    ]
     for col in expected_columns:
         assert col in df.columns
 
     assert df["annotation"].to_list() == tags + tags
     assert df["prediction"].to_list() == prediction + prediction
     assert df["token"].to_list() == tokens + tokens
-    assert df["sentence_id"].to_list() == [0]*len(tokens) + [1]*len(tokens)
+    assert df["sentence_id"].to_list() == [0] * len(tokens) + [1] * len(tokens)
     assert df["start_indices"].to_list() == start_indices + start_indices
 
 
@@ -365,7 +384,7 @@ def test_score_calculation():
     # Precision = (TP + WrongEntity) / (TP + WrongEntity + FP) = (1+1) / (1+1+1) = 0.667
     # Recall = (TP + WrongEntity) / (TP + WrongEntity + FN) = (1+1) / (1+1+1) = 0.667
 
-    assert score.pii_precision == pytest.approx(0.66667 ,2)
+    assert score.pii_precision == pytest.approx(0.66667, 2)
     assert score.pii_recall == pytest.approx(0.66667, 2)
 
     # For individual entities, wrong entities are counted as FPs
@@ -382,7 +401,7 @@ def test_score_calculation():
 
 
 def test_calculate_score_existing_results_counter_individual_entities():
-    results=Counter(
+    results = Counter(
         {
             ("X", "X"): 50,
             ("Y", "Y"): 60,
@@ -411,18 +430,17 @@ def test_calculate_score_existing_results_counter_individual_entities():
     z_fp_tp = sum([results[i] for i in results if i[1] == "Z"])
     z_fn_tp = sum([results[i] for i in results if i[0] == "Z"])
 
-
-    expected_x_precision=x_tp/x_fp_tp if x_fp_tp!=0 else np.nan
-    expected_x_recall=x_tp/x_fn_tp if x_fn_tp!=0 else np.nan
-    expected_y_precision=y_tp/y_fp_tp if y_fp_tp!=0 else np.nan
-    expected_y_recall=y_tp/y_fn_tp if y_fn_tp!=0 else np.nan
-    expected_z_precision=z_tp/z_fp_tp if z_fp_tp!=0 else np.nan
-    expected_z_recall=z_tp/z_fn_tp if z_fn_tp!=0 else np.nan
-
+    expected_x_precision = x_tp / x_fp_tp if x_fp_tp != 0 else np.nan
+    expected_x_recall = x_tp / x_fn_tp if x_fn_tp != 0 else np.nan
+    expected_y_precision = y_tp / y_fp_tp if y_fp_tp != 0 else np.nan
+    expected_y_recall = y_tp / y_fn_tp if y_fn_tp != 0 else np.nan
+    expected_z_precision = z_tp / z_fp_tp if z_fp_tp != 0 else np.nan
+    expected_z_recall = z_tp / z_fn_tp if z_fn_tp != 0 else np.nan
 
     evaluator = TokenEvaluator(model=MockTokensModel(prediction=None))
     evaluation_score = evaluator.calculate_score(
-        evaluation_results=[EvaluationResult(results)])
+        evaluation_results=[EvaluationResult(results)]
+    )
 
     assert evaluation_score.entity_precision_dict["X"] == expected_x_precision
     assert evaluation_score.entity_recall_dict["X"] == expected_x_recall
@@ -437,13 +455,15 @@ def test_calculate_score_on_df_schema():
     import pandas as pd
 
     evaluator = TokenEvaluator(model=None)
-    df = pd.DataFrame({
-        "sentence_id": [0, 0, 0],
-        "token": ["John", "lives", "here"],
-        "annotation": ["PERSON", "O", "O"],
-        "prediction": ["PERSON", "O", "O"],
-        "start_indices": [0, 5, 11],
-    })
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0, 0],
+            "token": ["John", "lives", "here"],
+            "annotation": ["PERSON", "O", "O"],
+            "prediction": ["PERSON", "O", "O"],
+            "start_indices": [0, 5, 11],
+        }
+    )
     result = evaluator.calculate_score_on_df(df)
     assert isinstance(result, EvaluationResult)
     assert result.entity_recall_dict is not None
@@ -456,13 +476,15 @@ def test_calculate_score_on_df_correct_metrics():
 
     evaluator = TokenEvaluator(model=None)
     # 2 PERSON annotations, 1 correct prediction, 1 missed -> recall=0.5
-    df = pd.DataFrame({
-        "sentence_id": [0, 0, 1, 1],
-        "token": ["Alice", "here", "Bob", "there"],
-        "annotation": ["PERSON", "O", "PERSON", "O"],
-        "prediction": ["PERSON", "O", "O", "O"],
-        "start_indices": [0, 6, 0, 4],
-    })
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0, 1, 1],
+            "token": ["Alice", "here", "Bob", "there"],
+            "annotation": ["PERSON", "O", "PERSON", "O"],
+            "prediction": ["PERSON", "O", "O", "O"],
+            "start_indices": [0, 6, 0, 4],
+        }
+    )
     result = evaluator.calculate_score_on_df(df)
     assert result.entity_recall_dict["PERSON"] == 0.5
     assert result.entity_precision_dict["PERSON"] == 1.0
@@ -473,13 +495,15 @@ def test_calculate_score_on_df_populates_per_sample_fields():
     import pandas as pd
 
     evaluator = TokenEvaluator(model=None)
-    df = pd.DataFrame({
-        "sentence_id": [0, 0],
-        "token": ["John", "Smith"],
-        "annotation": ["PERSON", "PERSON"],
-        "prediction": ["PERSON", "O"],
-        "start_indices": [0, 5],
-    })
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0],
+            "token": ["John", "Smith"],
+            "annotation": ["PERSON", "PERSON"],
+            "prediction": ["PERSON", "O"],
+            "start_indices": [0, 5],
+        }
+    )
     # The method should not raise; per-sample carrier fields used by calculate_score
     result = evaluator.calculate_score_on_df(df)
     assert result.pii_recall is not None

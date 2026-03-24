@@ -3,8 +3,8 @@ import os
 import numpy as np
 import pandas as pd
 import pytest
-from presidio_analyzer.predefined_recognizers import CreditCardRecognizer
 from presidio_analyzer.nlp_engine import SpacyNlpEngine
+from presidio_analyzer.predefined_recognizers import CreditCardRecognizer
 
 from presidio_evaluator.data_generator import PresidioSentenceFaker
 from presidio_evaluator.evaluation import TokenEvaluator
@@ -59,7 +59,7 @@ cc_test_template_testdata = [
 
 # credit card recognizer tests on template-generates data
 @pytest.mark.parametrize(
-    "pii_csv, " "utterances, " "num_of_examples, " "acceptance_threshold",
+    "pii_csv, utterances, num_of_examples, acceptance_threshold",
     [testcase.to_pytest_param() for testcase in cc_test_template_testdata],
 )
 def test_credit_card_recognizer_with_template(

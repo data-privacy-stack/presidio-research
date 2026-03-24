@@ -1,7 +1,6 @@
 import pytest
 
 from presidio_evaluator import InputSample, Span
-
 from presidio_evaluator.evaluation import TokenEvaluator
 from presidio_evaluator.models.presidio_analyzer_wrapper import PresidioAnalyzerWrapper
 
@@ -37,7 +36,7 @@ analyzer_test_generate_text_testdata = [
         test_input="{}/data/generated_large.json",
         acceptance_threshold=0.3,
         marks=pytest.mark.slow,
-    )
+    ),
 ]
 
 

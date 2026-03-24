@@ -1,9 +1,8 @@
 import os
 
-from presidio_analyzer.predefined_recognizers import CreditCardRecognizer
-from presidio_analyzer.nlp_engine import SpacyNlpEngine
 import pytest
-
+from presidio_analyzer.nlp_engine import SpacyNlpEngine
+from presidio_analyzer.predefined_recognizers import CreditCardRecognizer
 
 from presidio_evaluator import InputSample
 from presidio_evaluator.evaluation import TokenEvaluator

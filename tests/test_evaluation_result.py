@@ -7,6 +7,7 @@ from tests.mocks import (
     MockTokensModel,
 )
 
+
 @pytest.fixture(scope="session")
 def evaluation_result() -> EvaluationResult:
     results = Counter(
@@ -19,21 +20,28 @@ def evaluation_result() -> EvaluationResult:
         }
     )
 
-    model_errors =[ModelError(error_type="FP",
-                              annotation="PER",
-                              prediction="LOC",
-                              token="Bob",
-                              full_text="Bob likes Jane")]
-    evaluation_result = EvaluationResult(results=results,
-                                         model_errors=model_errors,
-                                         text="Hi Bob",
-                                         pii_recall=-1.0,
-                                         pii_precision=-1.0,
-                                         pii_f=-1.0,
-                                         entity_recall_dict={"PER": -1.0},
-                                         entity_precision_dict = {"PER": -1.0},
-                                         n=-1)
+    model_errors = [
+        ModelError(
+            error_type="FP",
+            annotation="PER",
+            prediction="LOC",
+            token="Bob",
+            full_text="Bob likes Jane",
+        )
+    ]
+    evaluation_result = EvaluationResult(
+        results=results,
+        model_errors=model_errors,
+        text="Hi Bob",
+        pii_recall=-1.0,
+        pii_precision=-1.0,
+        pii_f=-1.0,
+        entity_recall_dict={"PER": -1.0},
+        entity_precision_dict={"PER": -1.0},
+        n=-1,
+    )
     return evaluation_result
+
 
 @pytest.fixture(scope="session")
 def evaluator():
@@ -54,15 +62,18 @@ def test_to_confusion_matrix(scores):
     assert "O" in entities
 
     s = scores.results
-    assert confmatrix[0] == [s[("ANIMAL", "ANIMAL")],
-                             s[("ANIMAL", "PERSON")],
-                             s[("ANIMAL", "O")]]
-    assert confmatrix[1] == [s[("PERSON", "ANIMAL")],
-                             s[("PERSON", "PERSON")],
-                             s[("PERSON", "O")]]
-    assert confmatrix[2] == [s[("O", "ANIMAL")],
-                             s[("O", "PERSON")],
-                             s[("O", "O")]]
+    assert confmatrix[0] == [
+        s[("ANIMAL", "ANIMAL")],
+        s[("ANIMAL", "PERSON")],
+        s[("ANIMAL", "O")],
+    ]
+    assert confmatrix[1] == [
+        s[("PERSON", "ANIMAL")],
+        s[("PERSON", "PERSON")],
+        s[("PERSON", "O")],
+    ]
+    assert confmatrix[2] == [s[("O", "ANIMAL")], s[("O", "PERSON")], s[("O", "O")]]
+
 
 def test_str(scores):
     return_str = str(scores)
@@ -80,18 +91,18 @@ def test_str(scores):
 
 
 def test_to_confusion_df(scores):
-   conf_df = scores.to_confusion_df()
-   assert "recall" in conf_df
-   rownames = list(set(scores.n_dict.keys()).union("O"))
-   rownames.append("precision")
-   colnames = list(set(scores.n_dict.keys()).union("O"))
-   colnames.append("recall")
+    conf_df = scores.to_confusion_df()
+    assert "recall" in conf_df
+    rownames = list(set(scores.n_dict.keys()).union("O"))
+    rownames.append("precision")
+    colnames = list(set(scores.n_dict.keys()).union("O"))
+    colnames.append("recall")
 
-   for row in conf_df.iterrows():
-       assert row[0] in rownames
+    for row in conf_df.iterrows():
+        assert row[0] in rownames
 
-   for col in conf_df.columns.to_list():
-       assert col in colnames
+    for col in conf_df.columns.to_list():
+        assert col in colnames
 
 
 def test_to_log(evaluation_result):

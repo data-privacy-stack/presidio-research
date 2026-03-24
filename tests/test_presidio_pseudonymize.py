@@ -20,9 +20,26 @@ def faker_providers():
     [
         (
             "Hi I live in South Africa and my name is Toma",
-            "location", "person", 13, 25, 41, 45, "Africa", "James"
+            "location",
+            "person",
+            13,
+            25,
+            41,
+            45,
+            "Africa",
+            "James",
         ),
-        ("Africa is my continent, James", "location", "person", 0, 6, 24, 29, "Africa", "James"),
+        (
+            "Africa is my continent, James",
+            "location",
+            "person",
+            0,
+            6,
+            24,
+            29,
+            "Africa",
+            "James",
+        ),
     ],
     # fmt: on
 )

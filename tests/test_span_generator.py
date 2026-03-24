@@ -2,7 +2,7 @@ import pytest
 from faker import Faker
 from faker.providers import BaseProvider
 
-from presidio_evaluator import Span, InputSample
+from presidio_evaluator import InputSample, Span
 from presidio_evaluator.data_generator.faker_extensions import SpanGenerator
 
 
@@ -157,7 +157,9 @@ def test_generated_text_duplicate_types_returns_different_results(
     substring_indices = list(range(len(res.full_text)))
     for span in res.spans:
         substring_indices = [
-            ind for ind in substring_indices if ind not in range(span.start_position, span.end_position)
+            ind
+            for ind in substring_indices
+            if ind not in range(span.start_position, span.end_position)
         ]
 
     actual_non_element_text = "".join(

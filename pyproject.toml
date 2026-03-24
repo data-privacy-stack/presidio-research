@@ -65,4 +65,5 @@ en-core-web-lg = { url = "https://github.com/explosion/spacy-models/releases/dow
 dev = [
     "en-core-web-lg",
     "en-core-web-sm",
+    "pre-commit>=4.5.1",
 ]

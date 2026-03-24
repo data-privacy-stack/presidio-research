@@ -1,17 +1,13 @@
-from typing import List, Optional
-
 from presidio_evaluator import InputSample
 from presidio_evaluator.models import BaseModel
 
 
 class MockModel(BaseModel):
-
-    def predict(self, sample: InputSample, **kwargs) -> List[str]:
+    def predict(self, sample: InputSample, **kwargs) -> list[str]:
         pass
 
-    def batch_predict(self, dataset: List[InputSample], **kwargs) -> List[List[str]]:
+    def batch_predict(self, dataset: list[InputSample], **kwargs) -> list[list[str]]:
         return [self.predict(sample, **kwargs) for sample in dataset]
-
 
 
 class MockTokensModel(BaseModel):
@@ -21,18 +17,18 @@ class MockTokensModel(BaseModel):
 
     def __init__(
         self,
-        prediction: Optional[List[str]],
-        entities_to_keep: List = None,
+        prediction: list[str] | None,
+        entities_to_keep: list = None,
         verbose: bool = False,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(entities_to_keep=entities_to_keep, verbose=verbose, **kwargs)
         self.prediction = prediction
 
-    def predict(self, sample: InputSample, **kwargs) -> List[str]:
+    def predict(self, sample: InputSample, **kwargs) -> list[str]:
         return self.prediction
 
-    def batch_predict(self, dataset: List[InputSample], **kwargs) -> List[List[str]]:
+    def batch_predict(self, dataset: list[InputSample], **kwargs) -> list[list[str]]:
         return [self.predict(sample, **kwargs) for sample in dataset]
 
 
@@ -44,10 +40,10 @@ class IdentityTokensMockModel(BaseModel):
     def __init__(self, verbose: bool = False):
         super().__init__(verbose=verbose)
 
-    def predict(self, sample: InputSample, **kwargs) -> List[str]:
+    def predict(self, sample: InputSample, **kwargs) -> list[str]:
         return sample.tags
 
-    def batch_predict(self, dataset: List[InputSample], **kwargs) -> List[List[str]]:
+    def batch_predict(self, dataset: list[InputSample], **kwargs) -> list[list[str]]:
         return [sample.tags for sample in dataset]
 
 
@@ -57,16 +53,16 @@ class FiftyFiftyIdentityTokensMockModel(BaseModel):
     alternately
     """
 
-    def __init__(self, entities_to_keep: List = None, verbose: bool = False):
+    def __init__(self, entities_to_keep: list = None, verbose: bool = False):
         super().__init__(entities_to_keep=entities_to_keep, verbose=verbose)
         self.counter = 0
 
-    def predict(self, sample: InputSample, **kwargs) -> List[str]:
+    def predict(self, sample: InputSample, **kwargs) -> list[str]:
         self.counter += 1
         if self.counter % 2 == 0:
             return sample.tags
         else:
             return ["O" for i in range(len(sample.tags))]
 
-    def batch_predict(self, dataset: List[InputSample], **kwargs) -> List[List[str]]:
+    def batch_predict(self, dataset: list[InputSample], **kwargs) -> list[list[str]]:
         return [self.predict(sample, **kwargs) for sample in dataset]

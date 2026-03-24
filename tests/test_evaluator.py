@@ -1,17 +1,18 @@
-from typing import List, Optional
-
 import pandas as pd
 import pytest
 
 from presidio_evaluator import InputSample
-
-from presidio_evaluator.evaluation import EvaluationResult, BaseEvaluator, ErrorType
+from presidio_evaluator.evaluation import BaseEvaluator, ErrorType, EvaluationResult
 from tests.mocks import MockTokensModel
 
 
 class MockEvaluator(BaseEvaluator):
-    def calculate_score(self, evaluation_results: List[EvaluationResult], entities: Optional[List[str]] = None,
-                        beta: float = 2.0) -> EvaluationResult:
+    def calculate_score(
+        self,
+        evaluation_results: list[EvaluationResult],
+        entities: list[str] | None = None,
+        beta: float = 2.0,
+    ) -> EvaluationResult:
         pass
 
 
@@ -34,7 +35,9 @@ def test_evaluate_sample_wrong_entities_to_keep_correct_statistics():
 def test_evaluate_same_entity_correct_statistics():
     prediction = ["O", "ANIMAL", "O", "ANIMAL"]
     model = MockTokensModel(prediction=prediction)
-    evaluator = MockEvaluator(model=model, entities_to_keep=["ANIMAL"], skip_words=["-"])
+    evaluator = MockEvaluator(
+        model=model, entities_to_keep=["ANIMAL"], skip_words=["-"]
+    )
     sample = InputSample(
         full_text="I dog the walrus", masked="I [ANIMAL] the [ANIMAL]", spans=None
     )
@@ -123,7 +126,6 @@ def test_error_type_classification():
         tags=["PERSON", "O", "EMAIL", "PHONE", "O"],
     )
 
-
     result = evaluator.evaluate_sample(sample, prediction)
 
     # Verify error types
@@ -145,12 +147,18 @@ def test_error_type_classification():
 
     # Should be 2 WrongEntity: PHONE->LOCATION, EMAIL->PHONE
     assert len(wrong_entities) == 2
-    assert any(e.token == "john@mail.com"
-               and e.annotation == "EMAIL"
-               and e.prediction == "PHONE" for e in wrong_entities)
-    assert any(e.token == "123-456-7890"
-               and e.annotation == "PHONE"
-               and e.prediction == "LOCATION" for e in wrong_entities)
+    assert any(
+        e.token == "john@mail.com"
+        and e.annotation == "EMAIL"
+        and e.prediction == "PHONE"
+        for e in wrong_entities
+    )
+    assert any(
+        e.token == "123-456-7890"
+        and e.annotation == "PHONE"
+        and e.prediction == "LOCATION"
+        for e in wrong_entities
+    )
 
 
 def test_get_results_dataframe_basic():
@@ -161,22 +169,44 @@ def test_get_results_dataframe_basic():
             actual_tags=["O", "O", "PERSON", "PERSON", "O", "LOCATION", "LOCATION"],
             predicted_tags=["O", "O", "PERSON", "PERSON", "O", "LOCATION", "LOCATION"],
             start_indices=[0, 1, 2, 3, 4, 5, 6],
-            results={}  # Not needed for these tests
+            results={},  # Not needed for these tests
         )
     ]
-    
+
     evaluator = MockEvaluator(model=None)
     df = evaluator.get_results_dataframe(evaluation_results)
 
     # Verify the dataframe has the correct shape and columns
     assert isinstance(df, pd.DataFrame)
     assert df.shape == (7, 5)
-    assert list(df.columns) == ["sentence_id", "token", "annotation", "prediction", "start_indices"]
+    assert list(df.columns) == [
+        "sentence_id",
+        "token",
+        "annotation",
+        "prediction",
+        "start_indices",
+    ]
 
     # Verify the data is correct
     assert list(df["token"]) == ["I", "am", "John", "Smith", "from", "New", "York"]
-    assert list(df["annotation"]) == ["O", "O", "PERSON", "PERSON", "O", "LOCATION", "LOCATION"]
-    assert list(df["prediction"]) == ["O", "O", "PERSON", "PERSON", "O", "LOCATION", "LOCATION"]
+    assert list(df["annotation"]) == [
+        "O",
+        "O",
+        "PERSON",
+        "PERSON",
+        "O",
+        "LOCATION",
+        "LOCATION",
+    ]
+    assert list(df["prediction"]) == [
+        "O",
+        "O",
+        "PERSON",
+        "PERSON",
+        "O",
+        "LOCATION",
+        "LOCATION",
+    ]
     assert list(df["start_indices"]) == [0, 1, 2, 3, 4, 5, 6]
 
 
@@ -188,10 +218,10 @@ def test_get_results_dataframe_with_entity_filtering():
             actual_tags=["O", "O", "PERSON", "PERSON", "O", "LOCATION", "LOCATION"],
             predicted_tags=["O", "O", "PERSON", "PERSON", "O", "LOCATION", "LOCATION"],
             start_indices=[0, 1, 2, 3, 4, 5, 6],
-            results={}
+            results={},
         )
     ]
-    
+
     evaluator = MockEvaluator(model=None)
     # Filter to only include PERSON entities
     df = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
@@ -205,26 +235,94 @@ def test_get_results_dataframe_with_multiple_entities():
     """Test filtering with multiple entities."""
     evaluation_results = [
         EvaluationResult(
-            tokens=["My", "name", "is", "John", "Smith", "and", "my", "email", "is", "john@example.com"],
-            actual_tags=["O", "O", "O", "PERSON", "PERSON", "O", "O", "O", "O", "EMAIL"],
-            predicted_tags=["O", "O", "O", "PERSON", "PERSON", "O", "O", "O", "O", "EMAIL"],
+            tokens=[
+                "My",
+                "name",
+                "is",
+                "John",
+                "Smith",
+                "and",
+                "my",
+                "email",
+                "is",
+                "john@example.com",
+            ],
+            actual_tags=[
+                "O",
+                "O",
+                "O",
+                "PERSON",
+                "PERSON",
+                "O",
+                "O",
+                "O",
+                "O",
+                "EMAIL",
+            ],
+            predicted_tags=[
+                "O",
+                "O",
+                "O",
+                "PERSON",
+                "PERSON",
+                "O",
+                "O",
+                "O",
+                "O",
+                "EMAIL",
+            ],
             start_indices=list(range(10)),
-            results={}
+            results={},
         )
     ]
-    
+
     evaluator = MockEvaluator(model=None)
     # Filter to only include PERSON entities
     df_person = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
-    assert list(df_person["annotation"]) == ["O", "O", "O", "PERSON", "PERSON", "O", "O", "O", "O", "O"]
+    assert list(df_person["annotation"]) == [
+        "O",
+        "O",
+        "O",
+        "PERSON",
+        "PERSON",
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+    ]
 
     # Filter to only include EMAIL entities
     df_email = evaluator.get_results_dataframe(evaluation_results, entities=["EMAIL"])
-    assert list(df_email["annotation"]) == ["O", "O", "O", "O", "O", "O", "O", "O", "O", "EMAIL"]
+    assert list(df_email["annotation"]) == [
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+        "EMAIL",
+    ]
 
     # Include both PERSON and EMAIL entities
-    df_both = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON", "EMAIL"])
-    assert list(df_both["annotation"]) == ["O", "O", "O", "PERSON", "PERSON", "O", "O", "O", "O", "EMAIL"]
+    df_both = evaluator.get_results_dataframe(
+        evaluation_results, entities=["PERSON", "EMAIL"]
+    )
+    assert list(df_both["annotation"]) == [
+        "O",
+        "O",
+        "O",
+        "PERSON",
+        "PERSON",
+        "O",
+        "O",
+        "O",
+        "O",
+        "EMAIL",
+    ]
 
 
 def test_get_results_dataframe_with_mismatched_predictions():
@@ -233,12 +331,19 @@ def test_get_results_dataframe_with_mismatched_predictions():
         EvaluationResult(
             tokens=["John", "Smith", "lives", "in", "New", "York"],
             actual_tags=["PERSON", "PERSON", "O", "O", "LOCATION", "LOCATION"],
-            predicted_tags=["PERSON", "PERSON", "O", "O", "CITY", "CITY"],  # Predicted CITY instead of LOCATION
+            predicted_tags=[
+                "PERSON",
+                "PERSON",
+                "O",
+                "O",
+                "CITY",
+                "CITY",
+            ],  # Predicted CITY instead of LOCATION
             start_indices=list(range(6)),
-            results={}
+            results={},
         )
     ]
-    
+
     evaluator = MockEvaluator(model=None)
     # Filter to only include PERSON entities
     df_person = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
@@ -246,13 +351,36 @@ def test_get_results_dataframe_with_mismatched_predictions():
     assert list(df_person["prediction"]) == ["PERSON", "PERSON", "O", "O", "O", "O"]
 
     # Filter to only include LOCATION entities
-    df_location = evaluator.get_results_dataframe(evaluation_results, entities=["LOCATION"])
-    assert list(df_location["annotation"]) == ["O", "O", "O", "O", "LOCATION", "LOCATION"]
-    assert list(df_location["prediction"]) == ["O", "O", "O", "O", "O", "O"]  # CITY is filtered out
+    df_location = evaluator.get_results_dataframe(
+        evaluation_results, entities=["LOCATION"]
+    )
+    assert list(df_location["annotation"]) == [
+        "O",
+        "O",
+        "O",
+        "O",
+        "LOCATION",
+        "LOCATION",
+    ]
+    assert list(df_location["prediction"]) == [
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+    ]  # CITY is filtered out
 
     # Filter to only include CITY entities
     df_city = evaluator.get_results_dataframe(evaluation_results, entities=["CITY"])
-    assert list(df_city["annotation"]) == ["O", "O", "O", "O", "O", "O"]  # LOCATION is filtered out
+    assert list(df_city["annotation"]) == [
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+    ]  # LOCATION is filtered out
     assert list(df_city["prediction"]) == ["O", "O", "O", "O", "CITY", "CITY"]
 
 
@@ -264,27 +392,43 @@ def test_get_results_dataframe_with_multiple_sentences():
             actual_tags=["PERSON", "PERSON", "O", "O", "LOCATION", "LOCATION"],
             predicted_tags=["PERSON", "PERSON", "O", "O", "LOCATION", "LOCATION"],
             start_indices=list(range(6)),
-            results={}
+            results={},
         ),
         EvaluationResult(
             tokens=["Jane", "Doe", "works", "at", "Microsoft"],
             actual_tags=["PERSON", "PERSON", "O", "O", "ORG"],
             predicted_tags=["PERSON", "PERSON", "O", "O", "ORG"],
             start_indices=list(range(5)),
-            results={}
-        )
+            results={},
+        ),
     ]
-    
+
     evaluator = MockEvaluator(model=None)
     # Filter to only include PERSON entities
     df = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
 
     # Verify that the dataframe has the correct shape and columns
-    assert df.shape == (11, 5)  # 6 tokens in first sentence + 5 tokens in second sentence
+    assert df.shape == (
+        11,
+        5,
+    )  # 6 tokens in first sentence + 5 tokens in second sentence
 
     # Check that only PERSON entities are included and others are filtered out
-    assert list(df[df["sentence_id"] == 0]["annotation"]) == ["PERSON", "PERSON", "O", "O", "O", "O"]
-    assert list(df[df["sentence_id"] == 1]["annotation"]) == ["PERSON", "PERSON", "O", "O", "O"]
+    assert list(df[df["sentence_id"] == 0]["annotation"]) == [
+        "PERSON",
+        "PERSON",
+        "O",
+        "O",
+        "O",
+        "O",
+    ]
+    assert list(df[df["sentence_id"] == 1]["annotation"]) == [
+        "PERSON",
+        "PERSON",
+        "O",
+        "O",
+        "O",
+    ]
 
 
 def test_empty_evaluation_results():
@@ -298,13 +442,9 @@ def test_evaluation_results_without_tokens():
     """Test that an error is raised when evaluation results don't have tokens."""
     # Create an EvaluationResult with empty tokens
     empty_result = EvaluationResult(
-        tokens=[],
-        actual_tags=[],
-        predicted_tags=[],
-        start_indices=[],
-        results={}
+        tokens=[], actual_tags=[], predicted_tags=[], start_indices=[], results={}
     )
-    
+
     evaluator = MockEvaluator(model=None)
     with pytest.raises(ValueError):
         evaluator.get_results_dataframe([empty_result])
@@ -325,7 +465,7 @@ def test_results_to_dataframe_with_entity_filtering():
         full_text="John details john@example.com New York Smith",
         tokens=tokens,
         start_indices=start_indices,
-        tags=tags
+        tags=tags,
     )
 
     results = [evaluator.evaluate_sample(sample, prediction)]
@@ -345,17 +485,30 @@ def test_results_to_dataframe_with_entity_filtering():
     # Test filtering for LOCATION entity (which is predicted as CITY)
     df_location = evaluator.get_results_dataframe(results, entities=["LOCATION"])
     assert list(df_location["annotation"]) == ["O", "O", "O", "LOCATION", "O"]
-    assert list(df_location["prediction"]) == ["O", "O", "O", "O", "O"]  # CITY is filtered out
+    assert list(df_location["prediction"]) == [
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+    ]  # CITY is filtered out
 
     # Test filtering for CITY entity (which is annotated as LOCATION)
     df_city = evaluator.get_results_dataframe(results, entities=["CITY"])
-    assert list(df_city["annotation"]) == ["O", "O", "O", "O", "O"]  # LOCATION is filtered out
+    assert list(df_city["annotation"]) == [
+        "O",
+        "O",
+        "O",
+        "O",
+        "O",
+    ]  # LOCATION is filtered out
     assert list(df_city["prediction"]) == ["O", "O", "O", "CITY", "O"]
 
 
 def test_get_results_dataframe_emits_deprecation_warning():
     """get_results_dataframe() must emit a DeprecationWarning (soft deprecation)."""
     import warnings
+
     prediction = ["PERSON", "O"]
     tokens = ["Alice", "here"]
     tags = ["PERSON", "O"]

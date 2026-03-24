@@ -13,7 +13,9 @@ def test_new_provider_with_alias():
     data_generator = SentenceFaker(lower_case_ratio=0.0)
     data_generator.add_provider_alias("name", "doc_name")
     start_of_sentence = "My doctor is "
-    res = data_generator.parse(template=f"{start_of_sentence}{{{{doc_name}}}}", template_id=0)
+    res = data_generator.parse(
+        template=f"{start_of_sentence}{{{{doc_name}}}}", template_id=0
+    )
     assert res
     assert len(res.full_text) > len(start_of_sentence)
     assert start_of_sentence in res.full_text

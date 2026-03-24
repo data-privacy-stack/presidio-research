@@ -1,7 +1,7 @@
 line-length = 88
 indent-width = 4
 target-version = "py312"
-exclude = [".git", "__pycache__", "build", "dist"]
+exclude = [".git", "__pycache__", "build", "dist", "notebooks"]
 
 [format]
 quote-style = "double"
@@ -60,4 +60,14 @@ ignore = [
     "B905",    # zip() without explicit strict= parameter
     # --- Formatter conflict: COM812 may produce conflicting results with ruff format ---
     "COM812",  # missing trailing comma — disabled to avoid formatter conflicts
+]
+
+[lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",    # Use of assert — expected and required in pytest tests
+    "S105",    # Hardcoded passwords — fake data in test fixtures
+    "S106",    # Hardcoded passwords as arguments — fake data in test fixtures
+    "ANN",     # No type annotations needed in test helpers
+    "N",       # Naming conventions differ in test fixtures/parametrize
+    "PLR",     # Magic values / complexity OK in tests
 ]
