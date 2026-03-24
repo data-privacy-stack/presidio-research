@@ -157,3 +157,18 @@
   - Multiple separate imports of the same symbol cause F811 ruff error
   - Add temp script files to `.gitignore` BEFORE running git add to avoid committing them
 ---
+
+## 2026-03-24 22:30 - US-008
+- What was implemented:
+  - Added `warnings.warn(..., DeprecationWarning, stacklevel=2)` inside `get_results_dataframe()` in `base_evaluator.py`
+  - Warning message references `model.predict_dataset()` and `mapper.get_mapped_results_dataframe()`
+  - Method still executes after warning (soft deprecation — contrast with US-007 hard stop)
+  - Added `test_get_results_dataframe_emits_deprecation_warning` to `tests/test_evaluator.py`
+- Files changed:
+  - presidio_evaluator/evaluation/base_evaluator.py
+  - tests/test_evaluator.py
+- **Learnings for future iterations:**
+  - `warnings.catch_warnings(record=True)` + `warnings.simplefilter("always")` is the idiomatic way to capture warnings in pytest
+  - `stacklevel=2` ensures the warning points to the caller's line, not inside base_evaluator.py
+  - Soft deprecation = method runs, just warns. Hard stop (US-007) = method raises immediately.
+---

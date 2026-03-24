@@ -130,7 +130,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Soft deprecation — method still runs. Contrast with US-007 which is a hard stop."
     },
     {
