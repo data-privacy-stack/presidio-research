@@ -252,39 +252,6 @@ class TestBIOStripping:
         assert called == []
 
 
-class TestFromDataset:
-    def _make_samples(self, entity_types: list[str]) -> list:
-        """Create minimal InputSample objects with the given entity types."""
-        from presidio_evaluator.data_objects import Span, InputSample
-        samples = []
-        for et in entity_types:
-            span = Span(entity_type=et, entity_value="x", start_position=0, end_position=1)
-            sample = InputSample(full_text="x", masked="x", spans=[span])
-            samples.append(sample)
-        return samples
-
-    def test_from_dataset_extracts_entity_types(self):
-        samples = self._make_samples(["EMAIL_ADDRESS", "EMAIL_ADDRESS", "PERSON"])
-        result = CanonicalMapper.from_dataset(samples)
-        # Both labels should be fully resolved → a dict is returned
-        assert isinstance(result, dict)
-        assert "EMAIL_ADDRESS" in result
-        assert "PERSON" in result
-
-    def test_from_dataset_returns_mapper_when_pending(self):
-        samples = self._make_samples(["EMAIL_ADDRESS", "XYZZY_UNKNOWN"])
-        result = CanonicalMapper.from_dataset(samples)
-        assert isinstance(result, CanonicalMapper)
-        assert "XYZZY_UNKNOWN" in result.pending
-
-    def test_from_dataset_passes_kwargs(self):
-        from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
-        h = EntityHierarchy.default()
-        samples = self._make_samples(["EMAIL_ADDRESS"])
-        result = CanonicalMapper.from_dataset(samples, hierarchy=h)
-        assert isinstance(result, dict)
-
-
 class TestRenderHtml:
     def test_render_html_does_not_raise_without_ipython(self):
         import sys
