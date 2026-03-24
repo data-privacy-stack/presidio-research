@@ -88,8 +88,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Check whether render_html() already covers this — if so, align the API to get_mapping(mode='html'/'text') rather than building from scratch."
+      "passes": true,
     },
     {
       "id": "US-004",
