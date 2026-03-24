@@ -38,7 +38,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 2,
-      "passes": true,
+      "passes": true
     },
     {
       "id": "US-002",
@@ -57,7 +57,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 3,
-      "passes": true,
+      "passes": true
     },
     {
       "id": "US-006",
@@ -73,7 +73,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 4,
-      "passes": true,
+      "passes": true
     },
     {
       "id": "US-003",
@@ -88,7 +88,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 5,
-      "passes": true,
+      "passes": true
     },
     {
       "id": "US-004",
@@ -102,7 +102,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 6,
-      "passes": true,
+      "passes": true
     },
     {
       "id": "US-007",
