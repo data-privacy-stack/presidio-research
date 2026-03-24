@@ -237,3 +237,14 @@
   - B904 fix: `raise Foo() from err` in except clauses — correct pattern
   - PLW2901 in loops: `token = token.lower()` is intentional overwrite; add `# noqa: PLW2901` not rename
 ---
+
+## 2026-05-28 - US-016
+- What was implemented: `.pre-commit-config.yaml` with 3 local hooks (ruff format --check, ruff check, pytest unit tests only), all using `uv run`; `pre-commit` added as dev dependency; `pre-commit install` run
+- Files changed: `.pre-commit-config.yaml` (new), `ruff.toml` (added per-file-ignores for tests/, added notebooks/ to exclude), `tests/` (ruff reformatted + minor C4xx auto-fixes), `pyproject.toml` (pre-commit added to dev deps)
+- **Learnings for future iterations:**
+  - pre-commit is installed as a uv dev dependency and invoked with `uv run pre-commit`
+  - All hooks use `pass_filenames: false` so ruff runs on the whole project without file-by-file invocation
+  - S101, S105, S106 must be in `[lint.per-file-ignores]` for `tests/**/*.py` (assert, hardcoded test creds)
+  - Notebooks excluded from ruff: `notebooks/` added to `ruff.toml` exclude list (E402 module imports in cells is natural; B018 display expressions are intentional)
+  - When ruff runs project-wide (not just presidio_evaluator/), tests need ruff format + check too
+---

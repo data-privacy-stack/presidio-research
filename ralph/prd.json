@@ -199,7 +199,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on US-015 (ruff configured) and US-017 (integration marker defined). The pytest hook uses -m 'not integration' to keep commits fast."
     },
     {
