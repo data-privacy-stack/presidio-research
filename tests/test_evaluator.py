@@ -328,7 +328,7 @@ def test_results_to_dataframe_with_entity_filtering():
         tags=tags
     )
 
-    results = evaluator.evaluate_all([sample])
+    results = [evaluator.evaluate_sample(sample, prediction)]
 
     # Test filtering for just PERSON entities
     df_person = evaluator.get_results_dataframe(results, entities=["PERSON"])

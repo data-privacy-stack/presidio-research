@@ -6,7 +6,7 @@ import pytest
 
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import Evaluator
+from presidio_evaluator.evaluation import TokenEvaluator
 from presidio_evaluator.models import PresidioRecognizerWrapper
 
 
@@ -69,8 +69,8 @@ def test_credit_card_recognizer_with_generated_text(test_input, acceptance_thres
         nlp_engine=nlp_engine,
         entities_to_keep=["CREDIT_CARD"],
     )
-    evaluator = Evaluator(model=model)
-    evaluation_results = evaluator.evaluate_all(input_samples)
-    scores = evaluator.calculate_score(evaluation_results)
+    results_df = model.predict_dataset(input_samples)
+    evaluator = TokenEvaluator(model=model)
+    scores = evaluator.calculate_score_on_df(results_df)
 
     assert acceptance_threshold <= scores.pii_f

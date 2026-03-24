@@ -2,7 +2,7 @@ import pytest
 
 from presidio_evaluator import InputSample, Span
 
-from presidio_evaluator.evaluation import Evaluator
+from presidio_evaluator.evaluation import TokenEvaluator
 from presidio_evaluator.models.presidio_analyzer_wrapper import PresidioAnalyzerWrapper
 
 
@@ -51,7 +51,7 @@ def test_analyzer_simple_input():
     )
 
     prediction = model.predict(sample)
-    evaluator = Evaluator(model=model)
+    evaluator = TokenEvaluator(model=model)
 
     evaluated = evaluator.evaluate_sample(sample, prediction)
     metrics = evaluator.calculate_score([evaluated])
@@ -80,9 +80,9 @@ def test_analyzer_with_generated_text(test_input, acceptance_threshold):
     input_samples = InputSample.read_dataset_json(test_input.format(dir_path))
 
     analyzer = PresidioAnalyzerWrapper()
-    evaluator = Evaluator(model=analyzer)
-    evaluated_samples = evaluator.evaluate_all(input_samples)
-    scores = evaluator.calculate_score(evaluation_results=evaluated_samples)
+    results_df = analyzer.predict_dataset(input_samples)
+    evaluator = TokenEvaluator(model=analyzer)
+    scores = evaluator.calculate_score_on_df(results_df)
 
     assert acceptance_threshold <= scores.pii_precision
     assert acceptance_threshold <= scores.pii_recall

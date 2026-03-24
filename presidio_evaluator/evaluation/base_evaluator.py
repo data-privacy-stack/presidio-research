@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 GENERIC_ENTITIES = ("PII", "ID", "PII", "PHI", "ID_NUM", "NUMBER", "NUM", "GENERIC_PII")
 
 
+class DeprecationError(RuntimeError):
+    """Raised when a deprecated method that has been fully removed is called."""
+
+
 class BaseEvaluator(ABC):
     def __init__(
         self,
@@ -238,36 +242,33 @@ class BaseEvaluator(ABC):
     def evaluate_all(
         self, dataset: List[InputSample], **kwargs
     ) -> List[EvaluationResult]:
-        """Evaluate a dataset given a model and labels.
+        """REMOVED. Use the new 3-step pipeline instead.
 
-        :param dataset: A list of InputSample samples, containing the ground truth tags
-        :param kwargs: Additional arguments for the model's predict method
+        .. deprecated::
+            ``evaluate_all()`` has been removed. Migrate to::
+
+                # Step 1: predict
+                results_df = model.predict_dataset(dataset)
+
+                # Step 2: map entities to a common namespace
+                from presidio_evaluator.entity_mapping.mapper import CanonicalMapper
+                mapper = CanonicalMapper()
+                mapped_df = mapper.get_mapped_results_dataframe(results_df)
+
+                # Step 3: evaluate
+                from presidio_evaluator.evaluation import SpanEvaluator
+                evaluator = SpanEvaluator(model=None)
+                result_per_type = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)
+                global_df = SpanEvaluator.create_global_entities_df(mapped_df)
+                result = evaluator.calculate_score_on_df(per_type=False, results_df=global_df, evaluation_result=result_per_type)
         """
-
-        if not self.model:
-            raise ValueError(
-                "Model is not set. Please instantiate the evaluator with a model to evaluate the dataset."
-            )
-
-        evaluation_results = []
-
-        logger.info("Running model %s on dataset...", self.model.__class__.__name__)
-        predictions = self.model.batch_predict(dataset, **kwargs)
-        logger.info("Finished running model on dataset")
-
-        for prediction, sample in zip(predictions, dataset):
-            # Remove entities not requested (in model.entities_to_keep))
-            prediction = self.model.filter_tags_in_supported_entities(prediction)
-
-            # Switch to requested labeling scheme (IO/BIO/BILUO)
-            prediction = self.model.to_scheme(prediction)
-
-            evaluation_result = self.evaluate_sample(
-                sample=sample, prediction=prediction
-            )
-            evaluation_results.append(evaluation_result)
-
-        return evaluation_results
+        raise DeprecationError(
+            "evaluate_all() has been removed. Use the new 3-step pipeline:\n"
+            "  1. results_df = model.predict_dataset(dataset)\n"
+            "  2. mapper = CanonicalMapper(); mapped_df = mapper.get_mapped_results_dataframe(results_df)\n"
+            "  3. result = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)\n"
+            "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example."
+        )
 
     @abstractmethod
     def calculate_score(

@@ -7,7 +7,7 @@ from presidio_analyzer.predefined_recognizers import CreditCardRecognizer
 from presidio_analyzer.nlp_engine import SpacyNlpEngine
 
 from presidio_evaluator.data_generator import PresidioSentenceFaker
-from presidio_evaluator.evaluation import Evaluator
+from presidio_evaluator.evaluation import TokenEvaluator
 from presidio_evaluator.models import PresidioRecognizerWrapper
 
 
@@ -97,9 +97,9 @@ def test_credit_card_recognizer_with_template(
         nlp_engine=nlp_engine,
         entities_to_keep=["CREDIT_CARD"],
     )
-    evaluator = Evaluator(model=model)
-    evaluation_results = evaluator.evaluate_all(input_samples)
-    scores = evaluator.calculate_score(evaluation_results)
+    results_df = model.predict_dataset(input_samples)
+    evaluator = TokenEvaluator(model=model)
+    scores = evaluator.calculate_score_on_df(results_df)
 
     if not np.isnan(scores.pii_f):
         assert acceptance_threshold <= scores.pii_f

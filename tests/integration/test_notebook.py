@@ -5,11 +5,10 @@ from typing import Dict, List
 import json
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import Evaluator, ModelError
+from presidio_evaluator.evaluation import TokenEvaluator, ModelError
 from presidio_evaluator.evaluation.plotter import Plotter
 from presidio_evaluator.evaluation.span_evaluator import SpanEvaluator
 from presidio_evaluator.entity_mapping.mapper import CanonicalMapper
-from presidio_evaluator.evaluation.token_evaluator import TokenEvaluator
 from presidio_evaluator.experiment_tracking import get_experiment_tracker
 from presidio_evaluator.models import PresidioAnalyzerWrapper
 
@@ -92,12 +91,11 @@ def test_notebook():
 
     # Create the evaluator object (entity mapping is no longer passed to the evaluator;
     # it is applied to the dataset/predictions via CanonicalMapper before evaluation)
-    evaluator = Evaluator(model=analyzer_engine)
+    evaluator = TokenEvaluator(model=analyzer_engine)
 
-    evaluation_results = evaluator.evaluate_all(dataset)
-    results = evaluator.calculate_score(evaluation_results)
+    results_df = evaluator.model.predict_dataset(dataset)
+    results = evaluator.calculate_score_on_df(results_df)
 
-    results_df = evaluator.get_results_dataframe(evaluation_results)
     print(results_df)
 
     experiment.log_metrics(results.to_log())

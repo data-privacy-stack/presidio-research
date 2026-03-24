@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import TokenEvaluator, EvaluationResult
+from presidio_evaluator.evaluation import TokenEvaluator, EvaluationResult, DeprecationError
 from tests.mocks import MockTokensModel, FiftyFiftyIdentityTokensMockModel, IdentityTokensMockModel
 
 
@@ -78,23 +78,23 @@ def test_evaluate_multiple_tokens_no_match_match_correct_statistics():
 
 
 def test_evaluate_multiple_examples_correct_statistics():
-    prediction = ["U-PERSON", "O", "O", "U-PERSON", "O", "O"]
+    prediction = ["PERSON", "O", "O", "PERSON", "O", "O"]
     model = MockTokensModel(prediction=prediction)
     evaluator = TokenEvaluator(model=model, entities_to_keep=["PERSON"], skip_words=["-"])
     input_sample = InputSample("My name is Raphael or David", masked=None, spans=None)
     input_sample.tokens = ["My", "name", "is", "Raphael", "or", "David"]
     input_sample.tags = ["O", "O", "O", "PERSON", "O", "PERSON"]
 
-    evaluated = evaluator.evaluate_all(
+    results_df = evaluator.model.predict_dataset(
         [input_sample, input_sample, input_sample, input_sample]
     )
-    scores = evaluator.calculate_score(evaluated)
+    scores = evaluator.calculate_score_on_df(results_df)
     assert scores.pii_precision == 0.5
     assert scores.pii_recall == 0.5
 
 
 def test_evaluate_multiple_examples_ignore_entity_correct_statistics():
-    prediction = ["O", "O", "O", "U-PERSON", "O", "U-TENNIS_PLAYER"]
+    prediction = ["O", "O", "O", "PERSON", "O", "TENNIS_PLAYER"]
     model = MockTokensModel(prediction=prediction)
 
     evaluator = TokenEvaluator(model=model, entities_to_keep=["PERSON", "TENNIS_PLAYER"])
@@ -102,10 +102,10 @@ def test_evaluate_multiple_examples_ignore_entity_correct_statistics():
     input_sample.tokens = ["My", "name", "is", "Raphael", "or", "David"]
     input_sample.tags = ["O", "O", "O", "PERSON", "O", "PERSON"]
 
-    evaluated = evaluator.evaluate_all(
+    results_df = evaluator.model.predict_dataset(
         [input_sample, input_sample, input_sample, input_sample]
     )
-    scores = evaluator.calculate_score(evaluated)
+    scores = evaluator.calculate_score_on_df(results_df)
     assert scores.pii_precision == 1
     assert scores.pii_recall == 1
 
@@ -216,8 +216,8 @@ def test_dataset_to_metric_identity_model():
 
     model = IdentityTokensMockModel()
     evaluator = TokenEvaluator(model=model)
-    evaluation_results = evaluator.evaluate_all(input_samples)
-    metrics = evaluator.calculate_score(evaluation_results)
+    results_df = model.predict_dataset(input_samples)
+    metrics = evaluator.calculate_score_on_df(results_df)
 
     assert metrics.pii_precision == 1
     assert metrics.pii_recall == 1
@@ -234,8 +234,8 @@ def test_dataset_to_metric_50_50_model():
     # Replace 50% of the predictions with a list of "O"
     model = FiftyFiftyIdentityTokensMockModel()
     evaluator = TokenEvaluator(model=model, entities_to_keep=["PERSON"])
-    evaluation_results = evaluator.evaluate_all(input_samples)
-    metrics = evaluator.calculate_score(evaluation_results)
+    results_df = model.predict_dataset(input_samples)
+    metrics = evaluator.calculate_score_on_df(results_df)
 
     print(metrics.pii_precision)
     print(metrics.pii_recall)
@@ -317,7 +317,7 @@ def test_results_to_dataframe():
         tags=tags
     )
 
-    results = evaluator.evaluate_all([sample, sample])
+    results = [evaluator.evaluate_sample(sample, prediction), evaluator.evaluate_sample(sample, prediction)]
 
     df = evaluator.get_results_dataframe(results)
     expected_columns = ["sentence_id", "token", "annotation", "prediction", "start_indices"]
@@ -484,3 +484,14 @@ def test_calculate_score_on_df_populates_per_sample_fields():
     result = evaluator.calculate_score_on_df(df)
     assert result.pii_recall is not None
     assert result.pii_precision is not None
+
+
+def test_evaluate_all_raises_deprecation_error():
+    """evaluate_all() must raise DeprecationError after US-007 hard stop."""
+    evaluator = TokenEvaluator(model=MockTokensModel(prediction=["O"]))
+    sample = InputSample(full_text="test", spans=None)
+    sample.tokens = ["test"]
+    sample.tags = ["O"]
+
+    with pytest.raises(DeprecationError):
+        evaluator.evaluate_all([sample])
