@@ -308,6 +308,17 @@ class BaseEvaluator(ABC):
                 "Ensure that the input samples have tokens."
             )
 
+        warnings.warn(
+            "get_results_dataframe() is deprecated and will be removed in a future version. "
+            "Use the new 3-step pipeline instead:\n"
+            "  1. results_df = model.predict_dataset(dataset)\n"
+            "  2. mapped_df = mapper.get_mapped_results_dataframe(results_df)\n"
+            "  3. result = evaluator.calculate_score_on_df(results_df=mapped_df)\n"
+            "The returned DataFrame from model.predict_dataset() is already in the same format.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         rows_list = []
         for i, res in enumerate(evaluation_results):
             tokens = res.tokens

@@ -351,3 +351,33 @@ def test_results_to_dataframe_with_entity_filtering():
     df_city = evaluator.get_results_dataframe(results, entities=["CITY"])
     assert list(df_city["annotation"]) == ["O", "O", "O", "O", "O"]  # LOCATION is filtered out
     assert list(df_city["prediction"]) == ["O", "O", "O", "CITY", "O"]
+
+
+def test_get_results_dataframe_emits_deprecation_warning():
+    """get_results_dataframe() must emit a DeprecationWarning (soft deprecation)."""
+    import warnings
+    prediction = ["PERSON", "O"]
+    tokens = ["Alice", "here"]
+    tags = ["PERSON", "O"]
+    start_indices = [0, 6]
+    evaluator = MockEvaluator(model=MockTokensModel(prediction), skip_words=[])
+
+    sample = InputSample(
+        full_text="Alice here",
+        tokens=tokens,
+        start_indices=start_indices,
+        tags=tags,
+    )
+    result = evaluator.evaluate_sample(sample, prediction)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        df = evaluator.get_results_dataframe([result])
+
+    assert len(caught) == 1
+    assert issubclass(caught[0].category, DeprecationWarning)
+    assert "get_results_dataframe()" in str(caught[0].message)
+    assert "predict_dataset" in str(caught[0].message)
+    assert "get_mapped_results_dataframe" in str(caught[0].message)
+    # method still executes (soft deprecation)
+    assert list(df["annotation"]) == ["PERSON", "O"]
