@@ -749,15 +749,35 @@ class CanonicalMapper:
                 stacklevel=3,
             )
 
-    def get_mapping(self) -> dict[str, str | None]:
+    def get_mapping(
+        self,
+        mode: Optional[str] = None,
+    ) -> "dict[str, str | None] | str":
         """
-        Return the complete label → canonical dict.
+        Return the entity label mapping.
 
-        :raises IncompleteMapping: if any labels are still pending.
+        Without arguments (default) returns a ``dict[str, str | None]`` mapping
+        each label to its canonical equivalent (or ``None`` for suppressed labels).
+        Raises :class:`IncompleteMapping` if any labels are still pending.
+
+        :param mode: Optional rendering mode.
+            * ``None`` (default) — return ``dict[str, str | None]``
+            * ``"html"`` — return an HTML ``<table>`` string; pending labels are
+              shown as ``(pending)`` without raising.
+            * ``"text"`` — return a plain-text table string; pending labels are
+              shown as ``(pending)`` without raising.
+        :raises IncompleteMapping: if ``mode`` is ``None`` and any labels are pending.
+        :return: Mapping dict, HTML string, or plain-text string depending on mode.
         """
-        if self.pending:
-            raise IncompleteMapping(self.pending)
-        return {label: self._records[label].canonical for label in self._labels}
+        if mode is None:
+            if self.pending:
+                raise IncompleteMapping(self.pending)
+            return {label: self._records[label].canonical for label in self._labels}
+        if mode == "html":
+            return self._build_html()
+        if mode == "text":
+            return self._build_text()
+        raise ValueError(f"Unknown mode {mode!r}. Use None, 'html', or 'text'.")
 
     # ── HTML rendering ───────────────────────────────────────────────────────
 
@@ -867,6 +887,27 @@ class CanonicalMapper:
             canonical = str(rec.canonical) if rec else "—"
             score = f"{rec.score:.0%}" if rec and rec.score is not None else "—"
             print(f"{label:<30} {tier:<18} {canonical:<30} {score}")
+
+    def _build_text(self) -> str:
+        """Return a plain-text table string suitable for terminal output.
+
+        Pending labels are shown as ``(pending)`` in the canonical column.
+        """
+        sorted_labels = sorted(self._labels, key=self._tier_sort_key)
+        n, p = len(self._labels), len(self.pending)
+        lines = [
+            f"Entity Label Mapping  ({n} total, {p} pending)",
+            "",
+            f"{'Label':<30} {'Tier':<18} {'Canonical':<30} Score",
+            "-" * 82,
+        ]
+        for label in sorted_labels:
+            rec = self._records.get(label)
+            tier = rec.tier if rec else "PENDING"
+            canonical = "(pending)" if rec is None else (str(rec.canonical) if rec.canonical is not None else "None")
+            score = f"{rec.score:.0%}" if rec and rec.score is not None else "—"
+            lines.append(f"{label:<30} {tier:<18} {canonical:<30} {score}")
+        return "\n".join(lines)
 
     def __repr__(self) -> str:
         n, p = len(self._labels), len(self.pending)

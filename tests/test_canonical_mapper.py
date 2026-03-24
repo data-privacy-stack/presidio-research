@@ -127,6 +127,40 @@ class TestGetMapping:
         result = mapper.get_mapping()
         assert set(result.keys()) == set(labels)
 
+    def test_mode_html_returns_string_with_table(self):
+        """get_mapping(mode='html') returns an HTML string containing a <table> tag."""
+        mapper = CanonicalMapper(["EMAIL_ADDRESS"])
+        html = mapper.get_mapping(mode="html")
+        assert isinstance(html, str)
+        assert "<table" in html
+
+    def test_mode_html_shows_pending_without_raising(self):
+        """get_mapping(mode='html') works when labels are still pending."""
+        mapper = CanonicalMapper(["XYZZY_UNKNOWN"])
+        html = mapper.get_mapping(mode="html")  # should not raise
+        assert isinstance(html, str)
+        assert "pending" in html.lower()
+
+    def test_mode_text_returns_readable_string(self):
+        """get_mapping(mode='text') returns a plain-text table string."""
+        mapper = CanonicalMapper(["EMAIL_ADDRESS"])
+        text = mapper.get_mapping(mode="text")
+        assert isinstance(text, str)
+        assert "EMAIL_ADDRESS" in text
+        assert "Label" in text  # header row
+
+    def test_mode_text_shows_pending(self):
+        """get_mapping(mode='text') shows (pending) for unresolved labels."""
+        mapper = CanonicalMapper(["XYZZY_UNKNOWN"])
+        text = mapper.get_mapping(mode="text")
+        assert "(pending)" in text
+
+    def test_invalid_mode_raises(self):
+        """get_mapping(mode='invalid') raises ValueError."""
+        mapper = CanonicalMapper(["EMAIL_ADDRESS"])
+        with pytest.raises(ValueError):
+            mapper.get_mapping(mode="invalid")
+
 
 class TestResolveInteractively:
     def test_resolves_pending_via_prompt(self):
