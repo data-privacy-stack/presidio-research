@@ -61,23 +61,36 @@ all outputs.
 ### Workflow
 
 ```
-CanonicalMapper.from_dataset(dataset) / CanonicalMapper.from_model(label_extractor)
+CanonicalMapper.from_results_data_frame(results_df)
   → auto-resolve pass (EXACT → COUNTRY → COUNTRY_FALLBACK → FUZZY)
   → mapper.get_mapping(mode='html')   # inspect gaps as an HTML table
   → mapper.map({...})                 # programmatic assignment for pending labels
   → mapper.get_mapping()              # returns dict[str, str | None]
 ```
 
+### Input
+The input is the per-token comparison of predictions and actuals. 
+A user can get this by running the typical flow in presidio-evaluator, 
+or generate this in any other way.
+
+Format:
+
+| Column | Type | Description |
+|---|---|---|
+| `sentence_id` | `int` | Index of the source sentence in the dataset |
+| `token` | `str` | Token string |
+| `annotation` | `str` | Ground-truth entity tag (from `InputSample.tags`) |
+| `prediction` | `str` | Model-predicted entity tag |
+
+For mapping, only the `annotation` and `prediction` are used. 
+The mapper returns a new data frame with updated columns.
+
 ### Typical usage
 
 ```python
-# Construct the mapper from a dataset or a model.
-# Both constructors extract the label vocabulary, run the auto-resolve pass,
+# Construct the mapper from the model's output (results data frame)
 # and return a CanonicalMapper instance.
-mapper = CanonicalMapper.from_dataset(dataset)  # dataset: List[InputSample] | pd.DataFrame
-# or
-mapper = CanonicalMapper.from_model(label_extractor)  # label_extractor: LabelExtractor
-
+mapper = CanonicalMapper.from_results_data_frame(results_df)
 # Inspect unmapped labels — renders an HTML table highlighting gaps
 mapper.get_mapping(mode='html')
 
@@ -86,6 +99,9 @@ mapper.map({"GGE": "ORG", "CustID": "CLIENT_ID", "MY_CUSTOM_LABEL": None})
 
 # Retrieve the final mapping dict once all labels are resolved
 mapping: Dict[str, str] = mapper.get_mapping()
+
+# Update data frame
+results_df_mapped: pd.DataFrame = mapper.get_mapped_results_dataframe()
 ```
 
 ### Logging
