@@ -2,6 +2,8 @@ import warnings
 from collections import Counter
 from typing import Optional, List
 
+import pandas as pd
+
 from presidio_evaluator import InputSample
 from presidio_evaluator.evaluation import BaseEvaluator, EvaluationResult
 
@@ -11,6 +13,55 @@ class TokenEvaluator(BaseEvaluator):
     Evaluates the performance of a token-based Named Entity Recognition (NER) model.
     This class is designed to assess the model's ability to correctly identify and classify tokens in text.
     """
+
+    def calculate_score_on_df(
+        self,
+        results_df: pd.DataFrame,
+        beta: float = 2.0,
+    ) -> EvaluationResult:
+        """
+        Evaluate predictions against ground truth using a pre-mapped DataFrame.
+
+        Accepts the same 5-column schema as SpanEvaluator.calculate_score_on_df()
+        (sentence_id, token, annotation, prediction, start_indices).  For each
+        sentence the tokens, annotations, and predictions are extracted and fed
+        into the token-level :meth:`compare` method; then
+        :meth:`calculate_score` aggregates the results.
+
+        :param results_df: DataFrame with columns sentence_id, token, annotation,
+            prediction, start_indices — as produced by model.predict_dataset() and
+            optionally processed by CanonicalMapper.get_mapped_results_dataframe().
+        :param beta: F-beta parameter for score calculation (default 2.0).
+        :return: EvaluationResult with per-entity and aggregate precision/recall/F metrics.
+        """
+        evaluation_results: List[EvaluationResult] = []
+
+        for _, sentence_df in results_df.groupby("sentence_id", sort=False):
+            tokens = sentence_df["token"].tolist()
+            annotations = sentence_df["annotation"].tolist()
+            predictions = sentence_df["prediction"].tolist()
+            start_indices = sentence_df["start_indices"].tolist()
+
+            input_sample = InputSample(
+                full_text=" ".join(tokens),
+                tokens=tokens,
+                tags=annotations,
+                start_indices=start_indices,
+            )
+            results, errors = self.compare(input_sample=input_sample, prediction=predictions)
+            evaluation_results.append(
+                EvaluationResult(
+                    results=results,
+                    model_errors=errors,
+                    text=" ".join(tokens),
+                    tokens=tokens,
+                    actual_tags=annotations,
+                    predicted_tags=predictions,
+                    start_indices=start_indices,
+                )
+            )
+
+        return self.calculate_score(evaluation_results, beta=beta)
 
     def calculate_score(
         self,

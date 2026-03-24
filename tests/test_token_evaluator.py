@@ -430,3 +430,57 @@ def test_calculate_score_existing_results_counter_individual_entities():
     assert evaluation_score.entity_recall_dict["Y"] == expected_y_recall
     assert evaluation_score.entity_precision_dict["Z"] == expected_z_precision
     assert evaluation_score.entity_recall_dict["Z"] == expected_z_recall
+
+
+def test_calculate_score_on_df_schema():
+    """calculate_score_on_df() accepts a 5-column DataFrame and returns an EvaluationResult."""
+    import pandas as pd
+
+    evaluator = TokenEvaluator(model=None)
+    df = pd.DataFrame({
+        "sentence_id": [0, 0, 0],
+        "token": ["John", "lives", "here"],
+        "annotation": ["PERSON", "O", "O"],
+        "prediction": ["PERSON", "O", "O"],
+        "start_indices": [0, 5, 11],
+    })
+    result = evaluator.calculate_score_on_df(df)
+    assert isinstance(result, EvaluationResult)
+    assert result.entity_recall_dict is not None
+    assert result.entity_precision_dict is not None
+
+
+def test_calculate_score_on_df_correct_metrics():
+    """calculate_score_on_df() computes correct precision/recall on a known DataFrame."""
+    import pandas as pd
+
+    evaluator = TokenEvaluator(model=None)
+    # 2 PERSON annotations, 1 correct prediction, 1 missed -> recall=0.5
+    df = pd.DataFrame({
+        "sentence_id": [0, 0, 1, 1],
+        "token": ["Alice", "here", "Bob", "there"],
+        "annotation": ["PERSON", "O", "PERSON", "O"],
+        "prediction": ["PERSON", "O", "O", "O"],
+        "start_indices": [0, 6, 0, 4],
+    })
+    result = evaluator.calculate_score_on_df(df)
+    assert result.entity_recall_dict["PERSON"] == 0.5
+    assert result.entity_precision_dict["PERSON"] == 1.0
+
+
+def test_calculate_score_on_df_populates_per_sample_fields():
+    """calculate_score_on_df() populates tokens, actual_tags, predicted_tags on sub-results."""
+    import pandas as pd
+
+    evaluator = TokenEvaluator(model=None)
+    df = pd.DataFrame({
+        "sentence_id": [0, 0],
+        "token": ["John", "Smith"],
+        "annotation": ["PERSON", "PERSON"],
+        "prediction": ["PERSON", "O"],
+        "start_indices": [0, 5],
+    })
+    # The method should not raise; per-sample carrier fields used by calculate_score
+    result = evaluator.calculate_score_on_df(df)
+    assert result.pii_recall is not None
+    assert result.pii_precision is not None

@@ -6,6 +6,10 @@ import json
 
 from presidio_evaluator import InputSample
 from presidio_evaluator.evaluation import Evaluator, ModelError
+from presidio_evaluator.evaluation.plotter import Plotter
+from presidio_evaluator.evaluation.span_evaluator import SpanEvaluator
+from presidio_evaluator.entity_mapping.mapper import CanonicalMapper
+from presidio_evaluator.evaluation.token_evaluator import TokenEvaluator
 from presidio_evaluator.experiment_tracking import get_experiment_tracker
 from presidio_evaluator.models import PresidioAnalyzerWrapper
 
@@ -161,3 +165,53 @@ def test_notebook():
     # In[19]:
 
     fns_df[["full_text", "token", "annotation", "prediction"]].head(20)
+
+
+def test_full_pipeline_integration():
+    """
+    Integration test for the full 3-step pipeline:
+        1. model.predict_dataset(dataset)          -> results_df
+        2. mapper.get_mapped_results_dataframe()   -> mapped_df
+        3. evaluator.calculate_score_on_df()       -> EvaluationResult
+        4. Plotter.plot_scores()                   -> no exception
+
+    Covers: SpanEvaluator path and TokenEvaluator path.
+    """
+    test_dir = Path(__file__).parent
+    data_path = test_dir.parent / "data" / "generated_small.json"
+    dataset = InputSample.read_dataset_json(data_path)[:20]  # small slice
+
+    from presidio_analyzer import AnalyzerEngine
+    analyzer = AnalyzerEngine(default_score_threshold=0.4)
+    model = PresidioAnalyzerWrapper(analyzer_engine=analyzer, entities_to_keep=["PERSON"])
+
+    # Step 1: predict
+    results_df = model.predict_dataset(dataset)
+    assert list(results_df.columns) == [
+        "sentence_id", "token", "annotation", "prediction", "start_indices"
+    ]
+
+    # Step 2: map
+    mapper = CanonicalMapper()
+    mapped_df = mapper.get_mapped_results_dataframe(results_df)
+    assert mapped_df.shape == results_df.shape
+
+    # Step 3a: SpanEvaluator path
+    span_evaluator = SpanEvaluator(model=None, skip_words=[])
+    result_per_type = span_evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)
+    global_df = SpanEvaluator.create_global_entities_df(mapped_df)
+    result_global = span_evaluator.calculate_score_on_df(
+        per_type=False, results_df=global_df, evaluation_result=result_per_type
+    )
+    assert result_global.pii_recall is not None
+    assert result_global.pii_precision is not None
+
+    # Step 3b: TokenEvaluator path
+    token_evaluator = TokenEvaluator(model=None, skip_words=[])
+    token_result = token_evaluator.calculate_score_on_df(mapped_df)
+    assert token_result.pii_recall is not None
+    assert token_result.entity_recall_dict is not None
+
+    # Step 4: Plotter — must not raise
+    plotter = Plotter(results=result_global)
+    plotter.plot_scores(output_folder=None)
