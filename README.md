@@ -43,24 +43,23 @@ To install the package:
 2. Install all dependencies:
 
 ``` sh
-# Install package+dependencies
-pip install poetry
-poetry install --with=dev
+# Install uv if not already installed
+pip install uv
 
-# Download tge spaCy pipeline used for tokenization
-poetry run python -m spacy download en_core_web_sm
+# Install package + dev dependencies
+uv sync --extra dev
 
-# To install with all additional NER dependencies (e.g. Flair, Stanza), run:
-# poetry install --with='ner,dev'
+# Download the spaCy pipeline used for tokenization
+uv run python -m spacy download en_core_web_sm
 
 # To use the default Presidio configuration, a spaCy model is required:
-poetry run python -m spacy download en_core_web_lg
+uv run python -m spacy download en_core_web_lg
 
 # Verify installation
-pytest
+uv run pytest
 ```
 
-Note that some dependencies (such as Flair and Stanza) are not automatically installed to reduce installation complexity.
+Note that some dependencies (such as Flair and Stanza) are no longer supported. Use Presidio Analyzer directly to add custom NER models.
 
 ## What's in this package?
 
