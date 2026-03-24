@@ -18,7 +18,8 @@ Dataset (List[InputSample])
     → evaluator.evaluate_all(dataset)   # runs inference AND builds per-sample EvaluationResult objects
     → List[EvaluationResult]            # intermediate per-sample carriers
     → evaluator.calculate_score(...)    # calls get_results_dataframe() → DataFrame → scoring
-    → EvaluationResult (aggregated)
+    → EvaluationResult (aggregated)     # contains both the PII level and the canonical level values
+    → Error Analysis
 ```
 
 This design has four concrete pain points:
