@@ -185,7 +185,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "Must be done before US-016 (pre-commit). Fix violations rather than blanket-ignoring them where possible."
     },
     {

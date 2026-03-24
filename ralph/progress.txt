@@ -215,3 +215,25 @@
   - `uv sync --extra dev` is the uv equivalent of `poetry install --with dev`
   - `uv run pytest` uses the project's own venv, not the active VIRTUAL_ENV
 ---
+
+## 2026-03-24 23:00 - US-015
+- What was implemented:
+  - Created `ruff.toml` at project root with: line-length=88, target-version=py312, indent-width=4, quote-style=double
+  - Selected rules: E, F, I, UP, C4, B, A, COM, N, ANN, ASYNC, S, PLC, PLE, PLR, PLW
+  - Ignored invasive rules: all ANN (type annotations), E501 (long lines), PLR2004, PLR0913/12/15, S311, PLC0415, B905, COM812 (formatter conflict)
+  - Ran `ruff format` to auto-format 38 production files
+  - Fixed or added `# noqa` to all remaining violations (19 total)
+  - Added `# noqa: I001` comments to preserve circular-import import order
+  - Removed `[tool.ruff]` sections from `pyproject.toml` (moved to `ruff.toml`)
+- Files changed:
+  - ruff.toml (created)
+  - pyproject.toml (removed [tool.ruff] sections)
+  - 38 production files (reformatted)
+  - Various files with targeted noqa comments
+- **Learnings for future iterations:**
+  - Ruff's isort (I001) will reorder imports and BREAK circular import workarounds — always add `# noqa: I001` to intentionally-ordered imports
+  - COM812 conflicts with ruff format — always ignore COM812 when using ruff format
+  - `ruff check --fix --unsafe-fixes` fixes most auto-fixable violations; run before checking statistics
+  - B904 fix: `raise Foo() from err` in except clauses — correct pattern
+  - PLW2901 in loops: `token = token.lower()` is intentional overwrite; add `# noqa: PLW2901` not rename
+---
