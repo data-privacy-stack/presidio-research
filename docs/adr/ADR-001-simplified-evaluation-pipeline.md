@@ -60,14 +60,17 @@ results_df = model.predict_dataset(dataset)  # NEW: returns the DataFrame direct
 
 # 3. Map entities (transforms both predictions and annotations into canonical entities)
 #    ENTITY_MAPPING can be defined in config or as a shared constant.
-results_df = map_entities(results_df, mapping=ENTITY_MAPPING)
+mapper = CanonicalMapper()
 
-# 4. Score
-evaluator = SpanEvaluator()   # no model argument needed!
-results = evaluator.calculate_score_on_df(per_type=True, results_df=results_df)
+# 4. Map to hierarchy (PII, High level, canonical, specific) and evaluate
+evaluator = SpanEvaluator()
+results_per_hierarchy = []
+for hierarchy in [1,2,3]):
+    results_df_hierarchy = mapper.map_entities(results_df, hierarchy=hierarchy)
+    results_per_hierarchy = evaluator.calculate_score_on_df(per_type=True, results_df=results_df)
 
 # 5. Analyze/plot
-plotter = Plotter(results=results)
+plotter = Plotter(results=results_per_hierarchy[0])
 plotter.plot_scores()
 ```
 
