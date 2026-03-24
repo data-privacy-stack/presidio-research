@@ -1,16 +1,16 @@
-"""Entity mapping: Protocol and CanonicalMapper implementation."""
+"""Entity mapping: EntityHierarchy taxonomy and CanonicalMapper workflow."""
 
 from __future__ import annotations
 
+import copy
 import difflib
 import logging
 import re
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
 
-from presidio_evaluator.entity_mapping.hierarchy import (
-    ALL_CANONICAL_ENTITIES,
-    EntityHierarchy,
+from presidio_evaluator.entity_mapping.definitions import (
+    COUNTRIES,
+    HIERARCHY,
     EntityNotMappedError,
 )
 
@@ -50,54 +50,329 @@ class IncompleteMapping(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
-# Protocol
+# EntityHierarchy
 # ---------------------------------------------------------------------------
 
 
-@runtime_checkable
-class EntityMapper(Protocol):
+class EntityHierarchy:
     """
-    Protocol for entity label mappers.
+    PII entity taxonomy with canonicalization, branch lookup, and customization.
 
-    Implementations resolve a set of raw entity labels to canonical entities,
-    maintain state about what is resolved vs. pending, and allow manual
-    overrides via map().
+    Wraps a (deep-copied) taxonomy dict and exposes methods to resolve raw
+    labels to canonical names, look up their branch in the tree, and mutate
+    the taxonomy (add/remove entities and aliases, rename nodes).
+
+    Example — create a custom variant::
+
+        h = EntityHierarchy.default().copy()
+        h.add_alias("EMAIL_ADDRESS", "ELECTRONIC_MAIL")
+        h.canonicalize("ELECTRONIC_MAIL")   # -> 'EMAIL_ADDRESS'
     """
 
-    @property
-    def pending(self) -> list[str]:
-        """Labels that have not yet been resolved to a canonical entity."""
-        ...
+    def __init__(
+        self,
+        hierarchy: dict | None = None,
+        canonical_depth: int = 3,
+    ) -> None:
+        self.hierarchy: dict = copy.deepcopy(
+            hierarchy if hierarchy is not None else HIERARCHY
+        )
+        self.countries: set[str] = COUNTRIES
+        self.canonical_depth: int = canonical_depth
+        self.country_prefixed_doc_types: dict[str, str] = {}
+        self._rebuild()
 
-    def map(self, mappings: dict[str, str | None]) -> "EntityMapper":
+    @classmethod
+    def default(cls) -> "EntityHierarchy":
+        """Return the module-level default instance (read-only by convention)."""
+        return _DEFAULT_HIERARCHY
+
+    def copy(self) -> "EntityHierarchy":
+        """Return an independent deep copy of this instance."""
+        return copy.deepcopy(self)
+
+    @staticmethod
+    def _normalize(label: str) -> str:
+        return label.upper().replace("_", "").replace("-", "")
+
+    @staticmethod
+    def _collect_all_raw(value) -> list[str]:
+        items: list[str] = []
+        if isinstance(value, list):
+            items.extend(value)
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                items.append(k)
+                items.extend(EntityHierarchy._collect_all_raw(v))
+        return items
+
+    @staticmethod
+    def _build_alias_map(
+        node: dict,
+        canonical_depth: int = 3,
+        depth: int = 1,
+    ) -> dict[str, str]:
+        mapping: dict[str, str] = {}
+        for key, value in node.items():
+            if depth >= canonical_depth:
+                mapping[EntityHierarchy._normalize(key)] = key
+                for alias in EntityHierarchy._collect_all_raw(value):
+                    mapping[EntityHierarchy._normalize(alias)] = key
+            elif isinstance(value, list):
+                mapping[EntityHierarchy._normalize(key)] = key
+                for alias in value:
+                    mapping[EntityHierarchy._normalize(alias)] = key
+            elif isinstance(value, dict):
+                mapping[EntityHierarchy._normalize(key)] = key
+                mapping.update(
+                    EntityHierarchy._build_alias_map(value, canonical_depth, depth + 1)
+                )
+        return mapping
+
+    @staticmethod
+    def _collect_canonical_nodes(
+        node: dict,
+        canonical_depth: int = 3,
+        depth: int = 1,
+    ) -> list[str]:
+        result: list[str] = []
+        for key, value in node.items():
+            if depth >= canonical_depth:
+                result.append(key)
+            elif isinstance(value, list):
+                result.append(key)
+            elif isinstance(value, dict):
+                result.extend(
+                    EntityHierarchy._collect_canonical_nodes(
+                        value, canonical_depth, depth + 1
+                    )
+                )
+        return result
+
+    @staticmethod
+    def _build_branch_map(
+        node: dict,
+        canonical_depth: int = 3,
+        current_path: list[str] | None = None,
+        depth: int = 1,
+    ) -> dict[str, list[str]]:
+        if current_path is None:
+            current_path = []
+        result: dict[str, list[str]] = {}
+        for key, value in node.items():
+            path = current_path + [key]
+            if depth >= canonical_depth:
+                result[key] = path
+            elif isinstance(value, list):
+                result[key] = path
+            elif isinstance(value, dict):
+                result[key] = path
+                result.update(
+                    EntityHierarchy._build_branch_map(
+                        value, canonical_depth, path, depth + 1
+                    )
+                )
+        return result
+
+    def _rebuild(self) -> None:
+        self.raw_to_canonical: dict[str, str] = self._build_alias_map(
+            self.hierarchy, self.canonical_depth
+        )
+        self.all_canonical_entities: list[str] = self._collect_canonical_nodes(
+            self.hierarchy, self.canonical_depth
+        )
+        self.canonical_to_branch: dict[str, list[str]] = self._build_branch_map(
+            self.hierarchy, self.canonical_depth
+        )
+
+    def _resolve_remainder(self, remainder: str, threshold: float) -> str:
+        override = self.country_prefixed_doc_types.get(remainder.upper())
+        if override:
+            return override
+        try:
+            return self.canonicalize(remainder, threshold=threshold)
+        except EntityNotMappedError:
+            return "NATIONAL_ID"
+
+    def _country_prefix_canonical(self, raw: str, threshold: float = 1.0) -> str | None:
+        upper = raw.upper()
+        parts3 = upper.split("_", 2)
+        if len(parts3) == 3 and f"{parts3[0]}_{parts3[1]}" in self.countries:
+            return self._resolve_remainder(parts3[2], threshold)
+        parts = upper.split("_", 1)
+        if len(parts) < 2:
+            return None
+        country, remainder = parts
+        if country not in self.countries:
+            return None
+        return self._resolve_remainder(remainder, threshold)
+
+    def _fuzzy_country_prefix_canonical(self, raw: str, threshold: float) -> str | None:
+        upper = raw.upper()
+        parts3 = upper.split("_", 2)
+        if len(parts3) == 3:
+            two_token = f"{parts3[0]}_{parts3[1]}"
+            two_token_cutoff = max(threshold, 0.90)
+            if difflib.get_close_matches(two_token, self.countries, n=1, cutoff=two_token_cutoff):
+                return self._resolve_remainder(parts3[2], threshold)
+        parts = upper.split("_", 1)
+        if len(parts) < 2:
+            return None
+        prefix, remainder = parts
+        if difflib.get_close_matches(prefix, self.countries, n=1, cutoff=threshold):
+            return self._resolve_remainder(remainder, threshold)
+        return None
+
+    def _fuzzy_resolve(self, raw_label: str, threshold: float) -> str | None:
+        country_match = self._fuzzy_country_prefix_canonical(raw_label, threshold)
+        if country_match:
+            return country_match
+        norm = self._normalize(raw_label)
+        matches = difflib.get_close_matches(norm, self.raw_to_canonical, n=1, cutoff=threshold)
+        if matches:
+            return self.raw_to_canonical[matches[0]]
+        return None
+
+    def canonicalize(self, raw_label: str, threshold: float = 0.80) -> str:
         """
-        Manually assign canonical entities (or None) to one or more labels.
+        Return the canonical entity name for a raw label.
 
-        :param mappings: dict of raw label → canonical entity (or None to suppress).
-        :return: self, for chaining.
+        Resolution order: exact alias map → country-prefix → fuzzy fallback.
+        Raises EntityNotMappedError if the label cannot be resolved.
         """
-        ...
+        norm = self._normalize(raw_label)
+        if norm in self.raw_to_canonical:
+            return self.raw_to_canonical[norm]
+        country_match = self._country_prefix_canonical(raw_label, threshold=threshold)
+        if country_match:
+            return country_match
+        fuzzy_match = self._fuzzy_resolve(raw_label, threshold)
+        if fuzzy_match:
+            return fuzzy_match
+        raise EntityNotMappedError(f"Unknown entity label: {raw_label!r}")
 
-    def resolve_interactively(self, *, prompt_fn=input) -> "EntityMapper":
+    def fuzzy_canonicalize(self, raw_label: str, threshold: float = 0.80) -> str:
+        """Convenience alias for ``canonicalize(raw_label, threshold=threshold)``."""
+        return self.canonicalize(raw_label, threshold=threshold)
+
+    def get_branch(self, raw_label: str) -> list[str]:
         """
-        Prompt the user for each pending label.
+        Return the full ancestor path for a raw (or canonical) entity label.
 
-        :param prompt_fn: Callable used for input (injectable in tests).
-        :return: self, for chaining.
+        Example: ``get_branch("GERMANY_PASSPORT_NUMBER")`` → ``['PII', 'GOVERNMENT_ID', 'PASSPORT']``
         """
-        ...
+        canonical = self.canonicalize(raw_label)
+        branch = self.canonical_to_branch.get(canonical)
+        if branch is None:
+            raise EntityNotMappedError(
+                f"Canonical entity {canonical!r} has no branch in hierarchy"
+            )
+        return branch
 
-    def get_mapping(self) -> dict[str, str | None]:
-        """
-        Return the complete label → canonical dict.
+    def print_hierarchy(self, node: dict | None = None, indent: int = 0) -> None:
+        """Pretty-print the hierarchy tree."""
+        if node is None:
+            node = self.hierarchy
+        prefix = "  " * indent
+        for key, value in node.items():
+            if isinstance(value, list):
+                print(f"{prefix}├─ {key}  ({len(value)} aliases)")
+            else:
+                print(f"{prefix}├─ {key}/")
+                self.print_hierarchy(value, indent + 1)
 
-        :raises IncompleteMapping: if any labels are still pending.
-        """
-        ...
+    def _find_node(self, name: str, tree: dict | None = None) -> tuple[dict, str] | None:
+        if tree is None:
+            tree = self.hierarchy
+        for key, value in tree.items():
+            if key == name:
+                return (tree, key)
+            if isinstance(value, dict):
+                result = self._find_node(name, value)
+                if result:
+                    return result
+        return None
 
-    def render_html(self) -> None:
-        """Render an audit table (HTML in Jupyter, plain text otherwise)."""
-        ...
+    def add_entity(
+        self,
+        parent_path: list[str],
+        entity_name: str,
+        aliases: list[str] | None = None,
+    ) -> None:
+        """Add a new entity node under parent_path."""
+        node = self.hierarchy
+        for part in parent_path:
+            if part not in node:
+                raise KeyError(f"Node {part!r} not found in hierarchy")
+            node = node[part]
+        if not isinstance(node, dict):
+            raise TypeError(
+                "Parent node is a leaf (alias list). "
+                "Use add_alias() to add an alias instead."
+            )
+        node[entity_name] = list(aliases) if aliases else []
+        self._rebuild()
+
+    def remove_entity(self, entity_name: str) -> None:
+        """Remove a node (and all its children/aliases) from the hierarchy."""
+        found = self._find_node(entity_name)
+        if found is None:
+            raise KeyError(f"Entity {entity_name!r} not found in hierarchy")
+        parent_dict, key = found
+        del parent_dict[key]
+        self._rebuild()
+
+    def rename_entity(self, old_name: str, new_name: str) -> None:
+        """Rename a node, preserving its children and aliases."""
+        found = self._find_node(old_name)
+        if found is None:
+            raise KeyError(f"Entity {old_name!r} not found in hierarchy")
+        parent_dict, key = found
+        parent_dict[new_name] = parent_dict.pop(key)
+        self._rebuild()
+
+    def add_alias(self, entity_name: str, alias: str) -> None:
+        """Add a raw alias for an existing entity."""
+        found = self._find_node(entity_name)
+        if found is None:
+            raise KeyError(f"Entity {entity_name!r} not found in hierarchy")
+        parent_dict, key = found
+        value = parent_dict[key]
+        if isinstance(value, list):
+            if alias not in value:
+                value.append(alias)
+        else:
+            value[alias] = []
+        self._rebuild()
+
+    def remove_alias(self, entity_name: str, alias: str) -> None:
+        """Remove a raw alias from a leaf entity's alias list."""
+        found = self._find_node(entity_name)
+        if found is None:
+            raise KeyError(f"Entity {entity_name!r} not found in hierarchy")
+        parent_dict, key = found
+        value = parent_dict[key]
+        if not isinstance(value, list):
+            raise TypeError(
+                f"Entity {entity_name!r} has sub-entities, not a plain alias list. "
+                f"Use remove_entity() to remove a sub-entity."
+            )
+        if alias not in value:
+            raise ValueError(f"Alias {alias!r} not found for entity {entity_name!r}")
+        value.remove(alias)
+        self._rebuild()
+
+    def add_country_doc_type(self, suffix_key: str, canonical: str) -> None:
+        """Register an explicit override for country-prefixed doc-type patterns."""
+        self.country_prefixed_doc_types[suffix_key.upper()] = canonical
+
+    def remove_country_doc_type(self, suffix_key: str) -> None:
+        """Remove a country-prefix suffix keyword mapping."""
+        self.country_prefixed_doc_types.pop(suffix_key.upper(), None)
+
+
+# Built once at import time.  Treat as read-only; use .copy() for a mutable variant.
+_DEFAULT_HIERARCHY = EntityHierarchy()
 
 
 # ---------------------------------------------------------------------------
@@ -140,10 +415,16 @@ class CanonicalMapper:
         self,
         labels: list[str] | set[str],
         *,
-        hierarchy: EntityHierarchy | None = None,
+        hierarchy: dict | EntityHierarchy | None = None,
+        canonical_depth: int = 3,
         fuzzy_threshold: float = 0.80,
     ) -> None:
-        self._hierarchy = hierarchy if hierarchy is not None else EntityHierarchy.default()
+        if isinstance(hierarchy, dict):
+            self._hierarchy = EntityHierarchy(hierarchy=hierarchy, canonical_depth=canonical_depth)
+        elif hierarchy is not None:
+            self._hierarchy = hierarchy
+        else:
+            self._hierarchy = EntityHierarchy.default()
         self._fuzzy_threshold = fuzzy_threshold
 
         # Deduplicate, preserving order for lists
@@ -167,7 +448,7 @@ class CanonicalMapper:
 
         Extracts unique entity_type values from all spans, then delegates to
         :meth:`__init__` with those labels. ``**kwargs`` (e.g. ``hierarchy``,
-        ``fuzzy_threshold``) are passed through.
+        ``canonical_depth``, ``fuzzy_threshold``) are passed through.
 
         Returns the completed mapping dict when all labels are auto-resolved,
         or the CanonicalMapper instance when manual resolution is still needed.
@@ -275,16 +556,17 @@ class CanonicalMapper:
         Validates all entries before applying any (atomic). Raises ValueError on
         labels not in the original input or invalid canonical values.
         """
+        valid_canonicals = set(self._hierarchy.all_canonical_entities) | set(self._hierarchy.raw_to_canonical.values())
         for label, canonical in mappings.items():
             if label not in self._labels:
                 raise ValueError(
                     f"Label {label!r} was not in the original input. "
                     f"Create a new CanonicalMapper to add new labels."
                 )
-            if canonical is not None and canonical not in ALL_CANONICAL_ENTITIES:
+            if canonical is not None and canonical not in valid_canonicals:
                 raise ValueError(
                     f"{canonical!r} is not a valid canonical entity. "
-                    f"See EntityHierarchy.default().all_canonical_entities for valid values."
+                    f"See CanonicalMapper._hierarchy.all_canonical_entities for valid values."
                 )
         for label, canonical in mappings.items():
             if canonical is None:
@@ -475,3 +757,30 @@ class CanonicalMapper:
     def __repr__(self) -> str:
         n, p = len(self._labels), len(self.pending)
         return f"CanonicalMapper({n - p} resolved, {p} pending)"
+
+
+# ---------------------------------------------------------------------------
+# Module-level API (convenience wrappers around the default EntityHierarchy)
+# ---------------------------------------------------------------------------
+
+def canonicalize(raw_label: str) -> str:
+    """Resolve a raw label to its canonical entity name using the default hierarchy."""
+    return _DEFAULT_HIERARCHY.canonicalize(raw_label)
+
+
+def get_branch(raw_label: str) -> list[str]:
+    """Return the full ancestor path for a raw label using the default hierarchy."""
+    return _DEFAULT_HIERARCHY.get_branch(raw_label)
+
+
+def print_hierarchy(node: dict | None = None, indent: int = 0) -> None:
+    """Pretty-print the default hierarchy tree."""
+    _DEFAULT_HIERARCHY.print_hierarchy(node, indent)
+
+
+# Read-only snapshots of the default instance's lookup tables.
+RAW_TO_CANONICAL: dict[str, str] = _DEFAULT_HIERARCHY.raw_to_canonical
+ALL_CANONICAL_ENTITIES: list[str] = sorted(
+    set(_DEFAULT_HIERARCHY.all_canonical_entities) | set(_DEFAULT_HIERARCHY.raw_to_canonical.values())
+)
+CANONICAL_TO_BRANCH: dict[str, list[str]] = _DEFAULT_HIERARCHY.canonical_to_branch

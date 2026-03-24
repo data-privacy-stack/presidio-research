@@ -4,7 +4,6 @@ import pytest
 
 from presidio_evaluator.entity_mapping import (
     CanonicalMapper,
-    EntityMapper,
     IncompleteMapping,
 )
 
@@ -164,9 +163,13 @@ class TestResolveInteractively:
 
 
 class TestProtocolCompliance:
-    def test_canonical_mapper_satisfies_entity_mapper_protocol(self):
+    def test_canonical_mapper_has_required_methods(self):
         mapper = CanonicalMapper(["EMAIL_ADDRESS"])
-        assert isinstance(mapper, EntityMapper)
+        assert hasattr(mapper, "pending")
+        assert hasattr(mapper, "map")
+        assert hasattr(mapper, "resolve_interactively")
+        assert hasattr(mapper, "get_mapping")
+        assert hasattr(mapper, "render_html")
 
 
 class TestIncompleteMappingException:

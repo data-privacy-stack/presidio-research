@@ -1,4 +1,7 @@
+import ast
+import json
 import re
+import urllib.request
 from collections import Counter
 from huggingface_hub import HfApi
 from transformers import AutoConfig
@@ -323,12 +326,252 @@ def print_vendor_lists(vendor_lists):
 
 
 # ---------------------------------------------------------------------------
+# HuggingFace dataset scraping
+# ---------------------------------------------------------------------------
+
+_SPAN_ENTITY_FIELDS = frozenset({
+    "label", "entity_type", "tag", "entity", "type",
+    "ner_tag", "pii_type", "class", "category",
+})
+
+_HF_DS_SERVER = "https://datasets-server.huggingface.co"
+
+
+def _fetch_ds_json(path, timeout=15):
+    """GET a path on the HF datasets-server and return parsed JSON, or None on failure."""
+    try:
+        with urllib.request.urlopen(f"{_HF_DS_SERVER}{path}", timeout=timeout) as r:
+            return json.loads(r.read())
+    except Exception:
+        return None
+
+
+def _classlabels_from_feature_list(features):
+    """
+    Recursively parse a HuggingFace dataset-card features list and return all
+    ClassLabel names (handles both dict and list ``names`` mappings).
+
+    Columns whose names hint at POS/syntax tagging (``pos``, ``chunk``, ``dep``,
+    ``morph``) are skipped so that only NER-relevant labels are included.
+    """
+    _SYNTAX_COL_HINTS = ("pos", "chunk", "dep", "morph", "xpos", "upos")
+    entities = set()
+    if not isinstance(features, list):
+        return entities
+    for f in features:
+        if not isinstance(f, dict):
+            continue
+        col_lower = f.get("name", "").lower()
+        if any(hint in col_lower for hint in _SYNTAX_COL_HINTS):
+            continue
+        for container_key in ("sequence", "dtype"):
+            container = f.get(container_key)
+            if isinstance(container, dict) and "class_label" in container:
+                names = container["class_label"].get("names", {})
+                name_iter = names.values() if isinstance(names, dict) else names
+                for name in name_iter:
+                    clean = strip_bio_tags(str(name))
+                    if clean.upper() not in ("O", "OTHER") and "LABEL_" not in clean.upper():
+                        entities.add(clean)
+        # Recurse into nested list subfields (span-based schemas)
+        sub_list = f.get("list")
+        if isinstance(sub_list, list):
+            entities |= _classlabels_from_feature_list(sub_list)
+    return entities
+
+
+def _classlabels_from_card(dataset_id):
+    """
+    Extract entity types from a dataset README card's ClassLabel features.
+    Returns an empty set when the dataset has no ClassLabel features or card data.
+    """
+    try:
+        info = HfApi().dataset_info(dataset_id)
+        if not info.card_data:
+            return set()
+        d = info.card_data.to_dict()
+    except Exception:
+        return set()
+
+    ds_info = d.get("dataset_info", {})
+    configs = ds_info if isinstance(ds_info, list) else [ds_info]
+    entities = set()
+    for cfg in configs:
+        if isinstance(cfg, dict):
+            entities |= _classlabels_from_feature_list(cfg.get("features", []))
+    return entities
+
+
+def _scan_row(obj, entities):
+    """
+    Recursively scan a dataset row object for span-dict entity-type values.
+
+    Handles three column formats:
+
+    * **Native list** – the column is already a list of span dicts, returned
+      as a Python list by the datasets-server.
+    * **JSON string** – the column is a ``dtype: string`` field whose value is
+      a JSON-encoded list of span dicts (e.g. ``gretelai/synthetic_pii_…``).
+    * **Python-repr string** – the column stores a Python ``repr()`` of a list
+      of span dicts with single-quoted keys (e.g. ``ai4privacy/pii-masking-…``).
+    """
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k.lower() in _SPAN_ENTITY_FIELDS and isinstance(v, str) and v:
+                clean = strip_bio_tags(v)
+                if clean.upper() not in ("O", "OTHER"):
+                    entities.add(clean)
+            else:
+                _scan_row(v, entities)
+    elif isinstance(obj, list):
+        for item in obj:
+            _scan_row(item, entities)
+    elif isinstance(obj, str):
+        s = obj.strip()
+        if s.startswith("[") or s.startswith("{"):
+            for parser in (json.loads, ast.literal_eval):
+                try:
+                    _scan_row(parser(s), entities)
+                    break
+                except Exception:
+                    pass
+
+
+def _entities_for_one_dataset(dataset_id):
+    """
+    Extract entity types from a HuggingFace dataset using two strategies:
+
+    1. **ClassLabel names** from the dataset card README features (fast,
+       no row fetching needed).  Works for token-classification BIO datasets.
+    2. **Row sampling** via the datasets-server ``/first-rows`` endpoint,
+       scanning span-object fields.  Works for span-based datasets where entity
+       types are stored as string values in nested dicts.
+    """
+    # Strategy 1 – ClassLabel features from card metadata
+    entities = _classlabels_from_card(dataset_id)
+    if entities:
+        return entities
+
+    # Strategy 2 – sample first rows; discover config+split via /splits
+    splits_data = _fetch_ds_json(f"/splits?dataset={dataset_id}")
+    if not splits_data:
+        return set()
+
+    for split_info in splits_data.get("splits", []):
+        config = split_info.get("config", "default")
+        split = split_info.get("split", "train")
+        rows_data = _fetch_ds_json(
+            f"/first-rows?dataset={dataset_id}&config={config}&split={split}"
+        )
+        if rows_data and rows_data.get("rows"):
+            entities = set()
+            for row_wrapper in rows_data["rows"]:
+                _scan_row(row_wrapper.get("row", {}), entities)
+            if entities:
+                return entities
+
+    return set()
+
+
+def extract_entities_from_datasets(search_terms, limit_per_term=30):
+    """
+    Search HuggingFace *datasets* for NER/PII entity labels.
+
+    Supports both token-classification datasets (ClassLabel features in the
+    dataset card README) and span-based datasets (JSON or Python-repr list
+    fields containing entity-type strings).
+
+    Args:
+        search_terms:   List of keyword strings to search HuggingFace with.
+        limit_per_term: Maximum number of datasets to inspect per search term.
+
+    Returns:
+        Dict keyed by search term.  Each value is a dict with:
+
+        * ``entity_counts``    – Counter(entity -> # datasets it appears in)
+        * ``dataset_entities`` – dict(dataset_id -> sorted list of entities)
+    """
+    api = HfApi()
+    all_results = {}
+
+    for term in search_terms:
+        print(f"--- Processing dataset search term: '{term}' ---")
+        try:
+            datasets = list(api.list_datasets(
+                search=term,
+                sort="downloads",
+                limit=limit_per_term,
+            ))
+        except Exception as e:
+            print(f"Error fetching datasets for '{term}': {e}")
+            all_results[term] = {"entity_counts": Counter(), "dataset_entities": {}}
+            continue
+
+        entity_counts = Counter()
+        dataset_entities = {}
+
+        for ds in datasets:
+            ds_id = ds.id
+            try:
+                entities = _entities_for_one_dataset(ds_id)
+                if entities:
+                    dataset_entities[ds_id] = sorted(entities)
+                    entity_counts.update(entities)
+            except Exception:
+                continue
+
+        all_results[term] = {
+            "entity_counts": entity_counts,
+            "dataset_entities": dataset_entities,
+        }
+        print(
+            f"Found {len(entity_counts)} unique entities "
+            f"across {len(dataset_entities)} datasets.\n"
+        )
+
+    return all_results
+
+
+# ---------------------------------------------------------------------------
+# Dataset display helpers
+# ---------------------------------------------------------------------------
+
+def print_dataset_summary(results, title):
+    print(f"\n{'='*20} {title} {'='*20}")
+    for term, data in results.items():
+        entity_counts = data["entity_counts"]
+        dataset_entities = data["dataset_entities"]
+
+        print(f"\nKeyword: {term.upper()}")
+
+        print("\n  Entities by popularity (# datasets):")
+        if entity_counts:
+            for entity, count in entity_counts.most_common():
+                print(f"    {entity}: {count} dataset(s)")
+        else:
+            print("    No specific entities found.")
+
+        print("\n  Entities per dataset:")
+        if dataset_entities:
+            for ds_id, entities in dataset_entities.items():
+                print(f"    {ds_id}: {', '.join(entities)}")
+        else:
+            print("    No datasets with labeled entities found.")
+
+
+# ---------------------------------------------------------------------------
 # Execution
 # ---------------------------------------------------------------------------
 
-privacy_results = extract_entities_from_query(["pii", "phi", "privacy"])
+if __name__ == "__main__":
+    privacy_results = extract_entities_from_query(["pii", "phi", "privacy"])
 
-print_summary(privacy_results, "PRIVACY/PII ENTITIES (per search term)")
-print_combined_totals(privacy_results, VENDOR_LISTS)
-print_vendor_lists(VENDOR_LISTS)
+    print_summary(privacy_results, "PRIVACY/PII ENTITIES FROM MODELS (per search term)")
+    print_combined_totals(privacy_results, VENDOR_LISTS)
+    print_vendor_lists(VENDOR_LISTS)
+
+    dataset_results = extract_entities_from_datasets(["pii", "phi", "privacy"])
+
+    print_dataset_summary(dataset_results, "PRIVACY/PII ENTITIES FROM DATASETS (per search term)")
+    print_combined_totals(dataset_results)
 
