@@ -237,7 +237,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on the full pipeline being complete (US-001, US-002, US-005, US-006). Follow the 5-step pattern exactly."
     },
     {
@@ -250,7 +250,7 @@
         "No executable code remains in the replaced notebooks"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "Simple content replacement. Do after US-010 (model files removed) so the state is consistent."
     },
     {

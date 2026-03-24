@@ -2,24 +2,38 @@
 
 ## Unreleased
 
-### Breaking changes
-- **Entity mapping refactored**: `entity_mapping` parameter removed from `BaseModel` and now REQUIRED in evaluator constructors (`BaseEvaluator`, `SpanEvaluator`, `TokenEvaluator`). This provides better separation of concerns between model predictions and evaluation logic.
-  - Old: `model = BaseModel(entity_mapping={...})`  
-  - New: `evaluator = SpanEvaluator(model=model, entity_mapping={...})`
-- Removed methods from `BaseModel`: `align_entity_types()`, `align_prediction_types()`, and `prepare_dataset()` - entity alignment is now handled during evaluation
+> **Migration guide:** See [docs/migration-guide.md](docs/migration-guide.md) for step-by-step upgrade instructions.
 
-### Improvements
-- **EntityMappingHelper**: New interactive helper class for automatic entity mapping between dataset and model entities. Includes:
-  - Automatic entity detection from both dataset and model
-  - Suggested mappings with manual override capability
-  - Interactive HTML-based review interface
-  - Dataset filtering based on entity exclusions
-- **Smart entity filtering**: `calculate_score()` in `SpanEvaluator` and `TokenEvaluator` now defaults the `entities` parameter to `entities_to_keep` (from evaluator constructor) when not explicitly provided, ensuring consistent filtering across token-level and span-level metrics
-- Enhanced entity normalization in comparison logic with support for None values (identity mapping)
-- New entity mapping utilities: `DictEntityMapper`, `SemanticEntityMapper`, `HybridEntityMapper`, and `create_presidio_mapper()` for flexible entity mapping strategies
-- Updated notebooks (4 & 5) to demonstrate new `EntityMappingHelper` workflow
-- Improved logging: replaced print statements with proper logger calls
-- **Replaced example model**: New model yields better accuracy than before.
+### Breaking Changes
+
+- **`evaluate_all()` removed** — raises `DeprecationError` at runtime. Replace with the three-step pipeline: `predict_dataset()` → `CanonicalMapper.get_mapped_results_dataframe()` → `calculate_score_on_df()`.
+- **`entity_mapping` parameter removed** from `SpanEvaluator`, `TokenEvaluator`, and `BaseEvaluator` — entity mapping is now the responsibility of `CanonicalMapper`.
+- **`compare_by_io` parameter removed** from evaluator constructors — BIO/BILUO prefix stripping is now performed by `CanonicalMapper`.
+- **`BaseEvaluator.from_dataset()` removed** — use `model.predict_dataset(dataset)` directly.
+- **Non-Presidio model wrappers removed**: `FlairModel`, `SpacyModel`, `StanzaModel`, `AzureAITextAnalyticsWrapper`. Add models directly through Presidio to evaluate them.
+- **Minimum Python version raised to 3.11** (was 3.10) — required by `numpy >= 2.4.0`.
+- **Package manager changed from Poetry to uv** — install with `uv sync`, run with `uv run`.
+
+### New Features
+
+- **`BaseModel.predict_dataset(dataset)`** — runs the model on a list of `InputSample` objects and returns a 5-column DataFrame (`sentence_id`, `token`, `annotation`, `prediction`, `start_indices`).
+- **`CanonicalMapper`** — replaces `EntityMappingHelper` with an improved four-tier auto-resolution strategy (`EXACT`, `COUNTRY`, `FUZZY`, `PENDING`). Key methods:
+  - `CanonicalMapper.from_dataset(dataset)` — builds a mapper from dataset labels.
+  - `mapper.get_mapped_results_dataframe(results_df)` — applies entity mapping to a predictions DataFrame.
+  - `mapper.get_mapping(mode='html' | 'text')` — returns the final `{raw_label: canonical | None}` dict.
+  - `mapper.map({"LABEL": "CANONICAL"})` — manually resolve pending labels.
+  - `mapper.render_html()` — display the resolution audit table in Jupyter.
+- **`TokenEvaluator.calculate_score_on_df(results_df)`** — score token-level predictions from a DataFrame.
+- **`SpanEvaluator.calculate_score_on_df(per_type, results_df)`** — score span-level predictions from a DataFrame.
+- **Ruff** — added as the project linter and formatter (`ruff.toml` at project root).
+- **Pre-commit hooks** — `ruff format`, `ruff check`, and `pytest` run automatically before every commit (`.pre-commit-config.yaml`).
+- **Test reorganisation** — tests are now grouped by topic (`tests/data_generator/`, `tests/entity_mapping/`, `tests/evaluation/`, `tests/models/`, `tests/integration/`). Integration tests are tagged with `pytest.mark.integration`.
+
+### Deprecations
+
+- **`evaluator.get_results_dataframe()`** — soft `DeprecationWarning` emitted at runtime. Replace with `model.predict_dataset(dataset)`.
+
+
 
 ## Version 0.2.5
 

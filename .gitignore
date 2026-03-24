@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Temporary scripts (maintain in .gitignore to exclude from git and ruff)
+update_notebooks.py
+replace_model_notebooks.py
+
 # C extensions
 *.so
 
