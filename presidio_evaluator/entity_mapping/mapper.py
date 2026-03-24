@@ -6,7 +6,11 @@ import copy
 import difflib
 import logging
 import re
+import warnings
 from dataclasses import dataclass
+from typing import Optional
+
+import pandas as pd
 
 from presidio_evaluator.entity_mapping.definitions import (
     COUNTRIES,
@@ -413,7 +417,7 @@ class CanonicalMapper:
 
     def __init__(
         self,
-        labels: list[str] | set[str],
+        labels: Optional[list[str] | set[str]] = None,
         *,
         hierarchy: dict | EntityHierarchy | None = None,
         canonical_depth: int = 3,
@@ -426,11 +430,12 @@ class CanonicalMapper:
         else:
             self._hierarchy = EntityHierarchy.default()
         self._fuzzy_threshold = fuzzy_threshold
+        self._canonical_depth = canonical_depth
 
         # Deduplicate, preserving order for lists
         seen: set[str] = set()
         self._labels: list[str] = []
-        for label in labels:
+        for label in (labels or []):
             if label not in seen:
                 seen.add(label)
                 self._labels.append(label)
@@ -517,28 +522,31 @@ class CanonicalMapper:
         except EntityNotMappedError:
             return None
 
-    def _auto_resolve(self) -> None:
-        for label in self._labels:
+    def _auto_resolve(self, new_labels: list[str] | None = None) -> None:
+        labels_to_process = new_labels if new_labels is not None else self._labels
+        for label in labels_to_process:
             resolution = self._auto_resolve_one(label)
             if resolution is not None:
                 self._records[label] = resolution
 
-        n_total = len(self._labels)
-        n_resolved = len(self._records)
-        n_fuzzy = sum(1 for r in self._records.values() if r.tier == "FUZZY")
-        n_fallback = sum(1 for r in self._records.values() if r.tier == "COUNTRY_FALLBACK")
-        n_pending = n_total - n_resolved
+        if new_labels is None:
+            # Initial pass — log summary
+            n_total = len(self._labels)
+            n_resolved = len(self._records)
+            n_fuzzy = sum(1 for r in self._records.values() if r.tier == "FUZZY")
+            n_fallback = sum(1 for r in self._records.values() if r.tier == "COUNTRY_FALLBACK")
+            n_pending = n_total - n_resolved
 
-        logger.info(
-            "Resolved %d/%d labels automatically (%d fuzzy, %d country-fallback). "
-            "%d require manual mapping.",
-            n_resolved, n_total, n_fuzzy, n_fallback, n_pending,
-        )
-        for label in self._labels:
-            if label not in self._records:
-                logger.warning(
-                    "[UNRESOLVED] %s  — no automatic match found", label
-                )
+            logger.info(
+                "Resolved %d/%d labels automatically (%d fuzzy, %d country-fallback). "
+                "%d require manual mapping.",
+                n_resolved, n_total, n_fuzzy, n_fallback, n_pending,
+            )
+            for label in self._labels:
+                if label not in self._records:
+                    logger.warning(
+                        "[UNRESOLVED] %s  — no automatic match found", label
+                    )
 
     # ── State ────────────────────────────────────────────────────────────────
 
@@ -634,6 +642,112 @@ class CanonicalMapper:
         return self
 
     # ── Output ───────────────────────────────────────────────────────────────
+
+    def _add_labels(self, new_labels: list[str]) -> None:
+        """Incrementally add new labels that have not been seen before."""
+        truly_new: list[str] = []
+        seen = set(self._labels)
+        for label in new_labels:
+            if label not in seen:
+                seen.add(label)
+                self._labels.append(label)
+                self._stripped[label] = _strip_bio(label)
+                truly_new.append(label)
+        if truly_new:
+            self._auto_resolve(new_labels=truly_new)
+
+    def _map_tag(self, tag: str) -> str:
+        """Return the canonical form of a tag, or the original tag if not resolved."""
+        if tag not in self._records:
+            return tag  # label was never added or is pending
+        canonical = self._records[tag].canonical
+        return canonical if canonical is not None else tag
+
+    def get_mapped_results_dataframe(
+        self,
+        results_df: pd.DataFrame,
+        hierarchy: Optional[int] = None,
+    ) -> pd.DataFrame:
+        """
+        Apply entity mapping to annotation and prediction columns of results_df.
+
+        Extracts unique labels from both columns, auto-resolves any that have
+        not been seen before, then returns a new DataFrame with the annotation
+        and prediction columns replaced by their canonical equivalents.
+
+        Labels that map to None (suppressed) are passed through unchanged —
+        they will appear as false positives or false negatives during evaluation.
+
+        When annotation and prediction map to different canonical entities that
+        are related by the hierarchy (e.g., model predicts PERSON but dataset
+        annotates FIRSTNAME), a user-friendly warning is emitted.
+
+        :param results_df: DataFrame with at least 'annotation' and 'prediction'
+            columns (the 5-column schema returned by model.predict_dataset()).
+        :param hierarchy: Canonical depth override. If None, uses the depth set
+            at construction time (default 3).
+        :return: New DataFrame with remapped annotation and prediction columns.
+        """
+        if hierarchy is not None and hierarchy != self._canonical_depth:
+            # Rebuild hierarchy with the requested depth
+            self._canonical_depth = hierarchy
+            self._hierarchy = EntityHierarchy(canonical_depth=hierarchy)
+            # Re-resolve all known labels with the new depth
+            self._records.clear()
+            self._auto_resolve()
+
+        # Discover any new labels in the DataFrame
+        all_labels = (
+            list(results_df["annotation"].dropna().unique())
+            + list(results_df["prediction"].dropna().unique())
+        )
+        self._add_labels(all_labels)
+
+        # Build the remapped columns
+        mapped_df = results_df.copy()
+        mapped_df["annotation"] = results_df["annotation"].map(self._map_tag)
+        mapped_df["prediction"] = results_df["prediction"].map(self._map_tag)
+
+        # Warn about mixed-granularity pairs
+        self._warn_mixed_granularity(results_df)
+
+        return mapped_df
+
+    def _warn_mixed_granularity(self, results_df: pd.DataFrame) -> None:
+        """Emit a warning for annotation/prediction pairs at different hierarchy levels."""
+        mismatched_pairs: set[tuple[str, str]] = set()
+        for ann, pred in zip(results_df["annotation"], results_df["prediction"]):
+            if ann == "O" or pred == "O":
+                continue
+            mapped_ann = self._map_tag(ann)
+            mapped_pred = self._map_tag(pred)
+            if mapped_ann == mapped_pred:
+                continue
+            # Skip labels that were never resolved (still pending)
+            if ann not in self._records or pred not in self._records:
+                continue
+            # Check if they share a common ancestor (related by hierarchy)
+            try:
+                branch_ann = self._hierarchy.get_branch(mapped_ann)
+                branch_pred = self._hierarchy.get_branch(mapped_pred)
+                if set(branch_ann) & set(branch_pred):
+                    mismatched_pairs.add((ann, pred))
+            except Exception:
+                pass
+
+        if mismatched_pairs:
+            pair_str = ", ".join(
+                f"{a!r} vs {p!r}" for a, p in sorted(mismatched_pairs)
+            )
+            warnings.warn(
+                f"Some annotations and predictions resolve to different canonical entities: {pair_str}. "
+                f"This will count as false negatives/positives. To fix this: "
+                f"(a) call get_mapped_results_dataframe(results_df, hierarchy=2) to use a broader "
+                f"mapping level where both resolve to the same entity, or "
+                f"(b) call mapper.map({{'<label>': '<canonical>'}}) to manually specify the mapping.",
+                UserWarning,
+                stacklevel=3,
+            )
 
     def get_mapping(self) -> dict[str, str | None]:
         """

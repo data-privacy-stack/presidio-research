@@ -269,3 +269,98 @@ class TestRenderHtml:
     def test_render_html_can_be_called_before_resolution(self):
         mapper = CanonicalMapper(["XYZZY_UNKNOWN"])
         mapper.render_html()  # should not raise when pending
+
+
+class TestGetMappedResultsDataframe:
+    """Tests for CanonicalMapper.get_mapped_results_dataframe()."""
+
+    def _make_df(self, annotations, predictions):
+        import pandas as pd
+        n = len(annotations)
+        return pd.DataFrame({
+            "sentence_id": list(range(n)),
+            "token": [f"t{i}" for i in range(n)],
+            "annotation": annotations,
+            "prediction": predictions,
+            "start_indices": [0] * n,
+        })
+
+    def test_basic_remapping(self):
+        """Labels in both columns are mapped to their canonical names."""
+        df = self._make_df(["EMAIL_ADDRESS", "O"], ["EMAIL_ADDRESS", "O"])
+        mapper = CanonicalMapper()
+        result = mapper.get_mapped_results_dataframe(df)
+        assert result["annotation"].tolist() == ["EMAIL_ADDRESS", "O"]
+        assert result["prediction"].tolist() == ["EMAIL_ADDRESS", "O"]
+
+    def test_none_passthrough(self):
+        """Labels mapped to None remain as their original value in the output."""
+        mapper = CanonicalMapper(["MY_SUPPRESSED"])
+        mapper.map({"MY_SUPPRESSED": None})
+        df = self._make_df(["MY_SUPPRESSED"], ["O"])
+        result = mapper.get_mapped_results_dataframe(df)
+        assert result["annotation"].tolist() == ["MY_SUPPRESSED"]
+
+    def test_hierarchy_level_1(self):
+        """hierarchy=1 resolves everything to the top-level PII category."""
+        mapper = CanonicalMapper()
+        df = self._make_df(["EMAIL_ADDRESS", "PERSON"], ["EMAIL_ADDRESS", "PERSON"])
+        result = mapper.get_mapped_results_dataframe(df, hierarchy=1)
+        assert all(v == "PII" for v in result["annotation"])
+
+    def test_hierarchy_level_2(self):
+        """hierarchy=2 maps FIRSTNAME and PERSON to the same PERSON entity."""
+        mapper = CanonicalMapper()
+        df = self._make_df(["FIRSTNAME", "PERSON"], ["PERSON", "PERSON"])
+        result = mapper.get_mapped_results_dataframe(df, hierarchy=2)
+        assert result["annotation"].tolist() == ["PERSON", "PERSON"]
+        assert result["prediction"].tolist() == ["PERSON", "PERSON"]
+
+    def test_hierarchy_level_3(self):
+        """hierarchy=3 (default) keeps granular entities like NAME."""
+        mapper = CanonicalMapper()
+        df = self._make_df(["FIRSTNAME"], ["PERSON"])
+        result = mapper.get_mapped_results_dataframe(df, hierarchy=3)
+        ann = result["annotation"].tolist()[0]
+        assert ann != "FIRSTNAME"  # should have been remapped
+
+    def test_incremental_label_discovery(self):
+        """New labels seen in subsequent DataFrames are auto-resolved."""
+        mapper = CanonicalMapper(["EMAIL_ADDRESS"])
+        df1 = self._make_df(["EMAIL_ADDRESS"], ["EMAIL_ADDRESS"])
+        mapper.get_mapped_results_dataframe(df1)
+        # FIRSTNAME not in original labels
+        df2 = self._make_df(["FIRSTNAME"], ["PERSON"])
+        mapper.get_mapped_results_dataframe(df2)
+        assert "FIRSTNAME" in mapper._labels
+        assert "PERSON" in mapper._labels
+
+    def test_mixed_level_warning(self):
+        """A UserWarning is raised when annotation and prediction map to related but different entities."""
+        import warnings
+        mapper = CanonicalMapper()
+        df = self._make_df(["FIRSTNAME", "O"], ["PERSON", "O"])
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            mapper.get_mapped_results_dataframe(df)
+        assert any(issubclass(warning.category, UserWarning) for warning in w), (
+            "Expected a UserWarning for mixed-granularity mapping"
+        )
+
+    def test_no_warning_when_same_canonical(self):
+        """No warning when annotation and prediction map to the same canonical entity."""
+        import warnings
+        mapper = CanonicalMapper()
+        df = self._make_df(["EMAIL_ADDRESS", "O"], ["EMAIL_ADDRESS", "O"])
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            mapper.get_mapped_results_dataframe(df)
+        user_warnings = [warning for warning in w if issubclass(warning.category, UserWarning)]
+        assert not user_warnings, f"Unexpected warnings: {user_warnings}"
+
+    def test_empty_constructor_works(self):
+        """CanonicalMapper() with no arguments works with get_mapped_results_dataframe."""
+        mapper = CanonicalMapper()
+        df = self._make_df(["PERSON", "O"], ["PERSON", "O"])
+        result = mapper.get_mapped_results_dataframe(df)
+        assert list(result.columns) == ["sentence_id", "token", "annotation", "prediction", "start_indices"]
