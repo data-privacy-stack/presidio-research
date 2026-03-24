@@ -1,4 +1,14 @@
 ## Codebase Patterns
+- `InputSample.tokens` is a spaCy Doc or list; use `str(token)` to get token text in either case
+- `InputSample.sample_id` may be None — fall back to loop index for `sentence_id`
+- ruff is the linter: `ruff check <file>` — fix unused imports before committing
+- Test conftest.py requires spacy/pandas/presidio_analyzer; regular tests run fine with it
+- `MockTokensModel` in tests/mocks returns a fixed prediction list — useful for DataFrame schema tests
+
+<!-- archived previous run to ralph/archive/2026-03-24-canonical-mapper/ -->
+
+## Original content from canonical-mapper run (archived):
+
 - entity_mapping module lives in presidio_evaluator/entity_mapping/ with mapper.py, hierarchy.py, __init__.py
 - EntityHierarchy._normalize() strips hyphens and underscores and uppercases; so "B-PERSON" normalizes to "BPERSON" (not "PERSON")
 - BIO stripping must happen BEFORE hierarchy resolution, using original label as dict key
@@ -29,4 +39,21 @@
   - hierarchy.py had a duplicate canonicalize() method (dead code) — removed
   - __init__.py imported CANONICAL_DEPTH which never existed at module level in hierarchy.py
   - BIO stripping regex must require hyphen: ^[BIOELSU]-(.+)$ — ensures BANK_ACCOUNT is not stripped
+---
+
+## 2026-03-24 - US-001
+- What was implemented:
+  - Added `predict_dataset(dataset: List[InputSample]) -> pd.DataFrame` to `BaseModel`
+  - Method calls `batch_predict()` internally and assembles a flat 5-column DataFrame
+  - No entity mapping is applied — predictions pass through unchanged
+  - Added `import pandas as pd` to base_model.py
+  - Added 5 unit tests verifying schema, values, sentence_id fallback, no-mapping, multi-sample
+- Files changed:
+  - presidio_evaluator/models/base_model.py
+  - tests/test_base_model.py
+- **Learnings for future iterations:**
+  - `str(token)` works for both spaCy Token objects and plain strings — safe token text extraction
+  - `InputSample.sample_id` can be None (default) — always provide a fallback to loop index
+  - replace_string_in_file: include full method signature in oldString to avoid partial matches that orphan code fragments
+  - ruff F401: unused imports in test files cause lint failures — check after editing
 ---
