@@ -248,3 +248,13 @@
   - Notebooks excluded from ruff: `notebooks/` added to `ruff.toml` exclude list (E402 module imports in cells is natural; B018 display expressions are intentional)
   - When ruff runs project-wide (not just presidio_evaluator/), tests need ruff format + check too
 ---
+
+## 2026-05-28 - US-017
+- What was implemented: Test files reorganized into topic subdirs. Created tests/data_generator/, tests/entity_mapping/, tests/evaluation/, tests/models/, tests/integration/. Added __init__.py to each. Added pytest.mark.integration marker to pyproject.toml. Created tests/integration/conftest.py with pytest_collection_modifyitems auto-marker. Updated pre-commit config pytest hook path.
+- Files changed: 28 files (git mv renames + new __init__.py + integration conftest.py + path fixes in 4 moved files)
+- **Learnings for future iterations:**
+  - Tests using `os.path.dirname(__file__)` to find `tests/data/` break when moved to subdirs — must update to `os.path.dirname(os.path.dirname(__file__))` or `Path(__file__).parent.parent`
+  - `git mv` preserves rename history — always use it instead of cp+rm
+  - Integration conftest.py uses `pytest_collection_modifyitems` hook, not `pytest.ini` markers on each test
+  - Pre-commit pytest hook path `--ignore=tests/test_entity_hierarchy.py` must be updated to `--ignore=tests/entity_mapping/test_entity_hierarchy.py` after reorganization
+---

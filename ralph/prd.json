@@ -222,7 +222,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "Move files and update imports together — tightly coupled. Use git mv to preserve history. conftest.py auto-marker approach preferred over decorating each test individually."
     },
     {
