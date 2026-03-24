@@ -115,7 +115,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Hard stop — do not fall through to the old implementation. The error message must show the new pipeline."
     },
     {

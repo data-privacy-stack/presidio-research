@@ -8,6 +8,10 @@
 - **PresidioRecognizerWrapper default labeling_scheme is now "IO"** (changed from "BILUO" in US-005)
 - **SpacyModel tests deleted** in US-005 (SpacyModel itself will be removed in US-010)
 - test_entity_hierarchy.py and tests/integration/test_notebook.py are the legitimate excludable/tricky tests; run with `--ignore=tests/test_entity_hierarchy.py` but integration now passes
+- **Mock model predictions must be in IO format** (not BIO/BILUO) since `_adjust_per_entities()` does exact string match and BIO prefix stripping is now the mapper's job
+- **evaluate_all() raises DeprecationError** (US-007 hard stop) — use predict_dataset() + calculate_score_on_df() instead
+- **DeprecationError** is defined in base_evaluator.py and exported from presidio_evaluator.evaluation
+- **Temp files (check_nb.py, check_nb2.py, update_nb.py)** must be .gitignored before committing — not added yet!
 
 <!-- archived previous run to ralph/archive/2026-03-24-canonical-mapper/ -->
 
@@ -126,4 +130,30 @@
   - `InputSample.sample_id` can be None (default) — always provide a fallback to loop index
   - replace_string_in_file: include full method signature in oldString to avoid partial matches that orphan code fragments
   - ruff F401: unused imports in test files cause lint failures — check after editing
+---
+
+## 2026-03-24 22:19 - US-007
+- What was implemented:
+  - Added `DeprecationError(RuntimeError)` class to `base_evaluator.py` before `BaseEvaluator`
+  - Replaced `evaluate_all()` implementation with `raise DeprecationError(...)` (hard stop)
+  - Error message contains 3-step migration snippet referencing predict_dataset/get_mapped_results_dataframe/calculate_score_on_df
+  - Exported `DeprecationError` from `presidio_evaluator/evaluation/__init__.py`
+  - Updated all 10 call sites across 6 test files to use new pipeline
+  - Added `test_evaluate_all_raises_deprecation_error` to test_token_evaluator.py
+  - Updated mock model prediction strings from BIO/BILUO format (U-PERSON) to IO format (PERSON)
+- Files changed:
+  - presidio_evaluator/evaluation/base_evaluator.py (DeprecationError class + evaluate_all body)
+  - presidio_evaluator/evaluation/__init__.py (added DeprecationError export)
+  - tests/test_token_evaluator.py (5 call sites + deprecation test + prediction format fix)
+  - tests/test_evaluator.py (1 call site)
+  - tests/test_presidio_analyzer_wrapper.py (2 call sites: evaluate_all + one more Evaluator ref)
+  - tests/test_recognizers_generated_text.py (1 call site + import change)
+  - tests/test_recognizers_template_csv.py (1 call site + import change)
+  - tests/integration/test_notebook.py (evaluate_all call site + import change)
+- **Learnings for future iterations:**
+  - `_adjust_per_entities()` does exact string match: "U-PERSON" NOT IN ["PERSON"]. Mock predictions with BIO prefixes silently fail — always use IO format in tests
+  - `pii_precision/recall` counts any non-O→non-O pair as TP at PII level (even WrongEntity across types)
+  - `Evaluator` (deprecated alias for TokenEvaluator) may still appear in tests — update all to `TokenEvaluator`
+  - Multiple separate imports of the same symbol cause F811 ruff error
+  - Add temp script files to `.gitignore` BEFORE running git add to avoid committing them
 ---
