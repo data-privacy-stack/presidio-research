@@ -76,7 +76,7 @@ def test_credit_card_recognizer_with_template(
      allowed for tests to pass
     """
 
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+    dir_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
     with open(utterances.format(dir_path)) as utterances_file:
         templates = [line.rstrip() for line in utterances_file]

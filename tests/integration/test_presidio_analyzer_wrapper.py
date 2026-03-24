@@ -75,7 +75,7 @@ def test_analyzer_with_generated_text(test_input, acceptance_threshold):
 
     import os
 
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+    dir_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     input_samples = InputSample.read_dataset_json(test_input.format(dir_path))
 
     analyzer = PresidioAnalyzerWrapper()

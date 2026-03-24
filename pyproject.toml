@@ -47,7 +47,8 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "inconclusive: marks tests as those that may sometimes fail due to threshold",
     "none: regular tests",
-    "serial"
+    "serial",
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')"
 ]
 # Uncomment the following lines to enable logging during test debugging.
 # log_cli = true

@@ -59,7 +59,7 @@ def test_credit_card_recognizer_with_generated_text(test_input, acceptance_thres
     """
 
     # read test input from generated file
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+    dir_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     input_samples = InputSample.read_dataset_json(test_input.format(dir_path))
 
     nlp_engine = SpacyNlpEngine()

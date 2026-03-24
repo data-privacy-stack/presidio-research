@@ -221,7 +221,7 @@ def test_confusion_matrix_2_correct_metrics():
 def test_dataset_to_metric_identity_model():
     import os
 
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+    dir_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     input_samples = InputSample.read_dataset_json(
         f"{dir_path}/data/generated_small.json", length=10
     )
@@ -238,7 +238,7 @@ def test_dataset_to_metric_identity_model():
 def test_dataset_to_metric_50_50_model():
     import os
 
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+    dir_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     input_samples = InputSample.read_dataset_json(
         f"{dir_path}/data/generated_small.json", length=100
     )

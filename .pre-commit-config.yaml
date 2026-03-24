@@ -18,6 +18,6 @@ repos:
       - id: pytest
         name: pytest (unit tests only)
         language: system
-        entry: uv run pytest -m "not slow and not integration" --ignore=tests/test_entity_hierarchy.py --ignore=tests/integration -q
+        entry: uv run pytest -m "not slow and not integration" --ignore=tests/entity_mapping/test_entity_hierarchy.py --ignore=tests/integration -q
         pass_filenames: false
         always_run: true

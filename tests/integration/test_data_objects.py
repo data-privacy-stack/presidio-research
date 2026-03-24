@@ -10,7 +10,7 @@ from presidio_evaluator import InputSample, Span
 
 @pytest.fixture(scope="session")
 def small_dataset():
-    dir_path = Path(__file__).parent
+    dir_path = Path(__file__).parent.parent
     input_samples = InputSample.read_dataset_json(
         Path(dir_path, "data", "generated_small.json")
     )
@@ -84,7 +84,7 @@ def test_update_entity_types(input_sample_result):
 
 
 def test_load_dataset_from_file(input_sample_result_2):
-    dir_path = Path(__file__).parent
+    dir_path = Path(__file__).parent.parent
 
     records = InputSample.read_dataset_json(
         Path(dir_path, "data", "mock_input_samples.json")
@@ -113,7 +113,7 @@ def test_remove_unsupported_entities(input_sample_result, input_sample_result_2)
 def test_to_conll():
     import os
 
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+    dir_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     input_samples = InputSample.read_dataset_json(
         os.path.join(dir_path, "data/generated_small.json")
     )
