@@ -57,8 +57,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "Bridges model output to evaluator input. hierarchy param is new on __init__. Depends on US-005 being done so the target contract (pre-mapped DataFrame) is established."
+      "passes": true,
     },
     {
       "id": "US-006",

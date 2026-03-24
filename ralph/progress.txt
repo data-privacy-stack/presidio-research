@@ -45,6 +45,28 @@
   - BIO stripping regex must require hyphen: ^[BIOELSU]-(.+)$ — ensures BANK_ACCOUNT is not stripped
 ---
 
+## 2026-03-26 - US-002
+- What was implemented:
+  - Made `CanonicalMapper.__init__` labels parameter optional (default `None` → empty list)
+  - Added `_canonical_depth` instance attribute to track requested depth
+  - Updated `_auto_resolve()` to accept `new_labels` arg for incremental resolution  
+  - Added `_add_labels(new_labels)` for incremental label discovery
+  - Added `_map_tag(tag)` helper returning canonical or original tag
+  - Added `get_mapped_results_dataframe(results_df, hierarchy=None)` main method
+  - Added `_warn_mixed_granularity(results_df)` for cross-resolution-level warnings
+  - Added 9 unit tests in `TestGetMappedResultsDataframe` class
+  - Added `import pandas as pd` and `import warnings` to mapper.py
+- Files changed:
+  - presidio_evaluator/entity_mapping/mapper.py
+  - tests/test_canonical_mapper.py
+- **Learnings for future iterations:**
+  - `CanonicalMapper` uses `_records` dict to store resolutions; check label presence there to determine if resolved
+  - Mixed-granularity warning: check `set(branch_ann) & set(branch_pred)` — shared ancestors indicate related entities
+  - `_to_io` static helper in `BaseModel` strips BIO prefix from a single tag (`tag[2:]` when `"-"` in tag)
+  - EntityHierarchy.get_branch() can raise if canonical not in branch map — always wrap in try/except in warning logic
+  - hierarchy=1 maps everything to "PII" (top-level), hierarchy=2 maps to PERSON/LOCATION etc, hierarchy=3 (default) is most granular
+---
+
 ## 2026-03-26 - US-005
 - What was implemented:
   - Removed `entity_mapping` and `compare_by_io` parameters from `BaseEvaluator.__init__`
