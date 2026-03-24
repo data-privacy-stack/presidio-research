@@ -38,7 +38,7 @@ def evaluation_result() -> EvaluationResult:
 @pytest.fixture(scope="session")
 def evaluator():
     model = MockTokensModel(prediction=None)
-    evaluator = Evaluator(model=model, entity_mapping={})
+    evaluator = Evaluator(model=model)
     return evaluator
 
 

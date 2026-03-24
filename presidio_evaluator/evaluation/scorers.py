@@ -22,33 +22,28 @@ def score_model(
     """
     DEPRECATED: This function is deprecated and will be removed in a future version.
 
-    Please use the evaluation patterns shown in the notebooks instead:
-    - See notebooks/4_Evaluate_Presidio_Analyzer.ipynb
-    - See notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb
+    Please use the new 5-step pipeline instead:
+        results_df = model.predict_dataset(dataset)
+        mapper = CanonicalMapper()
+        results_df_mapped = mapper.get_mapped_results_dataframe(results_df)
+        evaluator = SpanEvaluator(model=None)
+        result = evaluator.calculate_score_on_df(results_df_mapped)
 
-    The new approach requires passing entity_mapping to the evaluator:
-        evaluator = Evaluator(
-            model=model,
-            entity_mapping={'DATASET_ENTITY': 'MODEL_ENTITY'},
-            entities_to_keep=entities_to_keep
-        )
-
-    Run data through a model and gather results and stats
+    See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.
     """
     warnings.warn(
         "score_model() is deprecated and will be removed in a future version. "
-        "Please use the evaluation patterns shown in notebooks/4_Evaluate_Presidio_Analyzer.ipynb. "
-        "The new approach requires passing entity_mapping to the evaluator.",
+        "Please use model.predict_dataset() + CanonicalMapper + evaluator.calculate_score_on_df(). "
+        "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
         DeprecationWarning,
         stacklevel=2,
     )
 
     raise NotImplementedError(
-        "score_model() is no longer functional because it does not accept entity_mapping parameter. "
-        "The evaluator now requires entity_mapping to be provided. "
-        "Please use the evaluation pattern shown in notebooks/4_Evaluate_Presidio_Analyzer.ipynb: \\n"
-        "  evaluator = Evaluator(model=model, entity_mapping={...}, entities_to_keep=entities_to_keep)\\n"
-        "  results = evaluator.evaluate_all(dataset)"
+        "score_model() is no longer functional. "
+        "Please use the new pipeline: model.predict_dataset() -> CanonicalMapper.get_mapped_results_dataframe() "
+        "-> evaluator.calculate_score_on_df(). "
+        "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example."
     )
 
 
@@ -63,25 +58,20 @@ def score_presidio_recognizer(
     """
     DEPRECATED: This function is deprecated.
 
-    Please use the evaluation patterns shown in the notebooks instead:
-    - See notebooks/4_Evaluate_Presidio_Analyzer.ipynb
-    - See notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb
-
-    The new approach requires passing entity_mapping to the evaluator:
+    Please use the new 5-step pipeline instead:
         model = PresidioRecognizerWrapper(recognizer, ...)
-        evaluator = Evaluator(
-            model=model,
-            entity_mapping={'DATASET_ENTITY': 'MODEL_ENTITY'},
-            entities_to_keep=entities_to_keep
-        )
-        results = evaluator.evaluate_all(dataset)
+        results_df = model.predict_dataset(dataset)
+        mapper = CanonicalMapper()
+        results_df_mapped = mapper.get_mapped_results_dataframe(results_df)
+        evaluator = SpanEvaluator(model=None)
+        result = evaluator.calculate_score_on_df(results_df_mapped)
 
-    Run data through one EntityRecognizer and gather results and stats
+    See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.
     """
     warnings.warn(
         "score_presidio_recognizer() is deprecated. "
-        "Please use the evaluation patterns shown in notebooks/4_Evaluate_Presidio_Analyzer.ipynb. "
-        "The new approach requires passing entity_mapping to the evaluator.",
+        "Please use model.predict_dataset() + CanonicalMapper + evaluator.calculate_score_on_df(). "
+        "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
         DeprecationWarning,
         stacklevel=2,
     )
@@ -94,10 +84,9 @@ def score_presidio_recognizer(
     else:
         input_samples = list(input_samples)
 
-    # NOTE: Entity alignment removed - entity_mapping should be passed to evaluator
-    # For proper usage, see notebooks/4_Evaluate_Presidio_Analyzer.ipynb
     raise NotImplementedError(
-        "score_presidio_recognizer() requires entity_mapping to be passed to the evaluator. "
-        "This function can no longer automatically align entity types. "
-        "Please use the evaluation pattern shown in notebooks/4_Evaluate_Presidio_Analyzer.ipynb instead."
+        "score_presidio_recognizer() is no longer functional. "
+        "Please use the new pipeline: model.predict_dataset() -> CanonicalMapper.get_mapped_results_dataframe() "
+        "-> evaluator.calculate_score_on_df(). "
+        "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example."
     )

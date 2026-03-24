@@ -4,8 +4,9 @@ import pandas as pd
 from plotly.graph_objs import Figure
 from unittest.mock import MagicMock, patch
 
-from presidio_evaluator.evaluation import EvaluationResult, ModelError
+from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.evaluation.plotter import Plotter
+from presidio_evaluator.evaluation.span_evaluator import SpanEvaluator
 
 
 @pytest.fixture
@@ -227,3 +228,43 @@ def test_plot_most_common_tokens_empty_data(mock_evaluation_result, tmp_path):
             # Assert - no figures should be saved when there's no data
             # The function should complete without errors
             assert True
+
+
+def test_plotter_with_span_evaluator_output():
+    """
+    Regression: EvaluationResult from SpanEvaluator.calculate_score_on_df()
+    must contain all fields required by Plotter.plot_scores() after entity
+    mapping was stripped from the evaluator.
+    """
+    # Build a pre-mapped DataFrame (no entity mapping needed)
+    results_df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0, 0, 1, 1],
+            "token": ["John", "lives", "in", "Jane", "Smith"],
+            "annotation": ["PERSON", "O", "O", "PERSON", "PERSON"],
+            "prediction": ["PERSON", "O", "O", "PERSON", "O"],
+            "start_indices": [0, 5, 11, 0, 5],
+        }
+    )
+
+    evaluator = SpanEvaluator(model=None, skip_words=[])
+    evaluation_result = evaluator.calculate_score_on_df(
+        per_type=True, results_df=results_df
+    )
+    global_df = SpanEvaluator.create_global_entities_df(results_df)
+    evaluation_result = evaluator.calculate_score_on_df(
+        per_type=False, results_df=global_df, evaluation_result=evaluation_result
+    )
+
+    # Verify all fields Plotter.plot_scores() requires
+    assert evaluation_result.entity_recall_dict is not None
+    assert evaluation_result.entity_precision_dict is not None
+    assert evaluation_result.n_dict is not None
+    assert evaluation_result.pii_recall is not None
+    assert evaluation_result.pii_precision is not None
+    assert evaluation_result.pii_f is not None
+
+    # Regression: Plotter must not raise after entity mapping was stripped
+    with patch("plotly.express.bar", return_value=MagicMock(spec=Figure)):
+        plotter = Plotter(results=evaluation_result)
+        plotter.plot_scores(output_folder=None)

@@ -1,11 +1,9 @@
-from collections import Counter
 from typing import List, Optional
 
-import numpy as np
 import pandas as pd
 import pytest
 
-from presidio_evaluator import InputSample, Span
+from presidio_evaluator import InputSample
 
 from presidio_evaluator.evaluation import EvaluationResult, BaseEvaluator, ErrorType
 from tests.mocks import MockTokensModel
@@ -18,30 +16,30 @@ class MockEvaluator(BaseEvaluator):
 
 
 def test_evaluate_sample_wrong_entities_to_keep_correct_statistics():
-    prediction = ["O", "O", "O", "U-ANIMAL"]
+    prediction = ["O", "O", "O", "ANIMAL"]
     model = MockTokensModel(prediction=prediction)
 
-    evaluator = MockEvaluator(model=model, entity_mapping={}, entities_to_keep=["SPACESHIP"])
+    evaluator = MockEvaluator(model=model, entities_to_keep=["SPACESHIP"])
 
     sample = InputSample(
         full_text="I am the walrus", masked="I am the [ANIMAL]", spans=None
     )
     sample.tokens = ["I", "am", "the", "walrus"]
-    sample.tags = ["O", "O", "O", "U-ANIMAL"]
+    sample.tags = ["O", "O", "O", "ANIMAL"]
 
     evaluated = evaluator.evaluate_sample(sample, prediction)
     assert evaluated.results[("O", "O")] == 4
 
 
 def test_evaluate_same_entity_correct_statistics():
-    prediction = ["O", "U-ANIMAL", "O", "U-ANIMAL"]
+    prediction = ["O", "ANIMAL", "O", "ANIMAL"]
     model = MockTokensModel(prediction=prediction)
-    evaluator = MockEvaluator(model=model, entity_mapping={}, entities_to_keep=["ANIMAL"], skip_words=["-"])
+    evaluator = MockEvaluator(model=model, entities_to_keep=["ANIMAL"], skip_words=["-"])
     sample = InputSample(
         full_text="I dog the walrus", masked="I [ANIMAL] the [ANIMAL]", spans=None
     )
     sample.tokens = ["I", "am", "the", "walrus"]
-    sample.tags = ["O", "O", "O", "U-ANIMAL"]
+    sample.tags = ["O", "O", "O", "ANIMAL"]
 
     evaluation_result = evaluator.evaluate_sample(sample, prediction)
     assert evaluation_result.results[("O", "O")] == 2
@@ -50,18 +48,18 @@ def test_evaluate_same_entity_correct_statistics():
 
 
 def test_evaluate_multiple_entities_to_keep_correct_statistics():
-    prediction = ["O", "U-ANIMAL", "O", "U-ANIMAL"]
+    prediction = ["O", "ANIMAL", "O", "ANIMAL"]
     entities_to_keep = ["ANIMAL", "PLANT", "SPACESHIP"]
     model = MockTokensModel(prediction=prediction)
     evaluator = MockEvaluator(
-        model=model, entity_mapping={}, entities_to_keep=entities_to_keep, skip_words=["-"]
+        model=model, entities_to_keep=entities_to_keep, skip_words=["-"]
     )
 
     sample = InputSample(
         full_text="I dog the walrus", masked="I [ANIMAL] the [ANIMAL]", spans=None
     )
     sample.tokens = ["I", "am", "the", "walrus"]
-    sample.tags = ["O", "O", "O", "U-ANIMAL"]
+    sample.tags = ["O", "O", "O", "ANIMAL"]
 
     evaluation_result = evaluator.evaluate_sample(sample, prediction)
     assert evaluation_result.results[("O", "O")] == 2
@@ -93,7 +91,7 @@ def test_generic_entities_are_treated_like_specific_entities(
     tags, predicted_tags, expected_dict
 ):
     model = MockTokensModel(prediction=predicted_tags)
-    evaluator = MockEvaluator(model=model, entity_mapping={})
+    evaluator = MockEvaluator(model=model)
 
     tokens = ["A", "123", "456"]
 
@@ -115,7 +113,7 @@ def test_error_type_classification():
     """
     prediction = ["O", "EMAIL", "PHONE", "LOCATION", "PERSON"]
 
-    evaluator = MockEvaluator(model=MockTokensModel(prediction), entity_mapping={})
+    evaluator = MockEvaluator(model=MockTokensModel(prediction))
 
     # Ground truth: [PERSON, O, EMAIL, PHONE, O]
     # Prediction:   [PERSON, EMAIL, PHONE, LOCATION, PERSON]
@@ -167,7 +165,7 @@ def test_get_results_dataframe_basic():
         )
     ]
     
-    evaluator = MockEvaluator(model=None, entity_mapping={})
+    evaluator = MockEvaluator(model=None)
     df = evaluator.get_results_dataframe(evaluation_results)
 
     # Verify the dataframe has the correct shape and columns
@@ -194,7 +192,7 @@ def test_get_results_dataframe_with_entity_filtering():
         )
     ]
     
-    evaluator = MockEvaluator(model=None, entity_mapping={})
+    evaluator = MockEvaluator(model=None)
     # Filter to only include PERSON entities
     df = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
 
@@ -215,7 +213,7 @@ def test_get_results_dataframe_with_multiple_entities():
         )
     ]
     
-    evaluator = MockEvaluator(model=None, entity_mapping={})
+    evaluator = MockEvaluator(model=None)
     # Filter to only include PERSON entities
     df_person = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
     assert list(df_person["annotation"]) == ["O", "O", "O", "PERSON", "PERSON", "O", "O", "O", "O", "O"]
@@ -241,7 +239,7 @@ def test_get_results_dataframe_with_mismatched_predictions():
         )
     ]
     
-    evaluator = MockEvaluator(model=None, entity_mapping={})
+    evaluator = MockEvaluator(model=None)
     # Filter to only include PERSON entities
     df_person = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
     assert list(df_person["annotation"]) == ["PERSON", "PERSON", "O", "O", "O", "O"]
@@ -277,7 +275,7 @@ def test_get_results_dataframe_with_multiple_sentences():
         )
     ]
     
-    evaluator = MockEvaluator(model=None, entity_mapping={})
+    evaluator = MockEvaluator(model=None)
     # Filter to only include PERSON entities
     df = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
 
@@ -291,7 +289,7 @@ def test_get_results_dataframe_with_multiple_sentences():
 
 def test_empty_evaluation_results():
     """Test that an error is raised when evaluation results are empty."""
-    evaluator = MockEvaluator(model=None, entity_mapping={})
+    evaluator = MockEvaluator(model=None)
     with pytest.raises(ValueError):
         evaluator.get_results_dataframe([])
 
@@ -307,7 +305,7 @@ def test_evaluation_results_without_tokens():
         results={}
     )
     
-    evaluator = MockEvaluator(model=None, entity_mapping={})
+    evaluator = MockEvaluator(model=None)
     with pytest.raises(ValueError):
         evaluator.get_results_dataframe([empty_result])
 
@@ -321,7 +319,7 @@ def test_results_to_dataframe_with_entity_filtering():
     tokens = ["John", "details", "john@example.com", "New York", "Smith"]
     tags = ["PERSON", "O", "EMAIL", "LOCATION", "PERSON"]
     start_indices = [0, 5, 13, 27, 40]
-    evaluator = MockEvaluator(model=MockTokensModel(prediction), entity_mapping={})
+    evaluator = MockEvaluator(model=MockTokensModel(prediction))
 
     sample = InputSample(
         full_text="John details john@example.com New York Smith",

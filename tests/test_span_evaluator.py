@@ -4,7 +4,7 @@ import pytest
 from presidio_evaluator.data_objects import Span
 
 from presidio_evaluator.evaluation import EvaluationResult, ErrorType, SpanEvaluator
-from tests.mocks import MockModel, MockTokensModel
+from tests.mocks import MockModel
 
 
 @pytest.fixture
@@ -12,7 +12,6 @@ def span_evaluator():
     """Create a SpanEvaluator instance for testing."""
     return SpanEvaluator(
         model=MockModel(), 
-        entity_mapping={},  # No mapping needed for these tests
         iou_threshold=0.75, 
         char_based=True, 
         skip_words=None
@@ -723,7 +722,6 @@ def test_calculate_iou_token_based():
     )
     span_evaluator = SpanEvaluator(
         model=MockModel(), 
-        entity_mapping={},
         iou_threshold=0.75, 
         char_based=False, 
         skip_words=[]
@@ -1429,7 +1427,6 @@ def test_span_creation_with_skip_words(
     # Create evaluator with specific skip words
     span_evaluator = SpanEvaluator(
         model=MockModel(), 
-        entity_mapping={},
         iou_threshold=0.75, 
         char_based=True, 
         skip_words=skip_words
@@ -1488,113 +1485,4 @@ def test_span_creation_with_skip_words(
         ), f"In {scenario}, span {i} token_end expected {expected_span['token_end']}, got {actual_span.token_end}"
 
 
-# ── Integration tests: entity_mapping + calculate_score pipeline ─────────────
-
-
-def test_entity_mapping_end_to_end():
-    """
-    Integration test that mirrors the full evaluation flow in notebook 5:
-
-      Dataset labels (GPE, STREET_ADDRESS)  ->  entity_mapping  ->  model namespace (LOCATION)
-      Model predictions already in model namespace (LOCATION, PERSON)
-
-    The mock model always returns Presidio-style predictions (LOCATION, PERSON),
-    simulating what PresidioAnalyzerWrapper returns after its internal
-    model-to-Presidio remapping.
-
-    Full pipeline exercised:
-      InputSample (dataset tags)
-        -> evaluate_all()           [runs model, stores raw tags in EvaluationResult]
-        -> calculate_score()
-            -> get_results_dataframe()   [normalises annotations via entity_mapping]
-            -> _create_spans()           [must NOT remap again]
-            -> _find_best_match()        [span IoU matching in model namespace]
-        -> final EvaluationResult with per_type metrics
-
-    Assertions:
-      1. Dataset labels (GPE, STREET_ADDRESS) do not appear in get_results_dataframe()
-         annotation column -- they must be normalised to model entity names.
-      2. per_type results are keyed by model entity names (LOCATION, PERSON).
-      3. Perfectly-predicted spans produce TPs, not FNs (entity_mapping applied once).
-      4. Overall pii_recall > 0.
-    """
-    from presidio_evaluator import InputSample
-
-    # Dataset uses its own vocabulary (GPE); model returns Presidio vocabulary (LOCATION, PERSON)
-    tokens = ["Alice", "visited", "New", "York", "yesterday"]
-    dataset_tags = ["PERSON", "O", "GPE", "GPE", "O"]
-    predicted_tags = ["PERSON", "O", "LOCATION", "LOCATION", "O"]
-    start_indices = [0, 6, 14, 18, 23]
-
-    # Mirrors EntityMappingHelper output from notebook 5:
-    # dataset entity names -> model (Presidio) entity names
-    entity_mapping = {
-        "GPE": "LOCATION",
-        "STREET_ADDRESS": "LOCATION",
-        "PERSON": "PERSON",
-    }
-    entities_to_keep = ["LOCATION", "PERSON"]
-
-    sample = InputSample(
-        full_text="Alice visited New York yesterday",
-        tokens=tokens,
-        tags=dataset_tags,
-        start_indices=start_indices,
-    )
-
-    model = MockTokensModel(
-        prediction=predicted_tags,
-        entities_to_keep=entities_to_keep,
-    )
-    evaluator = SpanEvaluator(
-        model=model,
-        entity_mapping=entity_mapping,
-        entities_to_keep=entities_to_keep,
-        skip_words=[],
-        iou_threshold=0.5,
-    )
-
-    # ── Full pipeline ──────────────────────────────────────────────────────────
-    evaluation_results = evaluator.evaluate_all([sample])
-    result = evaluator.calculate_score(evaluation_results)
-
-    # 1. Annotation column must contain model entity names, not dataset names
-    df = evaluator.get_results_dataframe(evaluation_results)
-    annotation_values = set(df["annotation"].unique())
-    assert "GPE" not in annotation_values, (
-        f"Dataset label 'GPE' leaked into annotation column: {annotation_values}"
-    )
-    assert "STREET_ADDRESS" not in annotation_values, (
-        f"Dataset label 'STREET_ADDRESS' leaked into annotation column: {annotation_values}"
-    )
-    assert "LOCATION" in annotation_values and "PERSON" in annotation_values, (
-        f"Expected model entity names in annotation column, got: {annotation_values}"
-    )
-
-    # 2. Per-type results keyed by model entity names
-    assert "LOCATION" in result.per_type, (
-        f"Expected 'LOCATION' in per_type results, got: {list(result.per_type.keys())}"
-    )
-    assert "GPE" not in result.per_type, (
-        "Dataset label 'GPE' must not appear as a per_type key"
-    )
-
-    # 3. Perfectly-predicted spans are TPs, not FNs (entity_mapping applied exactly once)
-    location_metrics = result.per_type["LOCATION"]
-    assert location_metrics.true_positives == 1, (
-        f"Expected 1 TP for LOCATION (GPE->LOCATION), got {location_metrics.true_positives}"
-    )
-    assert location_metrics.false_negatives == 0, (
-        f"Expected 0 FNs for LOCATION, got {location_metrics.false_negatives}"
-    )
-
-    person_metrics = result.per_type["PERSON"]
-    assert person_metrics.true_positives == 1, (
-        f"Expected 1 TP for PERSON, got {person_metrics.true_positives}"
-    )
-
-    # 4. Overall recall > 0
-    assert result.pii_recall > 0, (
-        "pii_recall is 0 -- entity_mapping may have been applied more than once, "
-        "putting annotation spans in a different namespace than predictions."
-    )
+# ── End of test_span_evaluator.py ─────────────────────────────────────────────

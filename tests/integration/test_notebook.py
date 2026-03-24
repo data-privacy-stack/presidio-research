@@ -86,8 +86,9 @@ def test_notebook():
     # Set up the experiment tracker to log the experiment for reproducibility
     experiment = get_experiment_tracker()
 
-    # Create the evaluator object with entity mapping
-    evaluator = Evaluator(model=analyzer_engine, entity_mapping=entities_mapping)
+    # Create the evaluator object (entity mapping is no longer passed to the evaluator;
+    # it is applied to the dataset/predictions via CanonicalMapper before evaluation)
+    evaluator = Evaluator(model=analyzer_engine)
 
     evaluation_results = evaluator.evaluate_all(dataset)
     results = evaluator.calculate_score(evaluation_results)

@@ -27,10 +27,8 @@ class BaseModel(ABC):
         
         if entity_mapping is not None:
             raise ValueError(
-                "The 'entity_mapping' parameter is deprecated and has been removed from BaseModel.\n"
-                "Entity mapping is now handled by the evaluator for better separation of concerns.\n"
-                "Please pass entity_mapping to the evaluator constructor instead:\n"
-                "  evaluator = Evaluator(model=model, entity_mapping={...})\n"
+                "The 'entity_mapping' parameter is deprecated and has been removed.\n"
+                "Entity mapping is now handled by CanonicalMapper before evaluation.\n"
                 "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for examples."
             )
         

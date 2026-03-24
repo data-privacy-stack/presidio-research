@@ -51,7 +51,7 @@ def test_analyzer_simple_input():
     )
 
     prediction = model.predict(sample)
-    evaluator = Evaluator(model=model, entity_mapping={})
+    evaluator = Evaluator(model=model)
 
     evaluated = evaluator.evaluate_sample(sample, prediction)
     metrics = evaluator.calculate_score([evaluated])
@@ -80,7 +80,7 @@ def test_analyzer_with_generated_text(test_input, acceptance_threshold):
     input_samples = InputSample.read_dataset_json(test_input.format(dir_path))
 
     analyzer = PresidioAnalyzerWrapper()
-    evaluator = Evaluator(model=analyzer, entity_mapping=PresidioAnalyzerWrapper.presidio_entities_map)
+    evaluator = Evaluator(model=analyzer)
     evaluated_samples = evaluator.evaluate_all(input_samples)
     scores = evaluator.calculate_score(evaluation_results=evaluated_samples)
 

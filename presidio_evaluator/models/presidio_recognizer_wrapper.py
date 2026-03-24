@@ -25,7 +25,7 @@ class PresidioRecognizerWrapper(BaseModel):
         recognizer: EntityRecognizer,
         nlp_engine: NlpEngine,
         entities_to_keep: List[str] = None,
-        labeling_scheme: str = "BILUO",
+        labeling_scheme: str = "IO",
         with_nlp_artifacts: bool = False,
         verbose: bool = False,
     ):

@@ -69,7 +69,7 @@ def test_credit_card_recognizer_with_generated_text(test_input, acceptance_thres
         nlp_engine=nlp_engine,
         entities_to_keep=["CREDIT_CARD"],
     )
-    evaluator = Evaluator(model=model, entity_mapping={})
+    evaluator = Evaluator(model=model)
     evaluation_results = evaluator.evaluate_all(input_samples)
     scores = evaluator.calculate_score(evaluation_results)
 
