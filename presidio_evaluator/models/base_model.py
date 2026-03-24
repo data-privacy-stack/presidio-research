@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 
+import pandas as pd
+
 from presidio_evaluator import InputSample, io_to_scheme
 
 
@@ -49,6 +51,40 @@ class BaseModel(ABC):
     @abstractmethod
     def batch_predict(self, dataset: List[InputSample], **kwargs) -> List[List[str]]:
         """Perform batch prediction if the model supports it."""
+
+    def predict_dataset(self, dataset: List[InputSample]) -> pd.DataFrame:
+        """Predict entities for a dataset and return results as a DataFrame.
+
+        Calls batch_predict() internally and assembles the result into a
+        flat DataFrame.  No entity mapping is applied — that is the mapper's job.
+
+        :param dataset: List of InputSample objects (must have tokens and tags set).
+        :return: DataFrame with exactly 5 columns:
+            sentence_id, token, annotation, prediction, start_indices
+        """
+        predictions = self.batch_predict(dataset)
+
+        rows: List[Dict] = []
+        for i, (sample, pred_tags) in enumerate(zip(dataset, predictions)):
+            sentence_id = sample.sample_id if sample.sample_id is not None else i
+            tokens = sample.tokens
+            annotations = sample.tags
+            start_indices = sample.start_indices
+            for j in range(len(tokens)):
+                rows.append(
+                    {
+                        "sentence_id": sentence_id,
+                        "token": str(tokens[j]),
+                        "annotation": annotations[j] if j < len(annotations) else "O",
+                        "prediction": pred_tags[j] if j < len(pred_tags) else "O",
+                        "start_indices": start_indices[j] if j < len(start_indices) else 0,
+                    }
+                )
+
+        return pd.DataFrame(
+            rows,
+            columns=["sentence_id", "token", "annotation", "prediction", "start_indices"],
+        )
 
     def filter_tags_in_supported_entities(self, tags: List[str]) -> List[str]:
         """
