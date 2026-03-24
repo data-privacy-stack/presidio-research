@@ -171,7 +171,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "US-013 and US-014 combined into one story to avoid double-editing pyproject.toml. pandas 3.x and transformers 5.x are major version bumps — fix test breakage before marking done."
     },
     {

@@ -190,3 +190,28 @@
   - Test for stray imports with `grep -r "SpacyModel\|FlairModel\|StanzaModel\|TextAnalyticsWrapper" presidio_evaluator/` before committing
   - Notebook files in notebooks/models/ still reference removed models (they will be replaced in US-012)
 ---
+
+## 2026-03-24 22:40 - US-013
+- What was implemented:
+  - Converted `pyproject.toml` from Poetry format to PEP 621 / uv format
+  - Updated `[project.dependencies]` with new version constraints (spacy>=3.8, numpy>=2.4, pandas>=3.0, transformers>=5.3, etc.)
+  - Changed `requires-python` to `>=3.11,<3.14` (numpy>=2.4.0 requires Python 3.11+)
+  - Changed `[build-system]` from `poetry-core` to `hatchling`
+  - Added `[project.optional-dependencies] dev = [...]` replacing `[tool.poetry.group.dev.dependencies]`
+  - Removed `[tool.poetry.group.ner]` optional dependencies (removed in US-010)
+  - Generated `uv.lock` via `uv lock`
+  - Updated README install instructions: `poetry install` → `uv sync --extra dev`
+  - Updated `.github/workflows/ci.yml`: replaced Poetry steps with uv steps, removed Python 3.10 from matrix
+  - Installed `en_core_web_sm>=3.8.0` and `en_core_web_lg>=3.8.0` as dev dependencies (spacy models)
+- Files changed:
+  - pyproject.toml (complete rewrite from Poetry to uv/PEP 621)
+  - uv.lock (generated)
+  - README.md (install instructions)
+  - .github/workflows/ci.yml (poetry → uv)
+- **Learnings for future iterations:**
+  - numpy>=2.4.0 requires Python>=3.11; must update `requires-python` when bumping numpy
+  - uv venv doesn't have pip by default — use `uv add` to install packages, not `pip install` inside uv run
+  - Spacy models must be added as dev dependencies via `uv add --dev "model @ url"` — `python -m spacy download` doesn't work without pip in uv venv
+  - `uv sync --extra dev` is the uv equivalent of `poetry install --with dev`
+  - `uv run pytest` uses the project's own venv, not the active VIRTUAL_ENV
+---
