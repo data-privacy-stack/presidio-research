@@ -264,7 +264,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Must be the last story — documents everything else. User-facing writing: avoid internal jargon."
     }
   ]
