@@ -1,8 +1,7 @@
+import logging
 import warnings
 from abc import ABC, abstractmethod
 from collections import Counter
-from typing import List, Optional, Union, Tuple
-import logging
 
 import numpy as np
 import pandas as pd
@@ -10,7 +9,7 @@ from presidio_analyzer import AnalyzerEngine
 from spacy.tokens import Token
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import EvaluationResult, ModelError, ErrorType
+from presidio_evaluator.evaluation import ErrorType, EvaluationResult, ModelError
 from presidio_evaluator.evaluation.skipwords import get_skip_words
 from presidio_evaluator.models import BaseModel, PresidioAnalyzerWrapper
 
@@ -26,12 +25,12 @@ class DeprecationError(RuntimeError):
 class BaseEvaluator(ABC):
     def __init__(
         self,
-        model: Optional[Union[BaseModel, AnalyzerEngine]],
+        model: BaseModel | AnalyzerEngine | None,
         verbose: bool = False,
-        entities_to_keep: Optional[List[str]] = None,
-        generic_entities: Optional[List[str]] = None,
-        skip_words: Optional[List] = None,
-    ):
+        entities_to_keep: list[str] | None = None,
+        generic_entities: list[str] | None = None,
+        skip_words: list | None = None,
+    ) -> None:
         """
         Evaluate a PII detection model or a Presidio analyzer / recognizer
 
@@ -49,7 +48,8 @@ class BaseEvaluator(ABC):
         if model is None:
             warnings.warn(
                 "Using the evaluator without a model only supports comparing actual vs. existing "
-                "predicted tags. It will not run the model to generate predictions."
+                "predicted tags. It will not run the model to generate predictions.",
+                stacklevel=2,
             )
             self.model = None
 
@@ -58,7 +58,8 @@ class BaseEvaluator(ABC):
             if num_languages > 1:
                 warnings.warn(
                     f"Presidio Analyzer supports multiple languages ({num_languages}). "
-                    "Using the first language in the list for evaluation."
+                    "Using the first language in the list for evaluation.",
+                    stacklevel=2,
                 )
 
             self.model = PresidioAnalyzerWrapper(
@@ -73,7 +74,7 @@ class BaseEvaluator(ABC):
 
         else:
             raise ValueError(
-                "Model should be an instance of BaseModel or Presidio Analyzer, or None."
+                "Model should be an instance of BaseModel or Presidio Analyzer, or None.",
             )
 
         self.verbose = verbose
@@ -88,15 +89,18 @@ class BaseEvaluator(ABC):
         if skip_words is None:
             warnings.warn(
                 "skip words not provided, using default skip words. "
-                "If you want the evaluation to not use skip words, pass skip_words=[]"
+                "If you want the evaluation to not use skip words, pass skip_words=[]",
+                stacklevel=2,
             )
             self.skip_words = get_skip_words()
         else:
             self.skip_words = skip_words
 
     def compare(
-        self, input_sample: InputSample, prediction: List[str]
-    ) -> Tuple[Counter, List[ModelError]]:
+        self,
+        input_sample: InputSample,
+        prediction: list[str],
+    ) -> tuple[Counter, list[ModelError]]:
         """
         Compares ground truth tags (annotation) and predicted (prediction)
         :param input_sample: input sample containing list of tags
@@ -108,7 +112,7 @@ class BaseEvaluator(ABC):
         if len(annotation) != len(prediction):
             logger.warning(
                 "Annotation and prediction do not have the"
-                "same length. Sample={}".format(input_sample)
+                f"same length. Sample={input_sample}",
             )
             return Counter(), []
 
@@ -135,7 +139,10 @@ class BaseEvaluator(ABC):
 
             if is_error:
                 reverted = self.__revert_known_errors(
-                    cur_annotation, cur_prediction, cur_token, results
+                    cur_annotation,
+                    cur_prediction,
+                    cur_token,
+                    results,
                 )
                 if reverted:
                     continue
@@ -149,7 +156,7 @@ class BaseEvaluator(ABC):
                             token=cur_token,
                             full_text=input_sample.full_text,
                             metadata=input_sample.metadata,
-                        )
+                        ),
                     )
                 elif annotation[i] == "O":
                     mistakes.append(
@@ -160,7 +167,7 @@ class BaseEvaluator(ABC):
                             token=cur_token,
                             full_text=input_sample.full_text,
                             metadata=input_sample.metadata,
-                        )
+                        ),
                     )
                 else:
                     mistakes.append(
@@ -171,7 +178,7 @@ class BaseEvaluator(ABC):
                             token=cur_token,
                             full_text=input_sample.full_text,
                             metadata=input_sample.metadata,
-                        )
+                        ),
                     )
 
         return results, mistakes
@@ -180,8 +187,8 @@ class BaseEvaluator(ABC):
         self,
         current_annotation: str,
         current_prediction: str,
-        current_token: Union[str, Token],
-        results: Counter[Tuple[str, str]],
+        current_token: str | Token,
+        results: Counter[tuple[str, str]],
     ) -> bool:
         reverted = False
 
@@ -210,21 +217,23 @@ class BaseEvaluator(ABC):
 
         return reverted
 
-    def _adjust_per_entities(self, tags: List[str]) -> List[str]:
+    def _adjust_per_entities(self, tags: list[str]) -> list[str]:
         if self.entities_to_keep:
             return [tag if tag in self.entities_to_keep else "O" for tag in tags]
         else:
             return tags
 
     def evaluate_sample(
-        self, sample: InputSample, prediction: List[str]
+        self,
+        sample: InputSample,
+        prediction: list[str],
     ) -> EvaluationResult:
         if self.verbose:
-            logger.debug("Input sentence: {}".format(sample.full_text))
+            logger.debug(f"Input sentence: {sample.full_text}")
 
         if not self.model:
             raise ValueError(
-                "Model is not set. Please instantiate the evaluator with a model to evaluate the dataset."
+                "Model is not set. Please instantiate the evaluator with a model to evaluate the dataset.",
             )
 
         results, model_errors = self.compare(input_sample=sample, prediction=prediction)
@@ -240,8 +249,10 @@ class BaseEvaluator(ABC):
         )
 
     def evaluate_all(
-        self, dataset: List[InputSample], **kwargs
-    ) -> List[EvaluationResult]:
+        self,
+        dataset: list[InputSample],
+        **kwargs,
+    ) -> list[EvaluationResult]:
         """REMOVED. Use the new 3-step pipeline instead.
 
         .. deprecated::
@@ -267,14 +278,14 @@ class BaseEvaluator(ABC):
             "  1. results_df = model.predict_dataset(dataset)\n"
             "  2. mapper = CanonicalMapper(); mapped_df = mapper.get_mapped_results_dataframe(results_df)\n"
             "  3. result = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)\n"
-            "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example."
+            "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
         )
 
     @abstractmethod
     def calculate_score(
         self,
-        evaluation_results: List[EvaluationResult],
-        entities: Optional[List[str]] = None,
+        evaluation_results: list[EvaluationResult],
+        entities: list[str] | None = None,
         beta: float = 2.0,
     ) -> EvaluationResult:
         """
@@ -285,8 +296,8 @@ class BaseEvaluator(ABC):
 
     def get_results_dataframe(
         self,
-        evaluation_results: List[EvaluationResult],
-        entities: Optional[List[str]] = None,
+        evaluation_results: list[EvaluationResult],
+        entities: list[str] | None = None,
     ) -> pd.DataFrame:
         """Return a DataFrame with the results of the evaluation.
 
@@ -305,7 +316,7 @@ class BaseEvaluator(ABC):
         if not evaluation_results or not evaluation_results[0].tokens:
             raise ValueError(
                 "The evaluation results should not be empty and must contain tokens. "
-                "Ensure that the input samples have tokens."
+                "Ensure that the input samples have tokens.",
             )
 
         warnings.warn(
@@ -340,7 +351,7 @@ class BaseEvaluator(ABC):
                         "annotation": annotations[j],
                         "prediction": predictions[j],
                         "start_indices": start_indices[j],
-                    }
+                    },
                 )
 
         results_df = pd.DataFrame(rows_list)
@@ -348,8 +359,9 @@ class BaseEvaluator(ABC):
 
     @staticmethod
     def _filter_entities(
-        tags: List[str], entities: Optional[List[str]] = None
-    ) -> List[str]:
+        tags: list[str],
+        entities: list[str] | None = None,
+    ) -> list[str]:
         """
         Filter the tags to only include the specified entities.
         If entities is None, return all tags.
@@ -360,7 +372,9 @@ class BaseEvaluator(ABC):
 
     @staticmethod
     def precision(
-        tp: int, fp: Optional[int] = None, num_predicted: Optional[int] = None
+        tp: int,
+        fp: int | None = None,
+        num_predicted: int | None = None,
     ) -> float:
         """
         Calculate precision based on true positives (tp), false positives (fp), or total predicted entities (num_predicted).
@@ -373,11 +387,11 @@ class BaseEvaluator(ABC):
         if fp and num_predicted:
             raise ValueError(
                 "Both fp and num_predicted should not be provided. "
-                "Use either fp or num_predicted, but not both."
+                "Use either fp or num_predicted, but not both.",
             )
         if fp is None and num_predicted is None:
             raise ValueError(
-                "Either fp or num_predicted should be provided to calculate precision."
+                "Either fp or num_predicted should be provided to calculate precision.",
             )
         if fp:
             num_predicted = fp + tp
@@ -386,7 +400,9 @@ class BaseEvaluator(ABC):
 
     @staticmethod
     def recall(
-        tp: int, fn: Optional[int] = None, num_annotated: Optional[int] = None
+        tp: int,
+        fn: int | None = None,
+        num_annotated: int | None = None,
     ) -> float:
         """
         Calculate recall based on true positives (tp), false negatives (fn), or total annotated entities (num_annotated).
@@ -399,11 +415,11 @@ class BaseEvaluator(ABC):
         if fn and num_annotated:
             raise ValueError(
                 "Both fn and num_annotated should not be provided. "
-                "Use either fn or num_annotated, but not both."
+                "Use either fn or num_annotated, but not both.",
             )
         if fn is None and num_annotated is None:
             raise ValueError(
-                "Either fn or num_annotated should be provided to calculate recall."
+                "Either fn or num_annotated should be provided to calculate recall.",
             )
         if fn:
             num_annotated = fn + tp

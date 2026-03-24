@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
 
 import pandas as pd
 
@@ -10,10 +9,10 @@ class BaseModel(ABC):
     def __init__(
         self,
         labeling_scheme: str = "IO",
-        entities_to_keep: List[str] = None,
-        entity_mapping: Optional[Dict[str, str]] = None,
+        entities_to_keep: list[str] = None,
+        entity_mapping: dict[str, str] | None = None,
         verbose: bool = False,
-    ):
+    ) -> None:
         """
         Abstract class for evaluating NER models and others
         :param entities_to_keep: Which entities should be evaluated? All other
@@ -24,21 +23,21 @@ class BaseModel(ABC):
         Entity mapping should be passed to the evaluator instead.
         :param verbose: Whether to print more debug info
         """
-        
+
         if entity_mapping is not None:
             raise ValueError(
                 "The 'entity_mapping' parameter is deprecated and has been removed.\n"
                 "Entity mapping is now handled by CanonicalMapper before evaluation.\n"
-                "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for examples."
+                "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for examples.",
             )
-        
+
         self.entities = entities_to_keep
         self.labeling_scheme = labeling_scheme
         self.verbose = verbose
         self.name = self.__class__.__name__
 
     @abstractmethod
-    def predict(self, sample: InputSample, **kwargs) -> List[str]:
+    def predict(self, sample: InputSample, **kwargs) -> list[str]:
         """
         Abstract. Returns the predicted tokens/spans from the evaluated model
         :param sample: Sample to be evaluated
@@ -47,10 +46,10 @@ class BaseModel(ABC):
         pass
 
     @abstractmethod
-    def batch_predict(self, dataset: List[InputSample], **kwargs) -> List[List[str]]:
+    def batch_predict(self, dataset: list[InputSample], **kwargs) -> list[list[str]]:
         """Perform batch prediction if the model supports it."""
 
-    def predict_dataset(self, dataset: List[InputSample]) -> pd.DataFrame:
+    def predict_dataset(self, dataset: list[InputSample]) -> pd.DataFrame:
         """Predict entities for a dataset and return results as a DataFrame.
 
         Calls batch_predict() internally and assembles the result into a
@@ -62,8 +61,10 @@ class BaseModel(ABC):
         """
         predictions = self.batch_predict(dataset)
 
-        rows: List[Dict] = []
-        for i, (sample, pred_tags) in enumerate(zip(dataset, predictions)):
+        rows: list[dict] = []
+        for i, (sample, pred_tags) in enumerate(
+            zip(dataset, predictions, strict=False)
+        ):
             sentence_id = sample.sample_id if sample.sample_id is not None else i
             tokens = sample.tokens
             annotations = sample.tags
@@ -75,16 +76,24 @@ class BaseModel(ABC):
                         "token": str(tokens[j]),
                         "annotation": annotations[j] if j < len(annotations) else "O",
                         "prediction": pred_tags[j] if j < len(pred_tags) else "O",
-                        "start_indices": start_indices[j] if j < len(start_indices) else 0,
-                    }
+                        "start_indices": start_indices[j]
+                        if j < len(start_indices)
+                        else 0,
+                    },
                 )
 
         return pd.DataFrame(
             rows,
-            columns=["sentence_id", "token", "annotation", "prediction", "start_indices"],
+            columns=[
+                "sentence_id",
+                "token",
+                "annotation",
+                "prediction",
+                "start_indices",
+            ],
         )
 
-    def filter_tags_in_supported_entities(self, tags: List[str]) -> List[str]:
+    def filter_tags_in_supported_entities(self, tags: list[str]) -> list[str]:
         """
         Replaces tags of unwanted entities with O.
         :param tags: Lits of tags
@@ -94,8 +103,7 @@ class BaseModel(ABC):
             return tags
         return [tag if self._tag_in_entities(tag) else "O" for tag in tags]
 
-    def to_scheme(self, tags: List[str]):
-
+    def to_scheme(self, tags: list[str]):
         """
         Translates IO tags to BIO/BILUO based on the input labeling_scheme
         :param tags: Current tags in IO
@@ -112,7 +120,7 @@ class BaseModel(ABC):
             return tag[2:]
         return tag
 
-    def to_log(self) -> Dict:
+    def to_log(self) -> dict:
         """
         Returns a dictionary of parameters for logging purposes.
         :return:

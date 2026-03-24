@@ -1,7 +1,6 @@
 """E2E scoring pipelines for the different models"""
 
 import warnings
-from typing import List, Optional
 
 from presidio_analyzer import EntityRecognizer
 
@@ -14,8 +13,8 @@ from presidio_evaluator.models import (
 
 def score_model(
     model: BaseModel,
-    entities_to_keep: List[str],
-    input_samples: List[InputSample],
+    entities_to_keep: list[str],
+    input_samples: list[InputSample],
     verbose: bool = False,
     beta: float = 2.5,
 ) -> EvaluationResult:
@@ -43,14 +42,14 @@ def score_model(
         "score_model() is no longer functional. "
         "Please use the new pipeline: model.predict_dataset() -> CanonicalMapper.get_mapped_results_dataframe() "
         "-> evaluator.calculate_score_on_df(). "
-        "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example."
+        "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
     )
 
 
 def score_presidio_recognizer(
     recognizer: EntityRecognizer,
-    entities_to_keep: List[str],
-    input_samples: Optional[List[InputSample]] = None,
+    entities_to_keep: list[str],
+    input_samples: list[InputSample] | None = None,
     labeling_scheme: str = "BILUO",
     with_nlp_artifacts: bool = False,
     verbose: bool = False,
@@ -79,7 +78,7 @@ def score_presidio_recognizer(
     if not input_samples:
         print("Reading dataset")
         input_samples = InputSample.read_dataset_json(
-            "../../data/synth_dataset_v2.json"
+            "../../data/synth_dataset_v2.json",
         )
     else:
         input_samples = list(input_samples)
@@ -88,5 +87,5 @@ def score_presidio_recognizer(
         "score_presidio_recognizer() is no longer functional. "
         "Please use the new pipeline: model.predict_dataset() -> CanonicalMapper.get_mapped_results_dataframe() "
         "-> evaluator.calculate_score_on_df(). "
-        "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example."
+        "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
     )

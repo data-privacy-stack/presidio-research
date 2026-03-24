@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
+
 import xmltodict
 from tqdm import tqdm
 
@@ -18,7 +18,7 @@ class I2B22014Formatter(DatasetFormatter):
     def __init__(
         self,
         files_path="../../data/i2b2/2014/testing-PHI-Gold-fixed",
-    ):
+    ) -> None:
         self.files_path = files_path
 
     @staticmethod
@@ -31,20 +31,21 @@ class I2B22014Formatter(DatasetFormatter):
         )
         return span
 
-    def to_input_samples(self, folder: Optional[str] = None) -> List[InputSample]:
+    def to_input_samples(self, folder: str | None = None) -> list[InputSample]:
         input_samples = []
         if folder:
             self.files_path = folder
         logger.info(f"Parsing files in {self.files_path}")
 
-        for root, dirs, files in os.walk(self.files_path):
+        for root, _dirs, files in os.walk(self.files_path):
             for file in tqdm(files, desc="Reading files..."):
                 spans = []
                 filename = os.path.join(root, file)
-                xml_content = open(filename, "r").read()
+                xml_content = open(filename).read()
 
                 ordered_dict = xmltodict.parse(
-                    xml_input=xml_content, strip_whitespace=False
+                    xml_input=xml_content,
+                    strip_whitespace=False,
                 )
                 data = dict(ordered_dict["deIdi2b2"])
                 text = data["TEXT"]
@@ -63,24 +64,26 @@ class I2B22014Formatter(DatasetFormatter):
                             span = self._create_span(sub)
                             if self._span_and_text_are_identical(span, text):
                                 raise ValueError(
-                                    f"Mismatch on file {file}, span {span}"
+                                    f"Mismatch on file {file}, span {span}",
                                 )
                             spans.append(span)
                 input_samples.append(
-                    InputSample(full_text=text, spans=spans, create_tags_from_span=True)
+                    InputSample(
+                        full_text=text, spans=spans, create_tags_from_span=True
+                    ),
                 )
 
             return input_samples
 
     @staticmethod
-    def dataset_to_json(input_path, output_path):
+    def dataset_to_json(input_path, output_path) -> None:
 
         formatter = I2B22014Formatter(files_path=input_path)
         train_samples = formatter.to_input_samples()
         json_dataset = [example.to_dict() for example in train_samples]
 
         logger.info(f"Saving dataset to json. Path: {output_path}")
-        with open("{}".format(output_path), "w+", encoding="utf-8") as f:
+        with open(f"{output_path}", "w+", encoding="utf-8") as f:
             json.dump(json_dataset, f, ensure_ascii=False, indent=4)
 
     @staticmethod
@@ -112,7 +115,6 @@ class I2B22014Formatter(DatasetFormatter):
 
 
 if __name__ == "__main__":
-
     # Data is assumed to be on the data folder (repo root) under i2b2/2014
     # train 1
     input_path1 = Path("../../data/i2b2/2014/training-PHI-Gold-Set1")

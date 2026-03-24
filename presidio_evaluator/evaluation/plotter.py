@@ -1,6 +1,5 @@
 import copy
 from pathlib import Path
-from typing import Optional, List, Union
 
 import pandas as pd
 import plotly.express as px
@@ -48,19 +47,19 @@ class Plotter:
         results: EvaluationResult,
         model_name: str = "PresidioAnalyzerWrapper",
         beta: float = 2,
-        save_as: Optional[str] = None,
+        save_as: str | None = None,
         display_mode: str = "interactive",
-    ):
+    ) -> None:
         self.results = results
         self.save_as = save_as
         self.model_name = model_name.replace("/", "-")
         self.beta = beta
         self.display_mode = display_mode
-        
+
         if display_mode not in ["interactive", "static"]:
             raise ValueError("display_mode must be either 'interactive' or 'static'")
 
-    def plot_scores(self, output_folder: Optional[Union[Path, str]] = None) -> None:
+    def plot_scores(self, output_folder: Path | str | None = None) -> None:
         """
         Plots per-entity recall, precision, or F2 score for evaluated model.
         Parameters:
@@ -78,7 +77,9 @@ class Plotter:
 
         scores[f"f{self.beta}_score"] = [
             BaseEvaluator.f_beta(precision=precision, recall=recall, beta=self.beta)
-            for recall, precision in zip(scores["recall"], scores["precision"])
+            for recall, precision in zip(
+                scores["recall"], scores["precision"], strict=False
+            )
         ]
 
         # Add PII detection rates
@@ -99,7 +100,7 @@ class Plotter:
         figs = [beta_fig, recall_fig, precision_fig]
         fig_names = ["f_beta", "recall", "precision"]
 
-        for fig, file_name in zip(figs, fig_names):
+        for fig, file_name in zip(figs, fig_names, strict=False):
             if output_folder is not None:
                 self.save_fig_to_file(
                     fig=fig,
@@ -129,40 +130,44 @@ class Plotter:
         # Add a subtitle using annotations
         fig.update_layout(
             annotations=[
-                dict(
-                    text=subtitle if metric == "precision" else "",
-                    xref="paper",
-                    yref="paper",  # Use "paper" coordinates
-                    x=0.5,
-                    y=1.1,  # Position above the plot (centered)
-                    showarrow=False,
-                    font=dict(size=12, color="gray"),
-                )
-            ]
+                {
+                    "text": subtitle if metric == "precision" else "",
+                    "xref": "paper",
+                    "yref": "paper",  # Use "paper" coordinates
+                    "x": 0.5,
+                    "y": 1.1,  # Position above the plot (centered)
+                    "showarrow": False,
+                    "font": {"size": 12, "color": "gray"},
+                },
+            ],
         )
 
         fig.update_layout(barmode="group", yaxis={"categoryorder": "total ascending"})
         fig.update_layout(yaxis_title=f"{metric}", xaxis_title="PII Entity")
         fig.update_traces(
-            textfont_size=12, textangle=0, textposition="outside", cliponaxis=False
+            textfont_size=12,
+            textangle=0,
+            textposition="outside",
+            cliponaxis=False,
         )
         fig.update_layout(
             plot_bgcolor="#FFF",
-            xaxis=dict(
-                title="PII entity",
-                linecolor="#BCCCDC",  # Sets color of X-axis line
-                showgrid=False,  # Removes X-axis grid lines
-            ),
-            yaxis=dict(
-                title=f"{metric}",
-                linecolor="#BCCCDC",  # Sets color of X-axis line
-                showgrid=False,  # Removes X-axis grid lines
-            ),
+            xaxis={
+                "title": "PII entity",
+                "linecolor": "#BCCCDC",  # Sets color of X-axis line
+                "showgrid": False,  # Removes X-axis grid lines
+            },
+            yaxis={
+                "title": f"{metric}",
+                "linecolor": "#BCCCDC",  # Sets color of X-axis line
+                "showgrid": False,  # Removes X-axis grid lines
+            },
         )
         return fig
 
     def plot_most_common_tokens(
-        self, output_folder: Optional[Union[Path, str]] = None
+        self,
+        output_folder: Path | str | None = None,
     ) -> None:
         """Graph most common false positive and false negative tokens for each entity."""
         fps_frames = []
@@ -171,13 +176,17 @@ class Plotter:
         entities = list(self.results.n_dict.keys())
         for entity in entities:
             fps_df = ModelError.get_fps_dataframe(
-                self.results.model_errors, entity=entity, verbose=False
+                self.results.model_errors,
+                entity=entity,
+                verbose=False,
             )
             if fps_df is not None:
                 fps_frames.append(fps_df)
 
             fns_df = ModelError.get_fns_dataframe(
-                self.results.model_errors, entity=entity, verbose=False
+                self.results.model_errors,
+                entity=entity,
+                verbose=False,
             )
             if fns_df is not None:
                 fns_frames.append(fns_df)
@@ -198,7 +207,9 @@ class Plotter:
 
         if len(fns_tokens_df) > 0:
             fn_fig = self._plot_histogram(
-                title="false-negatives", tokens_df=fns_tokens_df, key="annotation"
+                title="false-negatives",
+                tokens_df=fns_tokens_df,
+                key="annotation",
             )
         else:
             fn_fig = None
@@ -214,7 +225,7 @@ class Plotter:
             print("No false positives found")
 
         fig_names = ["fn", "fp"]
-        for fig, fig_name in zip([fn_fig, fp_fig], fig_names):
+        for fig, fig_name in zip([fn_fig, fp_fig], fig_names, strict=False):
             if not fig:
                 continue
 
@@ -263,16 +274,16 @@ class Plotter:
         )
         fg.update_layout(
             plot_bgcolor="#FFF",
-            xaxis=dict(
-                title="Count",
-                linecolor="#BCCCDC",  # Sets color of X-axis line
-                showgrid=False,  # Removes X-axis grid lines
-            ),
-            yaxis=dict(
-                title="Tokens",
-                linecolor="#BCCCDC",  # Sets color of X-axis line
-                showgrid=False,  # Removes X-axis grid lines
-            ),
+            xaxis={
+                "title": "Count",
+                "linecolor": "#BCCCDC",  # Sets color of X-axis line
+                "showgrid": False,  # Removes X-axis grid lines
+            },
+            yaxis={
+                "title": "Tokens",
+                "linecolor": "#BCCCDC",  # Sets color of X-axis line
+                "showgrid": False,  # Removes X-axis grid lines
+            },
         )
         fg.update_layout(yaxis={"categoryorder": "total ascending"})
 
@@ -280,9 +291,9 @@ class Plotter:
 
     def plot_confusion_matrix(
         self,
-        entities: List[str],
-        confmatrix: List[List[int]],
-        output_folder: Optional[Union[Path, str]] = None,
+        entities: list[str],
+        confmatrix: list[list[int]],
+        output_folder: Path | str | None = None,
     ) -> None:
         """
         Plot the confusion matrix for the evaluated model.
@@ -303,7 +314,7 @@ class Plotter:
         # Create the heatmap
         fig = px.imshow(
             confusion_matrix_df,
-            labels=dict(x="Predicted", y="Actual", color="Count"),
+            labels={"x": "Predicted", "y": "Actual", "color": "Count"},
             x=confusion_matrix_df.columns,
             y=confusion_matrix_df.index,
             color_continuous_scale="Blues",
@@ -311,19 +322,21 @@ class Plotter:
             text_auto=True,
         )
         fig.update_xaxes(tickangle=90, side="top", title_standoff=10)
-        fig.update_traces(textfont=dict(size=6))
+        fig.update_traces(textfont={"size": 6})
         fig.update_layout(width=1000, height=1000)
 
         if output_folder is not None:
             self.save_fig_to_file(
-                fig=fig, output_folder=output_folder, file_name="confusion-matrix"
+                fig=fig,
+                output_folder=output_folder,
+                file_name="confusion-matrix",
             )
         self._display_figure(fig)
 
     def save_fig_to_file(
         self,
         fig: Figure,
-        output_folder: Union[Path, str],
+        output_folder: Path | str,
         file_name: str = "figure",
     ) -> None:
         """
@@ -337,7 +350,7 @@ class Plotter:
             raise ValueError(
                 "output_folder is missing, cannot save figure."
                 "If you do not wish to save figures, "
-                "configure the Plotter with `save_as = None`"
+                "configure the Plotter with `save_as = None`",
             )
 
         output_folder = Path(output_folder)
@@ -345,17 +358,17 @@ class Plotter:
         output_folder.mkdir(parents=True, exist_ok=True)
         if self.save_as == "html":
             fig.write_html(
-                Path(output_folder, f"{self.model_name}-{file_name}.{self.save_as}")
+                Path(output_folder, f"{self.model_name}-{file_name}.{self.save_as}"),
             )
         elif self.save_as is not None:
             fig.write_image(
-                Path(output_folder, f"{self.model_name}-{file_name}.{self.save_as}")
+                Path(output_folder, f"{self.model_name}-{file_name}.{self.save_as}"),
             )
         else:
             raise ValueError(
-                "save_as must be either 'html' or a valid image format (e.g., 'png', 'svg')."
+                "save_as must be either 'html' or a valid image format (e.g., 'png', 'svg').",
             )
-    
+
     def _display_figure(self, fig: Figure) -> None:
         """
         Display a figure according to the specified display_mode.

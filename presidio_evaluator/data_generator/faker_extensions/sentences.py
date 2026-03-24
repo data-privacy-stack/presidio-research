@@ -1,12 +1,12 @@
 import random
-from typing import Optional, List, Union, Dict, Any
+from typing import Any
 
 import pandas as pd
 from faker import Faker
 from faker.generator import _re_token
 from faker.providers import BaseProvider, DynamicProvider
 
-from presidio_evaluator import Span, InputSample
+from presidio_evaluator import InputSample, Span
 from presidio_evaluator.data_generator.faker_extensions import SpanGenerator
 
 
@@ -69,30 +69,32 @@ class RecordGenerator(SpanGenerator):
 
     """
 
-    def __init__(self, records: Optional[List[Dict]] = None):
+    def __init__(self, records: list[dict] | None = None) -> None:
         super().__init__()
         self.records = records
 
         if self.records:
             for record in self.records:
-                if not isinstance(record, Dict):
+                if not isinstance(record, dict):
                     raise TypeError("Each element should be of type Dict")
 
         # Use an internal provider to sample from the input elements
         self.dynamic_record_provider = DynamicProvider(
-            provider_name="", elements=records, generator=self
+            provider_name="",
+            elements=records,
+            generator=self,
         )
 
     def _get_random_record(self):
         return self.dynamic_record_provider.get_random_value().copy()
 
-    def _match_to_span(self, text: str, **kwargs) -> List[Span]:
+    def _match_to_span(self, text: str, **kwargs) -> list[Span]:
         """Adds logic for sampling from input records if possible."""
         matches = _re_token.finditer(text)
         # Sample one record (Dict containing fake values)
         record = self._get_random_record()
 
-        results: List[Span] = []
+        results: list[Span] = []
         for match in matches:
             formatter = match.group()[2:-2]
             stripped = formatter.strip()
@@ -107,7 +109,7 @@ class RecordGenerator(SpanGenerator):
                     start_position=match.start(),
                     end_position=match.end(),
                     entity_value=value,
-                )
+                ),
             )
 
         return results
@@ -116,7 +118,7 @@ class RecordGenerator(SpanGenerator):
         """Fill in fake data. If the input record has the requested entity, return its value."""
         record = kwargs.get("record")
         if not record or not record.get(
-            formatter
+            formatter,
         ):  # type not in record, go to default faker
             return super().format(formatter)
 
@@ -127,9 +129,9 @@ class SentenceFaker(Faker):
     def __init__(
         self,
         lower_case_ratio: float = 0.05,
-        records: Optional[Union[pd.DataFrame, List[Dict]]] = None,
+        records: pd.DataFrame | list[dict] | None = None,
         **faker_kwargs,
-    ):
+    ) -> None:
         """
         Leverages Faker to create fake PII entities into predefined templates of structure: a b c {{PII}} d e f,
         e.g. "My name is {{first_name}} and returning span information in addition to fake text."
@@ -162,9 +164,9 @@ class SentenceFaker(Faker):
     def parse(
         self,
         template: str,
-        template_id: Optional[int] = None,
-        add_spans: Optional[bool] = True,
-    ) -> Union[InputSample, str]:
+        template_id: int | None = None,
+        add_spans: bool | None = True,
+    ) -> InputSample | str:
         """
         This function replaces known PII {{tokens}} in a template sentence
         with a fake value for each token and returns a sentence with fake PII.
@@ -186,7 +188,9 @@ class SentenceFaker(Faker):
             if isinstance(self.factories[0], SpanGenerator):
                 span_generator: SpanGenerator = self.factories[0]
                 fake_pattern = span_generator.parse(
-                    template, add_spans=add_spans, template_id=template_id
+                    template,
+                    add_spans=add_spans,
+                    template_id=template_id,
                 )
             else:
                 fake_pattern = self.factories[0].parse(template)
@@ -197,11 +201,11 @@ class SentenceFaker(Faker):
             raise AttributeError(
                 f'Failed to generate fake data based on template "{template}". '
                 f"Add a new Faker provider or create an alias "
-                f"for the entity name. {err}"
-            )
+                f"for the entity name. {err}",
+            ) from err
 
     @staticmethod
-    def _lower_pattern(pattern: Union[str, InputSample]):
+    def _lower_pattern(pattern: str | InputSample):
         if isinstance(pattern, str):
             return pattern.lower()
         elif isinstance(pattern, InputSample):

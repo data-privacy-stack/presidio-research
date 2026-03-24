@@ -3,9 +3,9 @@ import json
 import re
 import urllib.request
 from collections import Counter
+
 from huggingface_hub import HfApi
 from transformers import AutoConfig
-
 
 # ---------------------------------------------------------------------------
 # Vendor / reference entity lists
@@ -18,70 +18,177 @@ from transformers import AutoConfig
 
 PRESIDIO_ENTITIES = [
     # Global
-    "CREDIT_CARD", "CRYPTO", "DATE_TIME", "EMAIL_ADDRESS", "IBAN_CODE",
-    "IP_ADDRESS", "MAC_ADDRESS", "NRP", "LOCATION", "PERSON", "PHONE_NUMBER",
-    "MEDICAL_LICENSE", "URL",
+    "CREDIT_CARD",
+    "CRYPTO",
+    "DATE_TIME",
+    "EMAIL_ADDRESS",
+    "IBAN_CODE",
+    "IP_ADDRESS",
+    "MAC_ADDRESS",
+    "NRP",
+    "LOCATION",
+    "PERSON",
+    "PHONE_NUMBER",
+    "MEDICAL_LICENSE",
+    "URL",
     # USA
-    "US_BANK_NUMBER", "US_DRIVER_LICENSE", "US_ITIN", "US_MBI", "US_NPI",
-    "US_PASSPORT", "US_SSN",
+    "US_BANK_NUMBER",
+    "US_DRIVER_LICENSE",
+    "US_ITIN",
+    "US_MBI",
+    "US_NPI",
+    "US_PASSPORT",
+    "US_SSN",
     # UK
-    "UK_NHS", "UK_NINO", "UK_PASSPORT", "UK_POSTCODE", "UK_VEHICLE_REGISTRATION",
+    "UK_NHS",
+    "UK_NINO",
+    "UK_PASSPORT",
+    "UK_POSTCODE",
+    "UK_VEHICLE_REGISTRATION",
     # Spain
-    "ES_NIF", "ES_NIE",
+    "ES_NIF",
+    "ES_NIE",
     # Italy
-    "IT_FISCAL_CODE", "IT_DRIVER_LICENSE", "IT_VAT_CODE", "IT_PASSPORT",
+    "IT_FISCAL_CODE",
+    "IT_DRIVER_LICENSE",
+    "IT_VAT_CODE",
+    "IT_PASSPORT",
     "IT_IDENTITY_CARD",
     # Poland
     "PL_PESEL",
     # Singapore
-    "SG_NRIC_FIN", "SG_UEN",
+    "SG_NRIC_FIN",
+    "SG_UEN",
     # Australia
-    "AU_ABN", "AU_ACN", "AU_TFN", "AU_MEDICARE",
+    "AU_ABN",
+    "AU_ACN",
+    "AU_TFN",
+    "AU_MEDICARE",
     # India
-    "IN_PAN", "IN_AADHAAR", "IN_VEHICLE_REGISTRATION", "IN_VOTER",
-    "IN_PASSPORT", "IN_GSTIN",
+    "IN_PAN",
+    "IN_AADHAAR",
+    "IN_VEHICLE_REGISTRATION",
+    "IN_VOTER",
+    "IN_PASSPORT",
+    "IN_GSTIN",
     # Finland
     "FI_PERSONAL_IDENTITY_CODE",
     # Korea
-    "KR_DRIVER_LICENSE", "KR_FRN", "KR_PASSPORT", "KR_BRN", "KR_RRN",
+    "KR_DRIVER_LICENSE",
+    "KR_FRN",
+    "KR_PASSPORT",
+    "KR_BRN",
+    "KR_RRN",
     # Nigeria
-    "NG_NIN", "NG_VEHICLE_REGISTRATION",
+    "NG_NIN",
+    "NG_VEHICLE_REGISTRATION",
     # Thailand
     "TH_TNIN",
     # Medical / Clinical (via MedicalNERRecognizer)
-    "MEDICAL_DISEASE_DISORDER", "MEDICAL_MEDICATION",
-    "MEDICAL_THERAPEUTIC_PROCEDURE", "MEDICAL_CLINICAL_EVENT",
-    "MEDICAL_BIOLOGICAL_ATTRIBUTE", "MEDICAL_BIOLOGICAL_STRUCTURE",
-    "MEDICAL_FAMILY_HISTORY", "MEDICAL_HISTORY",
+    "MEDICAL_DISEASE_DISORDER",
+    "MEDICAL_MEDICATION",
+    "MEDICAL_THERAPEUTIC_PROCEDURE",
+    "MEDICAL_CLINICAL_EVENT",
+    "MEDICAL_BIOLOGICAL_ATTRIBUTE",
+    "MEDICAL_BIOLOGICAL_STRUCTURE",
+    "MEDICAL_FAMILY_HISTORY",
+    "MEDICAL_HISTORY",
 ]
 
 # Azure Health Deidentification service — PhiCategory enum values
 AZURE_DEID_ENTITIES = [
-    "ACCOUNT", "AGE", "BIOID", "CITY", "COUNTRY_OR_REGION", "DATE", "DEVICE",
-    "DOCTOR", "EMAIL", "FAX", "HEALTH_PLAN", "HOSPITAL", "ID_NUM", "IP_ADDRESS",
-    "LICENSE", "LOCATION_OTHER", "MEDICAL_RECORD", "ORGANIZATION", "PATIENT",
-    "PHONE", "PROFESSION", "SOCIAL_SECURITY", "STATE", "STREET", "URL",
-    "USERNAME", "VEHICLE", "ZIP",
+    "ACCOUNT",
+    "AGE",
+    "BIOID",
+    "CITY",
+    "COUNTRY_OR_REGION",
+    "DATE",
+    "DEVICE",
+    "DOCTOR",
+    "EMAIL",
+    "FAX",
+    "HEALTH_PLAN",
+    "HOSPITAL",
+    "ID_NUM",
+    "IP_ADDRESS",
+    "LICENSE",
+    "LOCATION_OTHER",
+    "MEDICAL_RECORD",
+    "ORGANIZATION",
+    "PATIENT",
+    "PHONE",
+    "PROFESSION",
+    "SOCIAL_SECURITY",
+    "STATE",
+    "STREET",
+    "URL",
+    "USERNAME",
+    "VEHICLE",
+    "ZIP",
 ]
 
 # Private.ai — PII + Health Information + PCI entities
 PRIVATE_AI_ENTITIES = [
     # PII
-    "ACCOUNT_NUMBER", "AGE", "DATE", "DATE_INTERVAL", "DOB", "DRIVER_LICENSE",
-    "DURATION", "EMAIL_ADDRESS", "EVENT", "FILENAME", "GENDER",
-    "HEALTHCARE_NUMBER", "IP_ADDRESS", "LANGUAGE", "LOCATION",
-    "LOCATION_ADDRESS", "LOCATION_ADDRESS_STREET", "LOCATION_CITY",
-    "LOCATION_COORDINATE", "LOCATION_COUNTRY", "LOCATION_STATE", "LOCATION_ZIP",
-    "MARITAL_STATUS", "MONEY", "NAME", "NAME_FAMILY", "NAME_GIVEN",
-    "NAME_MEDICAL_PROFESSIONAL", "NUMERICAL_PII", "OCCUPATION", "ORGANIZATION",
-    "ORGANIZATION_MEDICAL_FACILITY", "ORIGIN", "PASSPORT_NUMBER", "PASSWORD",
-    "PHONE_NUMBER", "PHYSICAL_ATTRIBUTE", "POLITICAL_AFFILIATION", "RELIGION",
-    "SEXUALITY", "SSN", "TIME", "URL", "USERNAME", "VEHICLE_ID", "ZODIAC_SIGN",
+    "ACCOUNT_NUMBER",
+    "AGE",
+    "DATE",
+    "DATE_INTERVAL",
+    "DOB",
+    "DRIVER_LICENSE",
+    "DURATION",
+    "EMAIL_ADDRESS",
+    "EVENT",
+    "FILENAME",
+    "GENDER",
+    "HEALTHCARE_NUMBER",
+    "IP_ADDRESS",
+    "LANGUAGE",
+    "LOCATION",
+    "LOCATION_ADDRESS",
+    "LOCATION_ADDRESS_STREET",
+    "LOCATION_CITY",
+    "LOCATION_COORDINATE",
+    "LOCATION_COUNTRY",
+    "LOCATION_STATE",
+    "LOCATION_ZIP",
+    "MARITAL_STATUS",
+    "MONEY",
+    "NAME",
+    "NAME_FAMILY",
+    "NAME_GIVEN",
+    "NAME_MEDICAL_PROFESSIONAL",
+    "NUMERICAL_PII",
+    "OCCUPATION",
+    "ORGANIZATION",
+    "ORGANIZATION_MEDICAL_FACILITY",
+    "ORIGIN",
+    "PASSPORT_NUMBER",
+    "PASSWORD",
+    "PHONE_NUMBER",
+    "PHYSICAL_ATTRIBUTE",
+    "POLITICAL_AFFILIATION",
+    "RELIGION",
+    "SEXUALITY",
+    "SSN",
+    "TIME",
+    "URL",
+    "USERNAME",
+    "VEHICLE_ID",
+    "ZODIAC_SIGN",
     # Health Information
-    "BLOOD_TYPE", "CONDITION", "DOSE", "DRUG", "INJURY", "MEDICAL_PROCESS",
+    "BLOOD_TYPE",
+    "CONDITION",
+    "DOSE",
+    "DRUG",
+    "INJURY",
+    "MEDICAL_PROCESS",
     "STATISTICS",
     # PCI
-    "BANK_ACCOUNT", "CREDIT_CARD", "CREDIT_CARD_EXPIRATION", "CVV",
+    "BANK_ACCOUNT",
+    "CREDIT_CARD",
+    "CREDIT_CARD_EXPIRATION",
+    "CVV",
     "ROUTING_NUMBER",
 ]
 
@@ -92,7 +199,7 @@ AMAZON_MACIE_ENTITIES = [
     # Birth date
     "DATE_OF_BIRTH",
     # Driver's license (per country)
-    "DRIVERS_LICENSE",              # US
+    "DRIVERS_LICENSE",  # US
     "AUSTRALIA_DRIVERS_LICENSE",
     "AUSTRIA_DRIVERS_LICENSE",
     "BELGIUM_DRIVERS_LICENSE",
@@ -159,7 +266,7 @@ AMAZON_MACIE_ENTITIES = [
     # Permanent residence number
     "CANADA_NATIONAL_IDENTIFICATION_NUMBER",
     # Phone number (per country)
-    "PHONE_NUMBER",                 # Canada and US
+    "PHONE_NUMBER",  # Canada and US
     "BRAZIL_PHONE_NUMBER",
     "FRANCE_PHONE_NUMBER",
     "GERMANY_PHONE_NUMBER",
@@ -209,11 +316,12 @@ VENDOR_LISTS = {
 # HuggingFace model scraping
 # ---------------------------------------------------------------------------
 
+
 def strip_bio_tags(label: str) -> str:
     """Remove BIO/BIOLU prefix or postfix tags (e.g. B-LOC, LOC-B, I-LOC, LOC-U)."""
     label = str(label)
-    label = re.sub(r"^[BILUS]-", "", label)   # prefix: B-LOC  → LOC
-    label = re.sub(r"-[BILUS]$", "", label)   # postfix: LOC-B → LOC
+    label = re.sub(r"^[BILUS]-", "", label)  # prefix: B-LOC  → LOC
+    label = re.sub(r"-[BILUS]$", "", label)  # postfix: LOC-B → LOC
     return label
 
 
@@ -254,21 +362,26 @@ def extract_entities_from_query(search_terms, limit_per_term=50):
                 model_clean_labels = set()
                 for label_name in labels.values():
                     clean = strip_bio_tags(label_name)
-                    if clean.upper() not in ("O", "OTHER") and "LABEL_" not in clean.upper():
+                    if (
+                        clean.upper() not in ("O", "OTHER")
+                        and "LABEL_" not in clean.upper()
+                    ):
                         model_clean_labels.add(clean)
 
                 if model_clean_labels:
                     model_entities[model_id] = sorted(model_clean_labels)
                     entity_counts.update(model_clean_labels)
 
-            except Exception:
+            except Exception:  # noqa: S112 — intentional: skip datasets that fail to load
                 continue
 
         all_results[term] = {
             "entity_counts": entity_counts,
             "model_entities": model_entities,
         }
-        print(f"Found {len(entity_counts)} unique entities across {len(model_entities)} models.\n")
+        print(
+            f"Found {len(entity_counts)} unique entities across {len(model_entities)} models.\n",
+        )
 
     return all_results
 
@@ -277,8 +390,9 @@ def extract_entities_from_query(search_terms, limit_per_term=50):
 # Display helpers
 # ---------------------------------------------------------------------------
 
-def print_summary(results, title):
-    print(f"\n{'='*20} {title} {'='*20}")
+
+def print_summary(results, title) -> None:
+    print(f"\n{'=' * 20} {title} {'=' * 20}")
     for term, data in results.items():
         entity_counts = data["entity_counts"]
         model_entities = data["model_entities"]
@@ -300,7 +414,7 @@ def print_summary(results, title):
             print("    No models with labeled entities found.")
 
 
-def print_combined_totals(results, vendor_lists=None):
+def print_combined_totals(results, vendor_lists=None) -> None:
     """Aggregate entity counts across all search terms and vendor lists, then print ranked."""
     combined = Counter()
     for data in results.values():
@@ -310,7 +424,7 @@ def print_combined_totals(results, vendor_lists=None):
         for entities in vendor_lists.values():
             combined.update(entities)
 
-    print(f"\n{'='*20} COMBINED TOTALS (HuggingFace models + vendors) {'='*20}")
+    print(f"\n{'=' * 20} COMBINED TOTALS (HuggingFace models + vendors) {'=' * 20}")
     if combined:
         for entity, count in combined.most_common():
             print(f"  {entity}: {count}")
@@ -318,8 +432,8 @@ def print_combined_totals(results, vendor_lists=None):
         print("  No entities found.")
 
 
-def print_vendor_lists(vendor_lists):
-    print(f"\n{'='*20} VENDOR / REFERENCE ENTITY LISTS {'='*20}")
+def print_vendor_lists(vendor_lists) -> None:
+    print(f"\n{'=' * 20} VENDOR / REFERENCE ENTITY LISTS {'=' * 20}")
     for vendor, entities in vendor_lists.items():
         print(f"\n  {vendor} ({len(entities)} entities):")
         print(f"    {', '.join(sorted(entities))}")
@@ -329,10 +443,19 @@ def print_vendor_lists(vendor_lists):
 # HuggingFace dataset scraping
 # ---------------------------------------------------------------------------
 
-_SPAN_ENTITY_FIELDS = frozenset({
-    "label", "entity_type", "tag", "entity", "type",
-    "ner_tag", "pii_type", "class", "category",
-})
+_SPAN_ENTITY_FIELDS = frozenset(
+    {
+        "label",
+        "entity_type",
+        "tag",
+        "entity",
+        "type",
+        "ner_tag",
+        "pii_type",
+        "class",
+        "category",
+    },
+)
 
 _HF_DS_SERVER = "https://datasets-server.huggingface.co"
 
@@ -340,7 +463,7 @@ _HF_DS_SERVER = "https://datasets-server.huggingface.co"
 def _fetch_ds_json(path, timeout=15):
     """GET a path on the HF datasets-server and return parsed JSON, or None on failure."""
     try:
-        with urllib.request.urlopen(f"{_HF_DS_SERVER}{path}", timeout=timeout) as r:
+        with urllib.request.urlopen(f"{_HF_DS_SERVER}{path}", timeout=timeout) as r:  # noqa: S310
             return json.loads(r.read())
     except Exception:
         return None
@@ -354,7 +477,7 @@ def _classlabels_from_feature_list(features):
     Columns whose names hint at POS/syntax tagging (``pos``, ``chunk``, ``dep``,
     ``morph``) are skipped so that only NER-relevant labels are included.
     """
-    _SYNTAX_COL_HINTS = ("pos", "chunk", "dep", "morph", "xpos", "upos")
+    _syntax_col_hints = ("pos", "chunk", "dep", "morph", "xpos", "upos")
     entities = set()
     if not isinstance(features, list):
         return entities
@@ -362,7 +485,7 @@ def _classlabels_from_feature_list(features):
         if not isinstance(f, dict):
             continue
         col_lower = f.get("name", "").lower()
-        if any(hint in col_lower for hint in _SYNTAX_COL_HINTS):
+        if any(hint in col_lower for hint in _syntax_col_hints):
             continue
         for container_key in ("sequence", "dtype"):
             container = f.get(container_key)
@@ -371,7 +494,10 @@ def _classlabels_from_feature_list(features):
                 name_iter = names.values() if isinstance(names, dict) else names
                 for name in name_iter:
                     clean = strip_bio_tags(str(name))
-                    if clean.upper() not in ("O", "OTHER") and "LABEL_" not in clean.upper():
+                    if (
+                        clean.upper() not in ("O", "OTHER")
+                        and "LABEL_" not in clean.upper()
+                    ):
                         entities.add(clean)
         # Recurse into nested list subfields (span-based schemas)
         sub_list = f.get("list")
@@ -402,7 +528,7 @@ def _classlabels_from_card(dataset_id):
     return entities
 
 
-def _scan_row(obj, entities):
+def _scan_row(obj, entities) -> None:
     """
     Recursively scan a dataset row object for span-dict entity-type values.
 
@@ -433,7 +559,7 @@ def _scan_row(obj, entities):
                 try:
                     _scan_row(parser(s), entities)
                     break
-                except Exception:
+                except Exception:  # noqa: S110 — intentional: parse failure is expected for non-JSON strings
                     pass
 
 
@@ -461,7 +587,7 @@ def _entities_for_one_dataset(dataset_id):
         config = split_info.get("config", "default")
         split = split_info.get("split", "train")
         rows_data = _fetch_ds_json(
-            f"/first-rows?dataset={dataset_id}&config={config}&split={split}"
+            f"/first-rows?dataset={dataset_id}&config={config}&split={split}",
         )
         if rows_data and rows_data.get("rows"):
             entities = set()
@@ -497,11 +623,13 @@ def extract_entities_from_datasets(search_terms, limit_per_term=30):
     for term in search_terms:
         print(f"--- Processing dataset search term: '{term}' ---")
         try:
-            datasets = list(api.list_datasets(
-                search=term,
-                sort="downloads",
-                limit=limit_per_term,
-            ))
+            datasets = list(
+                api.list_datasets(
+                    search=term,
+                    sort="downloads",
+                    limit=limit_per_term,
+                ),
+            )
         except Exception as e:
             print(f"Error fetching datasets for '{term}': {e}")
             all_results[term] = {"entity_counts": Counter(), "dataset_entities": {}}
@@ -517,7 +645,7 @@ def extract_entities_from_datasets(search_terms, limit_per_term=30):
                 if entities:
                     dataset_entities[ds_id] = sorted(entities)
                     entity_counts.update(entities)
-            except Exception:
+            except Exception:  # noqa: S112
                 continue
 
         all_results[term] = {
@@ -526,7 +654,7 @@ def extract_entities_from_datasets(search_terms, limit_per_term=30):
         }
         print(
             f"Found {len(entity_counts)} unique entities "
-            f"across {len(dataset_entities)} datasets.\n"
+            f"across {len(dataset_entities)} datasets.\n",
         )
 
     return all_results
@@ -536,8 +664,9 @@ def extract_entities_from_datasets(search_terms, limit_per_term=30):
 # Dataset display helpers
 # ---------------------------------------------------------------------------
 
-def print_dataset_summary(results, title):
-    print(f"\n{'='*20} {title} {'='*20}")
+
+def print_dataset_summary(results, title) -> None:
+    print(f"\n{'=' * 20} {title} {'=' * 20}")
     for term, data in results.items():
         entity_counts = data["entity_counts"]
         dataset_entities = data["dataset_entities"]
@@ -572,6 +701,8 @@ if __name__ == "__main__":
 
     dataset_results = extract_entities_from_datasets(["pii", "phi", "privacy"])
 
-    print_dataset_summary(dataset_results, "PRIVACY/PII ENTITIES FROM DATASETS (per search term)")
+    print_dataset_summary(
+        dataset_results,
+        "PRIVACY/PII ENTITIES FROM DATASETS (per search term)",
+    )
     print_combined_totals(dataset_results)
-

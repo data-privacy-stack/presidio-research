@@ -1,5 +1,3 @@
-from typing import List
-
 from presidio_analyzer import EntityRecognizer
 from presidio_analyzer.nlp_engine import NlpEngine
 
@@ -24,11 +22,11 @@ class PresidioRecognizerWrapper(BaseModel):
         self,
         recognizer: EntityRecognizer,
         nlp_engine: NlpEngine,
-        entities_to_keep: List[str] = None,
+        entities_to_keep: list[str] = None,
         labeling_scheme: str = "IO",
         with_nlp_artifacts: bool = False,
         verbose: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             entities_to_keep=entities_to_keep,
             verbose=verbose,
@@ -41,18 +39,18 @@ class PresidioRecognizerWrapper(BaseModel):
         if not self.nlp_engine.is_loaded():
             self.nlp_engine.load()
 
-    #
     def __make_nlp_artifacts(self, text: str):
         return self.nlp_engine.process_text(text, "en")
 
-    #
-    def predict(self, sample: InputSample, **kwargs) -> List[str]:
+    def predict(self, sample: InputSample, **kwargs) -> list[str]:
         nlp_artifacts = None
         if self.with_nlp_artifacts:
             nlp_artifacts = self.__make_nlp_artifacts(sample.full_text)
 
         results = self.recognizer.analyze(
-            sample.full_text, self.entities, nlp_artifacts
+            sample.full_text,
+            self.entities,
+            nlp_artifacts,
         )
         starts = []
         ends = []
@@ -76,5 +74,5 @@ class PresidioRecognizerWrapper(BaseModel):
         )
         return response_tags
 
-    def batch_predict(self, dataset: List[InputSample], **kwargs) -> List[List[str]]:
+    def batch_predict(self, dataset: list[InputSample], **kwargs) -> list[list[str]]:
         return [self.predict(sample, **kwargs) for sample in dataset]

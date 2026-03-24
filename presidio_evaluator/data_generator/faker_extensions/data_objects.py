@@ -1,11 +1,9 @@
-import warnings
-from dataclasses import dataclass
 import dataclasses
 import json
-from pathlib import Path
-from typing import Optional, List, Union
+import warnings
 from collections import Counter
-from typing import Dict
+from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(eq=True)
@@ -27,7 +25,7 @@ class FakerSpan:
 
         return super().__new__(cls)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return json.dumps(dataclasses.asdict(self))
 
 
@@ -37,10 +35,10 @@ class FakerSpansResult:
     and a list of spans for each element replaced."""
 
     fake: str
-    spans: List[FakerSpan]
-    template: Optional[str] = None
-    template_id: Optional[int] = None
-    sample_id: Optional[int] = None
+    spans: list[FakerSpan]
+    template: str | None = None
+    template_id: int | None = None
+    sample_id: int | None = None
 
     def __new__(cls, *args, **kwargs):
         warnings.warn(
@@ -52,13 +50,13 @@ class FakerSpansResult:
 
         return super().__new__(cls)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.fake
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return json.dumps(dataclasses.asdict(self))
 
-    def toJSON(self):
+    def toJSON(self):  # noqa: N802
         spans_dict = json.dumps([dataclasses.asdict(span) for span in self.spans])
         return json.dumps(
             {
@@ -67,11 +65,11 @@ class FakerSpansResult:
                 "template": self.template,
                 "template_id": self.template_id,
                 "sample_id": self.sample_id,
-            }
+            },
         )
 
     @classmethod
-    def fromJSON(cls, json_string):
+    def fromJSON(cls, json_string):  # noqa: N802
         """Load a single FakerSpansResult from a JSON string."""
         json_dict = json.loads(json_string)
         converted_spans = []
@@ -81,7 +79,7 @@ class FakerSpansResult:
         return cls(**json_dict)
 
     @classmethod
-    def count_entities(cls, fake_records: List["FakerSpansResult"]) -> Counter:
+    def count_entities(cls, fake_records: list["FakerSpansResult"]) -> Counter:
         """Count frequency of entity types in a list of FakerSpansResult."""
         count_per_entity_new = Counter()
         for record in fake_records:
@@ -91,16 +89,19 @@ class FakerSpansResult:
 
     @classmethod
     def load_dataset_from_file(
-        cls, filename: Union[Path, str]
-    ) -> List["FakerSpansResult"]:
+        cls,
+        filename: Path | str,
+    ) -> list["FakerSpansResult"]:
         """Load a dataset of FakerSpansResult from a JSON file."""
-        with open(filename, "r", encoding="utf-8") as f:
+        with open(filename, encoding="utf-8") as f:
             return [cls.fromJSON(line) for line in f.readlines()]
 
     @classmethod
     def update_entity_types(
-        cls, dataset: List["FakerSpansResult"], entity_mapping: Dict[str, str]
-    ):
+        cls,
+        dataset: list["FakerSpansResult"],
+        entity_mapping: dict[str, str],
+    ) -> None:
         """Replace entity types using a translator dictionary."""
         for sample in dataset:
             # update entity types on spans
@@ -109,5 +110,6 @@ class FakerSpansResult:
             # update entity types on the template string
             for key, value in entity_mapping.items():
                 sample.template = sample.template.replace(
-                    "{{" + key + "}}", "{{" + value + "}}"
+                    "{{" + key + "}}",
+                    "{{" + value + "}}",
                 )

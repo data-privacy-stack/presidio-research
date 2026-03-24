@@ -1,6 +1,5 @@
 import warnings
 from collections import Counter
-from typing import Optional, List
 
 import pandas as pd
 
@@ -34,7 +33,7 @@ class TokenEvaluator(BaseEvaluator):
         :param beta: F-beta parameter for score calculation (default 2.0).
         :return: EvaluationResult with per-entity and aggregate precision/recall/F metrics.
         """
-        evaluation_results: List[EvaluationResult] = []
+        evaluation_results: list[EvaluationResult] = []
 
         for _, sentence_df in results_df.groupby("sentence_id", sort=False):
             tokens = sentence_df["token"].tolist()
@@ -48,7 +47,10 @@ class TokenEvaluator(BaseEvaluator):
                 tags=annotations,
                 start_indices=start_indices,
             )
-            results, errors = self.compare(input_sample=input_sample, prediction=predictions)
+            results, errors = self.compare(
+                input_sample=input_sample,
+                prediction=predictions,
+            )
             evaluation_results.append(
                 EvaluationResult(
                     results=results,
@@ -58,15 +60,15 @@ class TokenEvaluator(BaseEvaluator):
                     actual_tags=annotations,
                     predicted_tags=predictions,
                     start_indices=start_indices,
-                )
+                ),
             )
 
         return self.calculate_score(evaluation_results, beta=beta)
 
     def calculate_score(
         self,
-        evaluation_results: List[EvaluationResult],
-        entities: Optional[List[str]] = None,
+        evaluation_results: list[EvaluationResult],
+        entities: list[str] | None = None,
         beta: float = 2.0,
     ) -> EvaluationResult:
         """
@@ -95,8 +97,15 @@ class TokenEvaluator(BaseEvaluator):
         for res in evaluation_results:
             if not res.results:
                 # token evaluation works on the results object, so run the compare method if not done yet
-                input_sample = InputSample(full_text = res.text, tokens=res.tokens, tags=res.actual_tags)
-                results, errors = self.compare(input_sample=input_sample, prediction=res.predicted_tags)
+                input_sample = InputSample(
+                    full_text=res.text,
+                    tokens=res.tokens,
+                    tags=res.actual_tags,
+                )
+                results, errors = self.compare(
+                    input_sample=input_sample,
+                    prediction=res.predicted_tags,
+                )
                 res.results = results
                 res.errors = errors
 
@@ -108,8 +117,8 @@ class TokenEvaluator(BaseEvaluator):
         entity_precision = {}
         n = {}
         if not entities:
-            entities1 = list(set([x[0] for x in all_results.keys() if x[0] != "O"]))
-            entities2 = list(set([x[1] for x in all_results.keys() if x[1] != "O"]))
+            entities1 = list({x[0] for x in all_results.keys() if x[0] != "O"})
+            entities2 = list({x[1] for x in all_results.keys() if x[1] != "O"})
             entities = list(set(entities1).union(set(entities2)))
 
         for entity in entities:
@@ -159,7 +168,7 @@ class Evaluator(TokenEvaluator):
     Alias for TokenEvaluator to maintain backward compatibility.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         warnings.warn(
             "Evaluator is deprecated and will be removed in a future version. "
             "Use SpanEvaluator instead.",

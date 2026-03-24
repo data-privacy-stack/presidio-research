@@ -41,7 +41,13 @@ HIERARCHY: dict = {
             "PREFIX": [],
             "SUFFIX": [],
             "TITLE": [],
-            "USERNAME": ["USER_NAME", "DISPLAYNAME", "ACCOUNTNAME", "ACCOUNT_NAME", "USER"],
+            "USERNAME": [
+                "USER_NAME",
+                "DISPLAYNAME",
+                "ACCOUNTNAME",
+                "ACCOUNT_NAME",
+                "USER",
+            ],
             "ALIAS": ["OTHER_NAME"],
         },
         "DEMOGRAPHIC": {
@@ -68,7 +74,14 @@ HIERARCHY: dict = {
         },
         "CONTACT": {
             "EMAIL_ADDRESS": ["EMAIL", "EMA"],
-            "PHONE_NUMBER": ["PHONE", "TEL", "TELEPHONENUM", "PHONENUMBER", "PHN", "MOBILE"],
+            "PHONE_NUMBER": [
+                "PHONE",
+                "TEL",
+                "TELEPHONENUM",
+                "PHONENUMBER",
+                "PHN",
+                "MOBILE",
+            ],
             "FAX": ["FAX_NUMBER"],
             "SOCIAL_HANDLE": ["QQ"],  # QQ: Chinese messaging platform ID
         },
@@ -92,9 +105,9 @@ HIERARCHY: dict = {
                     "POSTCODE",
                     "LOCATION_ZIP",
                     "UK_POSTCODE",
-                    "CEP",       # BR Código de Endereçamento Postal
+                    "CEP",  # BR Código de Endereçamento Postal
                     "CEP_CODE",  # common compound form e.g. BRAZIL_CEP_CODE
-                    "PLZ",       # DE Postleitzahl
+                    "PLZ",  # DE Postleitzahl
                 ],
                 "COUNTRY": ["LOCATION_COUNTRY", "COUNTRY_OR_REGION"],
             },
@@ -137,7 +150,13 @@ HIERARCHY: dict = {
             "ORG": [],
         },
         "EMPLOYMENT": {
-            "JOB_TITLE": ["JOBTITLE", "OCCUPATION", "PROFESSION", "PROVIDER", "POSITION"],
+            "JOB_TITLE": [
+                "JOBTITLE",
+                "OCCUPATION",
+                "PROFESSION",
+                "PROVIDER",
+                "POSITION",
+            ],
             "JOB_DEPARTMENT": ["JOBDEPARTMENT", "JOBAREA"],
             "JOB_DESCRIPTOR": ["JOBDESCRIPTOR", "JOBTYPE"],
             "EMPLOYEE_ID": ["EMPLOYEE"],
@@ -184,10 +203,10 @@ HIERARCHY: dict = {
                 "ES_NIE",
                 "ES_NIF",
                 # Common country-specific tax codes used as standalone labels
-                "CPF",   # BR Cadastro de Pessoas Físicas
-                "RFC",   # MX Registro Federal de Contribuyentes
-                "RUT",   # CL Rol Único Tributario
-                "NIT",   # CO Número de Identificación Tributaria
+                "CPF",  # BR Cadastro de Pessoas Físicas
+                "RFC",  # MX Registro Federal de Contribuyentes
+                "RUT",  # CL Rol Único Tributario
+                "NIT",  # CO Número de Identificación Tributaria
             ],
             "NATIONAL_ID": [
                 "IDCARD",
@@ -206,14 +225,14 @@ HIERARCHY: dict = {
                 "NG_NIN",
                 "TH_TNIN",
                 # Common country-specific ID codes used as standalone labels
-                "AADHAAR",                # IN Aadhaar card
-                "DNI",                    # ES/AR/PE Documento Nacional de Identidad
-                "CITIZENSHIP_CARD",       # CO Cédula de Ciudadanía
-                "CURP",                   # MX Clave Única de Registro de Población
-                "RG_NUMBER",              # BR Registro Geral
-                "RUN",                    # CL Rol Único Nacional
+                "AADHAAR",  # IN Aadhaar card
+                "DNI",  # ES/AR/PE Documento Nacional de Identidad
+                "CITIZENSHIP_CARD",  # CO Cédula de Ciudadanía
+                "CURP",  # MX Clave Única de Registro de Población
+                "RG_NUMBER",  # BR Registro Geral
+                "RUN",  # CL Rol Único Nacional
                 "NATIONAL_IDENTIFICATION",  # generic suffix (e.g. FRANCE_NATIONAL_IDENTIFICATION_NUMBER)
-                "RRN",                    # KR standalone Resident Registration Number
+                "RRN",  # KR standalone Resident Registration Number
             ],
             "VOTER_ID": ["VOTER", "IN_VOTER", "UK_ELECTORAL_ROLL_NUMBER", "ELECTORAL"],
             "IMMIGRATION_ID": ["IMMIGRATION"],
@@ -224,10 +243,13 @@ HIERARCHY: dict = {
                 "IT_VAT_CODE",
             ],
             "BUSINESS_ID": [
-                "BUSINESS", "SG_UEN", "AU_ABN", "AU_ACN",
-                "HANDELSREGISTER",   # DE Handelsregisternummer
+                "BUSINESS",
+                "SG_UEN",
+                "AU_ABN",
+                "AU_ACN",
+                "HANDELSREGISTER",  # DE Handelsregisternummer
                 "REGISTRO_MERCANTIL",  # ES/CO Registro Mercantil
-                "CNPJ",              # BR Cadastro Nacional da Pessoa Jurídica
+                "CNPJ",  # BR Cadastro Nacional da Pessoa Jurídica
             ],
             "PUBLIC_TRANSPORT_CARD": [],
             "ID": ["NUMERIC_PII", "CODE"],  # CODE: generic coded identifier
@@ -237,7 +259,7 @@ HIERARCHY: dict = {
                 "VEHICLE_REGISTRATION_NUMBER",
                 "VRN",
                 "LICENSE_PLATE",
-                "KFZ",          # DE Kraftfahrzeugkennzeichen
+                "KFZ",  # DE Kraftfahrzeugkennzeichen
                 "KENNZEICHEN",  # DE Kennzeichen
             ],
         },
@@ -280,8 +302,8 @@ HIERARCHY: dict = {
                     "AMOUNT": ["MONEY"],
                 },
                 "INSURANCE": {
-                    "POLICY_NUMBER":  ["INSURANCE_POLICY", "POLICY_ID"],
-                    "CLAIM_NUMBER":   ["CLAIM_ID", "INSURANCE_CLAIM"],
+                    "POLICY_NUMBER": ["INSURANCE_POLICY", "POLICY_ID"],
+                    "CLAIM_NUMBER": ["CLAIM_ID", "INSURANCE_CLAIM"],
                     "POLICY_HOLDER": [],
                 },
             },
@@ -350,7 +372,7 @@ HIERARCHY: dict = {
                 "HEALTH_PLAN_BENEFICIARY_NUMBER",
                 "UK_NHS",
                 "AU_MEDICARE",
-                "KVNR",              
+                "KVNR",
                 "KRANKENVERSICHERUNG",
             ],
             "MEDICAL_LICENSE": ["MEDICAL_LICENSE_ID", "US_NPI", "US_MBI"],
@@ -374,9 +396,13 @@ HIERARCHY: dict = {
             "PLAN": ["HEALTHCARE_PLAN"],
             "PROTECTED_HEALTH_INFORMATION": [],
             # Clinical research / trials
-            "STUDY_PARTICIPANT_ID": ["SUBJECT_ID", "TRIAL_PARTICIPANT_ID", "PARTICIPANT_ID"],
-            "PROTOCOL_ID":          ["IRB_NUMBER", "PROTOCOL_NUMBER", "STUDY_ID"],
-            "COHORT_ID":            ["COHORT", "ARM_ID"],
+            "STUDY_PARTICIPANT_ID": [
+                "SUBJECT_ID",
+                "TRIAL_PARTICIPANT_ID",
+                "PARTICIPANT_ID",
+            ],
+            "PROTOCOL_ID": ["IRB_NUMBER", "PROTOCOL_NUMBER", "STUDY_ID"],
+            "COHORT_ID": ["COHORT", "ARM_ID"],
         },
         "VEHICLE_PII": {
             "LICENSE_PLATE": [
@@ -402,14 +428,18 @@ HIERARCHY: dict = {
             "WTN": ["WTN_NUMBER", "WORLD_TRACER_NUMBER"],
         },
         "EDUCATION": {
-            "STUDENT_ID":       ["STUDENT_NUMBER", "LEARNER_ID", "ENROLLMENT_NUMBER", "STUDENT"],
-            "ACADEMIC_RECORD":  ["TRANSCRIPT", "GRADE_REPORT", "GPA"],
-            "EDUCATION_LEVEL":  [],
-            "INSTITUTION_ID":   ["SCHOOL_CODE", "UNIVERSITY_ID"],
+            "STUDENT_ID": [
+                "STUDENT_NUMBER",
+                "LEARNER_ID",
+                "ENROLLMENT_NUMBER",
+                "STUDENT",
+            ],
+            "ACADEMIC_RECORD": ["TRANSCRIPT", "GRADE_REPORT", "GPA"],
+            "EDUCATION_LEVEL": [],
+            "INSTITUTION_ID": ["SCHOOL_CODE", "UNIVERSITY_ID"],
             "PARENT_GUARDIAN_ID": [],
             "PARENT": [],
             "TEACHER_ID": ["TEACHER_NUMBER", "FACULTY_ID", "TEACHER", "FACULTY"],
-
         },
         "DATE_TIME": {
             "DATE": [],
@@ -422,7 +452,7 @@ HIERARCHY: dict = {
             "EVENT": [],
             "DATES": [],
         },
-    }
+    },
 }
 
 
@@ -519,4 +549,3 @@ COUNTRIES: set[str] = {
 
 class EntityNotMappedError(ValueError):
     """Raised when a raw entity label cannot be resolved to any canonical entity."""
-

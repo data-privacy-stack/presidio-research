@@ -41,13 +41,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 include = ["presidio_evaluator/data_generator/raw_data/*"]
 
-[tool.ruff]
-line-length = 88
-exclude = [".git", "__pycache__", "build", "dist", "tests"]
-
-[tool.ruff.lint]
-ignore = ["E203", "D100", "D202"]
-
 [tool.pytest.ini_options]
 testpaths = ["."]
 markers = [

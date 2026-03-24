@@ -1,5 +1,4 @@
 import re
-from typing import List, Union, Optional
 
 from faker import Generator
 
@@ -31,9 +30,9 @@ class SpanGenerator(Generator):
         self,
         text: str,
         add_spans: bool = False,
-        template_id: Optional[int] = None,
-        sample_id: Optional[int] = None,
-    ) -> Union[str, InputSample]:
+        template_id: int | None = None,
+        sample_id: int | None = None,
+    ) -> str | InputSample:
         """Parses a Faker template.
 
         This replaces the original parse method to introduce spans.
@@ -89,10 +88,10 @@ class SpanGenerator(Generator):
             else fake_text
         )
 
-    def _match_to_span(self, text: str, **kwargs) -> List[Span]:
+    def _match_to_span(self, text: str, **kwargs) -> list[Span]:
         matches = _re_token.finditer(text)
 
-        results: List[Span] = []
+        results: list[Span] = []
         for match in matches:
             formatter = match.group()[2:-2].lower()
             results.append(
@@ -101,7 +100,7 @@ class SpanGenerator(Generator):
                     start_position=match.start(),
                     end_position=match.end(),
                     entity_value=str(self.format(formatter.strip(), **kwargs)),
-                )
+                ),
             )
 
         return results

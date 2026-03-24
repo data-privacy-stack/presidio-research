@@ -1,7 +1,7 @@
 import random
 import re
 import warnings
-from typing import List, Optional, Union, Generator
+from collections.abc import Generator
 
 import numpy as np
 import pandas as pd
@@ -13,7 +13,6 @@ from tqdm import tqdm
 from presidio_evaluator.data_generator.faker_extensions import (
     SpanGenerator,
 )
-
 from presidio_evaluator.data_generator.faker_extensions.data_objects import (
     FakerSpansResult,
 )
@@ -23,9 +22,9 @@ class PresidioDataGenerator:
     def __init__(
         self,
         custom_faker: Faker = None,
-        locale: Optional[List[str]] = None,
+        locale: list[str] | None = None,
         lower_case_ratio: float = 0.05,
-    ):
+    ) -> None:
         """
         Fake data generator.
         Leverages Faker to create fake PII entities into predefined templates of structure: a b c {{PII}} d e f,
@@ -68,7 +67,7 @@ class PresidioDataGenerator:
 
         if custom_faker and locale:
             raise ValueError(
-                "If a custom faker is passed, it's expected to have its locales loaded"
+                "If a custom faker is passed, it's expected to have its locales loaded",
             )
 
         if custom_faker:
@@ -83,10 +82,10 @@ class PresidioDataGenerator:
     def parse(
         self,
         template: str,
-        template_id: Optional[int] = None,
-        sample_id: Optional[int] = None,
+        template_id: int | None = None,
+        sample_id: int | None = None,
         add_spans: bool = True,
-    ) -> Union[FakerSpansResult, str]:
+    ) -> FakerSpansResult | str:
         """
         This function replaces known PII {{tokens}} in a template sentence
         with a fake value for each token and returns a sentence with fake PII.
@@ -121,8 +120,8 @@ class PresidioDataGenerator:
             raise AttributeError(
                 f'Failed to generate fake data based on template "{template}".'
                 f"You might need to add a new Faker provider! "
-                f"{err}"
-            )
+                f"{err}",
+            ) from err
 
     @staticmethod
     def read_template_file(templates_file):
@@ -132,8 +131,10 @@ class PresidioDataGenerator:
             return lines
 
     def generate_fake_data(
-        self, templates: List[str], n_samples: int
-    ) -> Union[Generator[FakerSpansResult, None, None], Generator[str, None, None]]:
+        self,
+        templates: list[str],
+        n_samples: int,
+    ) -> Generator[FakerSpansResult, None, None] | Generator[str, None, None]:
         """
         Generates fake PII data whenever it encounters known faker entities in a template.
         :param templates: A list of strings containing templates
@@ -148,7 +149,7 @@ class PresidioDataGenerator:
             yield self.parse(template=template, template_id=template_id, sample_id=i)
 
     @staticmethod
-    def _lower_pattern(pattern: Union[str, FakerSpansResult]):
+    def _lower_pattern(pattern: str | FakerSpansResult):
         if isinstance(pattern, str):
             return pattern.lower()
         elif isinstance(pattern, FakerSpansResult):
@@ -158,7 +159,7 @@ class PresidioDataGenerator:
             return pattern
 
     @staticmethod
-    def seed(seed_value=42):
+    def seed(seed_value=42) -> None:
         Faker.seed(seed_value)
         random.seed(seed_value)
         np.random.seed(seed_value)
@@ -230,7 +231,8 @@ class PresidioDataGenerator:
 
         # Update some column names to fit Faker
         fake_data.rename(
-            columns={"country": "country_code", "state": "state_abbr"}, inplace=True
+            columns={"country": "country_code", "state": "state_abbr"},
+            inplace=True,
         )
 
         fake_data.rename(

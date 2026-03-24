@@ -1,7 +1,6 @@
 import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Tuple
 
 import pandas as pd
 
@@ -31,31 +30,32 @@ class PIIEvaluationMetrics:
     false_positives: int = 0
     false_negatives: int = 0
 
+
 @dataclass
 class EvaluationResult:
     def __init__(
         self,
-        results: Optional[Counter] = None,
-        model_errors: Optional[List[ModelError]] = None,
-        text: Optional[str] = None,
-        pii_recall: Optional[float] = None,
-        pii_precision: Optional[float] = None,
-        pii_f: Optional[float] = None,
-        n: Optional[int] = None,
-        entity_recall_dict: Optional[Dict[str, float]] = None,
-        entity_precision_dict: Optional[Dict[str, float]] = None,
-        n_dict: Optional[Dict[str, int]] = None,
-        per_type: Optional[Dict[str, PIIEvaluationMetrics]] = None,
-        pii_predicted: Optional[int] = 0,
-        pii_annotated: Optional[int] = 0,
-        pii_true_positives: Optional[int] = 0,
-        pii_false_positives: Optional[int] = 0,
-        pii_false_negatives: Optional[int] = 0,
-        tokens: Optional[List[str]] = None,
-        actual_tags: Optional[List[str]] = None,
-        predicted_tags: Optional[List[str]] = None,
-        start_indices: List[int] = None
-    ):
+        results: Counter | None = None,
+        model_errors: list[ModelError] | None = None,
+        text: str | None = None,
+        pii_recall: float | None = None,
+        pii_precision: float | None = None,
+        pii_f: float | None = None,
+        n: int | None = None,
+        entity_recall_dict: dict[str, float] | None = None,
+        entity_precision_dict: dict[str, float] | None = None,
+        n_dict: dict[str, int] | None = None,
+        per_type: dict[str, PIIEvaluationMetrics] | None = None,
+        pii_predicted: int | None = 0,
+        pii_annotated: int | None = 0,
+        pii_true_positives: int | None = 0,
+        pii_false_positives: int | None = 0,
+        pii_false_negatives: int | None = 0,
+        tokens: list[str] | None = None,
+        actual_tags: list[str] | None = None,
+        predicted_tags: list[str] | None = None,
+        start_indices: list[int] = None,
+    ) -> None:
         """
         Holds the output of a comparison between ground truth and predicted
         :param results: Represents the confusion matrix as a Counter object,
@@ -88,18 +88,16 @@ class EvaluationResult:
 
         if per_type and entity_recall_dict:
             raise ValueError(
-                "Cannot provide both per_type and entity_recall_dict. "
-                "Use one of them."
+                "Cannot provide both per_type and entity_recall_dict. Use one of them.",
             )
         if per_type and entity_precision_dict:
             raise ValueError(
                 "Cannot provide both per_type and entity_precision_dict. "
-                "Use one of them."
+                "Use one of them.",
             )
         if per_type and n_dict:
             raise ValueError(
-                "Cannot provide both per_type and n_dict. "
-                "Use one of them."
+                "Cannot provide both per_type and n_dict. Use one of them.",
             )
 
         if per_type and not entity_recall_dict:
@@ -111,10 +109,7 @@ class EvaluationResult:
                 ent: metrics.precision for ent, metrics in per_type.items()
             }
         if per_type and not n_dict:
-            n_dict = {
-                ent: metrics.num_predicted for ent, metrics in per_type.items()
-            }
-
+            n_dict = {ent: metrics.num_predicted for ent, metrics in per_type.items()}
 
         self.per_type = per_type if per_type else defaultdict(PIIEvaluationMetrics)
         self.pii_recall = pii_recall
@@ -122,7 +117,9 @@ class EvaluationResult:
         self.pii_f = pii_f
         self.n = n
         self._entity_recall_dict = entity_recall_dict if entity_recall_dict else {}
-        self._entity_precision_dict = entity_precision_dict if entity_precision_dict else {}
+        self._entity_precision_dict = (
+            entity_precision_dict if entity_precision_dict else {}
+        )
         self._n_dict = n_dict if n_dict else {}
 
         self.pii_predicted = pii_predicted
@@ -137,7 +134,7 @@ class EvaluationResult:
         self.start_indices = start_indices if start_indices is not None else []
 
     @property
-    def entity_precision_dict(self) -> Dict[str, float]:
+    def entity_precision_dict(self) -> dict[str, float]:
         """
         Property that returns precision values per entity type.
         Prioritizes deriving from per_type but falls back to stored _entity_precision_dict for backward compatibility.
@@ -147,14 +144,14 @@ class EvaluationResult:
         return self._entity_precision_dict
 
     @entity_precision_dict.setter
-    def entity_precision_dict(self, value: Dict[str, float]) -> None:
+    def entity_precision_dict(self, value: dict[str, float]) -> None:
         """
         Setter for entity_precision_dict to maintain backward compatibility.
         """
         self._entity_precision_dict = value if value else {}
 
     @property
-    def entity_recall_dict(self) -> Dict[str, float]:
+    def entity_recall_dict(self) -> dict[str, float]:
         """
         Property that returns recall values per entity type.
         Prioritizes deriving from per_type but falls back to stored _entity_recall_dict for backward compatibility.
@@ -164,24 +161,26 @@ class EvaluationResult:
         return self._entity_recall_dict
 
     @entity_recall_dict.setter
-    def entity_recall_dict(self, value: Dict[str, float]) -> None:
+    def entity_recall_dict(self, value: dict[str, float]) -> None:
         """
         Setter for entity_recall_dict to maintain backward compatibility.
         """
         self._entity_recall_dict = value if value else {}
 
     @property
-    def n_dict(self) -> Dict[str, int]:
+    def n_dict(self) -> dict[str, int]:
         """
         Property that returns the number of annotated tokens per entity type.
         Prioritizes deriving from per_type but falls back to stored _n_dict for backward compatibility.
         """
         if self.per_type:
-            return {ent: metrics.num_annotated for ent, metrics in self.per_type.items()}
+            return {
+                ent: metrics.num_annotated for ent, metrics in self.per_type.items()
+            }
         return self._n_dict
 
     @n_dict.setter
-    def n_dict(self, value: Dict[str, int]) -> None:
+    def n_dict(self, value: dict[str, int]) -> None:
         """
         Setter for n_dict to maintain backward compatibility.
         """
@@ -198,8 +197,8 @@ class EvaluationResult:
         header_format = "{:>20}" * 4
         return_str += str(
             header_format.format(
-                *("Entity", "Precision", "Recall", "Number of samples")
-            )
+                *("Entity", "Precision", "Recall", "Number of samples"),
+            ),
         )
         for entity in entities:
             return_str += "\n" + row_format.format(
@@ -223,7 +222,7 @@ class EvaluationResult:
     def __repr__(self) -> str:
         return f"stats={self.results}"
 
-    def to_log(self) -> Dict:
+    def to_log(self) -> dict:
         metrics_dict = {
             "pii_f": self.pii_f,
             "pii_recall": self.pii_recall,
@@ -235,17 +234,17 @@ class EvaluationResult:
                 {
                     f"{ent}_precision": v
                     for (ent, v) in self.entity_precision_dict.items()
-                }
+                },
             )
         if self.entity_recall_dict:
             metrics_dict.update(
-                {f"{ent}_recall": v for (ent, v) in self.entity_recall_dict.items()}
+                {f"{ent}_recall": v for (ent, v) in self.entity_recall_dict.items()},
             )
         if self.n:
             metrics_dict.update(self.n_dict)
         return metrics_dict
 
-    def to_confusion_matrix(self) -> Tuple[List[str], List[List[int]]]:
+    def to_confusion_matrix(self) -> tuple[list[str], list[list[int]]]:
         entities = list(self.n_dict.keys())
         if "O" in entities:
             entities = [ent for ent in entities if ent != "O"]

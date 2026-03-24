@@ -1,13 +1,12 @@
-from typing import List
 import string
 
 from spacy.lang.en.stop_words import STOP_WORDS
 
 
-def get_skip_words() -> List[str]:
+def get_skip_words() -> list[str]:
     """Return a list of tokens to ignore during evaluation."""
-    skip_words = [x for x in string.punctuation]
-    skip_words += [x for x in string.whitespace]
+    skip_words = list(string.punctuation)
+    skip_words += list(string.whitespace)
     skip_words.extend(
         [
             " ",
@@ -79,7 +78,7 @@ def get_skip_words() -> List[str]:
             "inc",
             "inc.",
             "ltd",
-        ]
+        ],
     )
 
     skip_words.extend(STOP_WORDS)

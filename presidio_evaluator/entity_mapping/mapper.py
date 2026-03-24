@@ -8,7 +8,6 @@ import logging
 import re
 import warnings
 from dataclasses import dataclass
-from typing import Optional
 
 import pandas as pd
 
@@ -43,13 +42,13 @@ def _strip_bio(label: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-class IncompleteMapping(RuntimeError):
+class IncompleteMapping(RuntimeError):  # noqa: N818
     """Raised by get_mapping() when one or more labels are still pending."""
 
     def __init__(self, pending: list[str]) -> None:
         self.pending = list(pending)
         super().__init__(
-            f"Mapping incomplete: {len(pending)} label(s) still pending: {pending}"
+            f"Mapping incomplete: {len(pending)} label(s) still pending: {pending}",
         )
 
 
@@ -79,7 +78,7 @@ class EntityHierarchy:
         canonical_depth: int = 3,
     ) -> None:
         self.hierarchy: dict = copy.deepcopy(
-            hierarchy if hierarchy is not None else HIERARCHY
+            hierarchy if hierarchy is not None else HIERARCHY,
         )
         self.countries: set[str] = COUNTRIES
         self.canonical_depth: int = canonical_depth
@@ -87,11 +86,11 @@ class EntityHierarchy:
         self._rebuild()
 
     @classmethod
-    def default(cls) -> "EntityHierarchy":
+    def default(cls) -> EntityHierarchy:
         """Return the module-level default instance (read-only by convention)."""
         return _DEFAULT_HIERARCHY
 
-    def copy(self) -> "EntityHierarchy":
+    def copy(self) -> EntityHierarchy:
         """Return an independent deep copy of this instance."""
         return copy.deepcopy(self)
 
@@ -129,7 +128,7 @@ class EntityHierarchy:
             elif isinstance(value, dict):
                 mapping[EntityHierarchy._normalize(key)] = key
                 mapping.update(
-                    EntityHierarchy._build_alias_map(value, canonical_depth, depth + 1)
+                    EntityHierarchy._build_alias_map(value, canonical_depth, depth + 1),
                 )
         return mapping
 
@@ -148,8 +147,10 @@ class EntityHierarchy:
             elif isinstance(value, dict):
                 result.extend(
                     EntityHierarchy._collect_canonical_nodes(
-                        value, canonical_depth, depth + 1
-                    )
+                        value,
+                        canonical_depth,
+                        depth + 1,
+                    ),
                 )
         return result
 
@@ -173,20 +174,26 @@ class EntityHierarchy:
                 result[key] = path
                 result.update(
                     EntityHierarchy._build_branch_map(
-                        value, canonical_depth, path, depth + 1
-                    )
+                        value,
+                        canonical_depth,
+                        path,
+                        depth + 1,
+                    ),
                 )
         return result
 
     def _rebuild(self) -> None:
         self.raw_to_canonical: dict[str, str] = self._build_alias_map(
-            self.hierarchy, self.canonical_depth
+            self.hierarchy,
+            self.canonical_depth,
         )
         self.all_canonical_entities: list[str] = self._collect_canonical_nodes(
-            self.hierarchy, self.canonical_depth
+            self.hierarchy,
+            self.canonical_depth,
         )
         self.canonical_to_branch: dict[str, list[str]] = self._build_branch_map(
-            self.hierarchy, self.canonical_depth
+            self.hierarchy,
+            self.canonical_depth,
         )
 
     def _resolve_remainder(self, remainder: str, threshold: float) -> str:
@@ -217,7 +224,12 @@ class EntityHierarchy:
         if len(parts3) == 3:
             two_token = f"{parts3[0]}_{parts3[1]}"
             two_token_cutoff = max(threshold, 0.90)
-            if difflib.get_close_matches(two_token, self.countries, n=1, cutoff=two_token_cutoff):
+            if difflib.get_close_matches(
+                two_token,
+                self.countries,
+                n=1,
+                cutoff=two_token_cutoff,
+            ):
                 return self._resolve_remainder(parts3[2], threshold)
         parts = upper.split("_", 1)
         if len(parts) < 2:
@@ -232,7 +244,12 @@ class EntityHierarchy:
         if country_match:
             return country_match
         norm = self._normalize(raw_label)
-        matches = difflib.get_close_matches(norm, self.raw_to_canonical, n=1, cutoff=threshold)
+        matches = difflib.get_close_matches(
+            norm,
+            self.raw_to_canonical,
+            n=1,
+            cutoff=threshold,
+        )
         if matches:
             return self.raw_to_canonical[matches[0]]
         return None
@@ -269,7 +286,7 @@ class EntityHierarchy:
         branch = self.canonical_to_branch.get(canonical)
         if branch is None:
             raise EntityNotMappedError(
-                f"Canonical entity {canonical!r} has no branch in hierarchy"
+                f"Canonical entity {canonical!r} has no branch in hierarchy",
             )
         return branch
 
@@ -285,7 +302,11 @@ class EntityHierarchy:
                 print(f"{prefix}├─ {key}/")
                 self.print_hierarchy(value, indent + 1)
 
-    def _find_node(self, name: str, tree: dict | None = None) -> tuple[dict, str] | None:
+    def _find_node(
+        self,
+        name: str,
+        tree: dict | None = None,
+    ) -> tuple[dict, str] | None:
         if tree is None:
             tree = self.hierarchy
         for key, value in tree.items():
@@ -312,7 +333,7 @@ class EntityHierarchy:
         if not isinstance(node, dict):
             raise TypeError(
                 "Parent node is a leaf (alias list). "
-                "Use add_alias() to add an alias instead."
+                "Use add_alias() to add an alias instead.",
             )
         node[entity_name] = list(aliases) if aliases else []
         self._rebuild()
@@ -359,7 +380,7 @@ class EntityHierarchy:
         if not isinstance(value, list):
             raise TypeError(
                 f"Entity {entity_name!r} has sub-entities, not a plain alias list. "
-                f"Use remove_entity() to remove a sub-entity."
+                f"Use remove_entity() to remove a sub-entity.",
             )
         if alias not in value:
             raise ValueError(f"Alias {alias!r} not found for entity {entity_name!r}")
@@ -386,7 +407,7 @@ _DEFAULT_HIERARCHY = EntityHierarchy()
 
 @dataclass
 class _Resolution:
-    tier: str            # EXACT | FUZZY | COUNTRY | COUNTRY_FALLBACK | MANUAL | NONE
+    tier: str  # EXACT | FUZZY | COUNTRY | COUNTRY_FALLBACK | MANUAL | NONE
     canonical: str | None
     score: float | None  # similarity score for FUZZY; None otherwise
 
@@ -417,14 +438,17 @@ class CanonicalMapper:
 
     def __init__(
         self,
-        labels: Optional[list[str] | set[str]] = None,
+        labels: list[str] | set[str] | None = None,
         *,
         hierarchy: dict | EntityHierarchy | None = None,
         canonical_depth: int = 3,
         fuzzy_threshold: float = 0.80,
     ) -> None:
         if isinstance(hierarchy, dict):
-            self._hierarchy = EntityHierarchy(hierarchy=hierarchy, canonical_depth=canonical_depth)
+            self._hierarchy = EntityHierarchy(
+                hierarchy=hierarchy,
+                canonical_depth=canonical_depth,
+            )
         elif hierarchy is not None:
             self._hierarchy = hierarchy
         else:
@@ -435,13 +459,15 @@ class CanonicalMapper:
         # Deduplicate, preserving order for lists
         seen: set[str] = set()
         self._labels: list[str] = []
-        for label in (labels or []):
+        for label in labels or []:
             if label not in seen:
                 seen.add(label)
                 self._labels.append(label)
 
         # BIO-stripped version of each label (original label remains the dict key)
-        self._stripped: dict[str, str] = {label: _strip_bio(label) for label in self._labels}
+        self._stripped: dict[str, str] = {
+            label: _strip_bio(label) for label in self._labels
+        }
 
         self._records: dict[str, _Resolution] = {}
         self._auto_resolve()
@@ -471,9 +497,8 @@ class CanonicalMapper:
         parts3 = upper.split("_", 2)
         parts2 = upper.split("_", 1)
         has_country = (
-            (len(parts3) == 3 and f"{parts3[0]}_{parts3[1]}" in h.countries)
-            or (len(parts2) >= 2 and parts2[0] in h.countries)
-        )
+            len(parts3) == 3 and f"{parts3[0]}_{parts3[1]}" in h.countries
+        ) or (len(parts2) >= 2 and parts2[0] in h.countries)
         if has_country:
             result = h._country_prefix_canonical(stripped, threshold=1.0)
             if result is not None:
@@ -482,7 +507,11 @@ class CanonicalMapper:
                         "[COUNTRY-FALLBACK] %s -> NATIONAL_ID  ⚠ document type not recognised",
                         label,
                     )
-                    return _Resolution(tier="COUNTRY_FALLBACK", canonical="NATIONAL_ID", score=None)
+                    return _Resolution(
+                        tier="COUNTRY_FALLBACK",
+                        canonical="NATIONAL_ID",
+                        score=None,
+                    )
                 logger.info("[COUNTRY] %s -> %s", label, result)
                 return _Resolution(tier="COUNTRY", canonical=result, score=None)
 
@@ -490,10 +519,18 @@ class CanonicalMapper:
         try:
             canonical = h.canonicalize(stripped, threshold=self._fuzzy_threshold)
             nm = difflib.get_close_matches(
-                norm, list(h.raw_to_canonical.keys()), n=1, cutoff=self._fuzzy_threshold
+                norm,
+                list(h.raw_to_canonical.keys()),
+                n=1,
+                cutoff=self._fuzzy_threshold,
             )
             score = difflib.SequenceMatcher(None, norm, nm[0]).ratio() if nm else None
-            logger.info("[FUZZY %s] %s -> %s", f"{score:.0%}" if score else "?", label, canonical)
+            logger.info(
+                "[FUZZY %s] %s -> %s",
+                f"{score:.0%}" if score else "?",
+                label,
+                canonical,
+            )
             return _Resolution(tier="FUZZY", canonical=canonical, score=score)
         except EntityNotMappedError:
             return None
@@ -510,19 +547,23 @@ class CanonicalMapper:
             n_total = len(self._labels)
             n_resolved = len(self._records)
             n_fuzzy = sum(1 for r in self._records.values() if r.tier == "FUZZY")
-            n_fallback = sum(1 for r in self._records.values() if r.tier == "COUNTRY_FALLBACK")
+            n_fallback = sum(
+                1 for r in self._records.values() if r.tier == "COUNTRY_FALLBACK"
+            )
             n_pending = n_total - n_resolved
 
             logger.info(
                 "Resolved %d/%d labels automatically (%d fuzzy, %d country-fallback). "
                 "%d require manual mapping.",
-                n_resolved, n_total, n_fuzzy, n_fallback, n_pending,
+                n_resolved,
+                n_total,
+                n_fuzzy,
+                n_fallback,
+                n_pending,
             )
             for label in self._labels:
                 if label not in self._records:
-                    logger.warning(
-                        "[UNRESOLVED] %s  — no automatic match found", label
-                    )
+                    logger.warning("[UNRESOLVED] %s  — no automatic match found", label)
 
     # ── State ────────────────────────────────────────────────────────────────
 
@@ -533,37 +574,47 @@ class CanonicalMapper:
 
     # ── Mutation ─────────────────────────────────────────────────────────────
 
-    def map(self, mappings: dict[str, str | None]) -> "CanonicalMapper":
+    def map(self, mappings: dict[str, str | None]) -> CanonicalMapper:
         """
         Manually assign canonical entities (or None) to one or more labels.
 
         Validates all entries before applying any (atomic). Raises ValueError on
         labels not in the original input or invalid canonical values.
         """
-        valid_canonicals = set(self._hierarchy.all_canonical_entities) | set(self._hierarchy.raw_to_canonical.values())
+        valid_canonicals = set(self._hierarchy.all_canonical_entities) | set(
+            self._hierarchy.raw_to_canonical.values(),
+        )
         for label, canonical in mappings.items():
             if label not in self._labels:
                 raise ValueError(
                     f"Label {label!r} was not in the original input. "
-                    f"Create a new CanonicalMapper to add new labels."
+                    f"Create a new CanonicalMapper to add new labels.",
                 )
             if canonical is not None and canonical not in valid_canonicals:
                 raise ValueError(
                     f"{canonical!r} is not a valid canonical entity. "
-                    f"See CanonicalMapper._hierarchy.all_canonical_entities for valid values."
+                    f"See CanonicalMapper._hierarchy.all_canonical_entities for valid values.",
                 )
         for label, canonical in mappings.items():
             if canonical is None:
                 logger.info("[NONE]    %s -> None  (suppressed from evaluation)", label)
-                self._records[label] = _Resolution(tier="NONE", canonical=None, score=None)
+                self._records[label] = _Resolution(
+                    tier="NONE",
+                    canonical=None,
+                    score=None,
+                )
             else:
                 logger.info("[MANUAL]  %s -> %s", label, canonical)
-                self._records[label] = _Resolution(tier="MANUAL", canonical=canonical, score=None)
+                self._records[label] = _Resolution(
+                    tier="MANUAL",
+                    canonical=canonical,
+                    score=None,
+                )
         return self
 
     # ── Interactive resolution ────────────────────────────────────────────────
 
-    def resolve_interactively(self, *, prompt_fn=input) -> "CanonicalMapper":
+    def resolve_interactively(self, *, prompt_fn=input) -> CanonicalMapper:
         """
         Prompt the user for each pending label, showing ranked fuzzy suggestions.
 
@@ -580,7 +631,10 @@ class CanonicalMapper:
         for label in to_resolve:
             norm = self._hierarchy._normalize(label)
             close = difflib.get_close_matches(
-                norm, normalized_canonicals, n=5, cutoff=_INTERACTIVE_CUTOFF
+                norm,
+                normalized_canonicals,
+                n=5,
+                cutoff=_INTERACTIVE_CUTOFF,
             )
             ranked = [
                 (norm_to_canonical[s], difflib.SequenceMatcher(None, norm, s).ratio())
@@ -642,7 +696,7 @@ class CanonicalMapper:
     def get_mapped_results_dataframe(
         self,
         results_df: pd.DataFrame,
-        hierarchy: Optional[int] = None,
+        hierarchy: int | None = None,
     ) -> pd.DataFrame:
         """
         Apply entity mapping to annotation and prediction columns of results_df.
@@ -673,9 +727,8 @@ class CanonicalMapper:
             self._auto_resolve()
 
         # Discover any new labels in the DataFrame
-        all_labels = (
-            list(results_df["annotation"].dropna().unique())
-            + list(results_df["prediction"].dropna().unique())
+        all_labels = list(results_df["annotation"].dropna().unique()) + list(
+            results_df["prediction"].dropna().unique(),
         )
         self._add_labels(all_labels)
 
@@ -692,7 +745,9 @@ class CanonicalMapper:
     def _warn_mixed_granularity(self, results_df: pd.DataFrame) -> None:
         """Emit a warning for annotation/prediction pairs at different hierarchy levels."""
         mismatched_pairs: set[tuple[str, str]] = set()
-        for ann, pred in zip(results_df["annotation"], results_df["prediction"]):
+        for ann, pred in zip(
+            results_df["annotation"], results_df["prediction"], strict=False
+        ):
             if ann == "O" or pred == "O":
                 continue
             mapped_ann = self._map_tag(ann)
@@ -708,13 +763,11 @@ class CanonicalMapper:
                 branch_pred = self._hierarchy.get_branch(mapped_pred)
                 if set(branch_ann) & set(branch_pred):
                     mismatched_pairs.add((ann, pred))
-            except Exception:
+            except Exception:  # noqa: S110 — intentional: hierarchy lookup may fail for unknown labels
                 pass
 
         if mismatched_pairs:
-            pair_str = ", ".join(
-                f"{a!r} vs {p!r}" for a, p in sorted(mismatched_pairs)
-            )
+            pair_str = ", ".join(f"{a!r} vs {p!r}" for a, p in sorted(mismatched_pairs))
             warnings.warn(
                 f"Some annotations and predictions resolve to different canonical entities: {pair_str}. "
                 f"This will count as false negatives/positives. To fix this: "
@@ -727,8 +780,8 @@ class CanonicalMapper:
 
     def get_mapping(
         self,
-        mode: Optional[str] = None,
-    ) -> "dict[str, str | None] | str":
+        mode: str | None = None,
+    ) -> dict[str, str | None] | str:
         """
         Return the entity label mapping.
 
@@ -761,6 +814,7 @@ class CanonicalMapper:
         """Render an audit table. Uses IPython.display.HTML in Jupyter; plain text fallback."""
         try:
             from IPython.display import HTML, display
+
             display(HTML(self._build_html()))
         except ImportError:
             self._print_text()
@@ -769,16 +823,23 @@ class CanonicalMapper:
         rec = self._records.get(label)
         if rec is None:
             return 0  # pending first
-        return {"COUNTRY_FALLBACK": 1, "FUZZY": 2, "EXACT": 3, "COUNTRY": 3, "MANUAL": 3, "NONE": 4}.get(rec.tier, 3)
+        return {
+            "COUNTRY_FALLBACK": 1,
+            "FUZZY": 2,
+            "EXACT": 3,
+            "COUNTRY": 3,
+            "MANUAL": 3,
+            "NONE": 4,
+        }.get(rec.tier, 3)
 
     _TIER_COLORS: dict[str, tuple[str, str]] = {
-        "EXACT":            ("#d1f4e0", "#2da44e"),
-        "COUNTRY":          ("#d1f4e0", "#2da44e"),
-        "MANUAL":           ("#ddf4ff", "#0969da"),
-        "FUZZY":            ("#fff8c5", "#d4a72c"),
+        "EXACT": ("#d1f4e0", "#2da44e"),
+        "COUNTRY": ("#d1f4e0", "#2da44e"),
+        "MANUAL": ("#ddf4ff", "#0969da"),
+        "FUZZY": ("#fff8c5", "#d4a72c"),
         "COUNTRY_FALLBACK": ("#fff8c5", "#b76e00"),
-        "NONE":             ("#f6f8fa", "#57606a"),
-        "PENDING":          ("#fff1f0", "#cf222e"),
+        "NONE": ("#f6f8fa", "#57606a"),
+        "PENDING": ("#fff1f0", "#cf222e"),
     }
 
     def _build_html(self) -> str:
@@ -797,14 +858,14 @@ class CanonicalMapper:
                 summary_parts.append(
                     f'<span style="background:{color};color:white;padding:2px 8px;'
                     f'border-radius:10px;font-size:11px;margin:0 3px">'
-                    f'{n} {tier.replace("_", "-").lower()}</span>'
+                    f"{n} {tier.replace('_', '-').lower()}</span>",
                 )
         if pending_count:
             _, color = self._TIER_COLORS["PENDING"]
             summary_parts.append(
                 f'<span style="background:{color};color:white;padding:2px 8px;'
                 f'border-radius:10px;font-size:11px;margin:0 3px">'
-                f'{pending_count} pending</span>'
+                f"{pending_count} pending</span>",
             )
 
         rows = []
@@ -815,7 +876,7 @@ class CanonicalMapper:
             badge = (
                 f'<span style="background:{badge_color};color:white;padding:1px 6px;'
                 f'border-radius:3px;font-size:11px;font-family:monospace">'
-                f'{"⚠ " if tier == "COUNTRY_FALLBACK" else ""}{tier}</span>'
+                f"{'⚠ ' if tier == 'COUNTRY_FALLBACK' else ''}{tier}</span>"
             )
             if rec is None:
                 canonical_display = '<em style="color:#cf222e">pending</em>'
@@ -824,7 +885,7 @@ class CanonicalMapper:
                 canonical_display = '<em style="color:#57606a">None</em>'
                 score_str = "—"
             else:
-                canonical_display = f'<code>{rec.canonical}</code>'
+                canonical_display = f"<code>{rec.canonical}</code>"
                 score_str = f"{rec.score:.0%}" if rec.score is not None else "—"
 
             rows.append(
@@ -833,7 +894,7 @@ class CanonicalMapper:
                 f'<td style="padding:7px 10px;border:1px solid #d0d7de">{badge}</td>'
                 f'<td style="padding:7px 10px;border:1px solid #d0d7de;font-family:monospace">{canonical_display}</td>'
                 f'<td style="padding:7px 10px;border:1px solid #d0d7de;text-align:center">{score_str}</td>'
-                f'</tr>'
+                f"</tr>",
             )
 
         return (
@@ -846,9 +907,7 @@ class CanonicalMapper:
             '<th style="padding:7px 10px;border:1px solid #d0d7de;text-align:left">Tier</th>'
             '<th style="padding:7px 10px;border:1px solid #d0d7de;text-align:left">Canonical</th>'
             '<th style="padding:7px 10px;border:1px solid #d0d7de;text-align:center">Score</th>'
-            '</tr></thead><tbody>'
-            + "".join(rows)
-            + '</tbody></table></div>'
+            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
         )
 
     def _print_text(self) -> None:
@@ -880,7 +939,11 @@ class CanonicalMapper:
         for label in sorted_labels:
             rec = self._records.get(label)
             tier = rec.tier if rec else "PENDING"
-            canonical = "(pending)" if rec is None else (str(rec.canonical) if rec.canonical is not None else "None")
+            canonical = (
+                "(pending)"
+                if rec is None
+                else (str(rec.canonical) if rec.canonical is not None else "None")
+            )
             score = f"{rec.score:.0%}" if rec and rec.score is not None else "—"
             lines.append(f"{label:<30} {tier:<18} {canonical:<30} {score}")
         return "\n".join(lines)
@@ -893,6 +956,7 @@ class CanonicalMapper:
 # ---------------------------------------------------------------------------
 # Module-level API (convenience wrappers around the default EntityHierarchy)
 # ---------------------------------------------------------------------------
+
 
 def canonicalize(raw_label: str) -> str:
     """Resolve a raw label to its canonical entity name using the default hierarchy."""
@@ -912,6 +976,7 @@ def print_hierarchy(node: dict | None = None, indent: int = 0) -> None:
 # Read-only snapshots of the default instance's lookup tables.
 RAW_TO_CANONICAL: dict[str, str] = _DEFAULT_HIERARCHY.raw_to_canonical
 ALL_CANONICAL_ENTITIES: list[str] = sorted(
-    set(_DEFAULT_HIERARCHY.all_canonical_entities) | set(_DEFAULT_HIERARCHY.raw_to_canonical.values())
+    set(_DEFAULT_HIERARCHY.all_canonical_entities)
+    | set(_DEFAULT_HIERARCHY.raw_to_canonical.values()),
 )
 CANONICAL_TO_BRANCH: dict[str, list[str]] = _DEFAULT_HIERARCHY.canonical_to_branch

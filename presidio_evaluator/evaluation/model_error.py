@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Dict, List, Optional, Union
 from pprint import pprint
 
 import pandas as pd
@@ -26,15 +25,15 @@ class ErrorType(Enum):
 class ModelError:
     def __init__(
         self,
-        error_type: Union[str, ErrorType],
+        error_type: str | ErrorType,
         annotation: str,
         prediction: str,
-        token: Optional[Union[Token, str]] = None,
-        full_text: Optional[str] = None,
-        sample_id: Optional[int] = None,
-        metadata: Optional[Dict] = None,
-        explanation: Optional[str] = None,
-    ):
+        token: Token | str | None = None,
+        full_text: str | None = None,
+        sample_id: int | None = None,
+        metadata: dict | None = None,
+        explanation: str | None = None,
+    ) -> None:
         """
         Holds information about an error a model made for analysis purposes
         :param error_type: str, e.g. FP, FN, WrongEntity
@@ -56,29 +55,24 @@ class ModelError:
         self.metadata = metadata
         self.explanation = explanation
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (
-            "type: {}, "
-            "Annotation = {}, "
-            "prediction = {}, "
-            "Token = {}, "
-            "Full text = {}, "
-            "Metadata = {}".format(
-                self.error_type,
-                self.annotation,
-                self.prediction,
-                self.token,
-                self.full_text,
-                self.metadata,
-            )
+            f"type: {self.error_type}, "
+            f"Annotation = {self.annotation}, "
+            f"prediction = {self.prediction}, "
+            f"Token = {self.token}, "
+            f"Full text = {self.full_text}, "
+            f"Metadata = {self.metadata}"
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ModelError {self.__str__()}"
 
     @staticmethod
     def most_common_fp_tokens(
-        errors: List["ModelError"], n: int = 10, entity: Optional[str] = None
+        errors: list["ModelError"],
+        n: int = 10,
+        entity: str | None = None,
     ):
         """
         Print the n most common false positive tokens
@@ -96,18 +90,20 @@ class ModelError:
         pprint(most_common)
         print("---------------")
         print("Example sentence with each FP token:")
-        for tok, val in most_common:
+        for tok, _val in most_common:
             with_tok = [err for err in fps if err.token == tok]
             print(
                 f"\t- {with_tok[0].full_text} (`{with_tok[0].token}` "
-                f"pred as {with_tok[0].prediction})"
+                f"pred as {with_tok[0].prediction})",
             )
 
         return most_common
 
     @staticmethod
     def most_common_fn_tokens(
-        errors: List["ModelError"], n: int = 10, entity: Optional[str] = None
+        errors: list["ModelError"],
+        n: int = 10,
+        entity: str | None = None,
     ):
         """
         Print all tokens that were missed by the model,
@@ -124,22 +120,22 @@ class ModelError:
         pprint(most_common_fns)
         print("---------------")
         print("Example sentence with each FN token:")
-        for tok, val in most_common_fns:
+        for tok, _val in most_common_fns:
             with_tok = [err for err in fns if err.token == tok]
             print(
                 f"\t- {with_tok[0].full_text} (`{with_tok[0].token}` "
-                f"annotated as {with_tok[0].annotation})"
+                f"annotated as {with_tok[0].annotation})",
             )
 
         return most_common_fns
 
     @staticmethod
     def get_errors_df(
-        errors: List["ModelError"],
+        errors: list["ModelError"],
         error_type: ErrorType,
-        entity: Optional[str] = None,
+        entity: str | None = None,
         verbose: bool = True,
-    ) -> Optional[pd.DataFrame]:
+    ) -> pd.DataFrame | None:
         """
         Get ModelErrors as pd.DataFrame
         :param errors: A list of ModelErrors
@@ -165,7 +161,7 @@ class ModelError:
             return None
 
         errors_df = pd.DataFrame.from_records(
-            [error.__dict__ for error in filtered_errors]
+            [error.__dict__ for error in filtered_errors],
         )
         metadata_df = pd.DataFrame(errors_df["metadata"].tolist())
         errors_df.drop(["metadata"], axis=1, inplace=True)
@@ -174,29 +170,41 @@ class ModelError:
 
     @staticmethod
     def get_fps_dataframe(
-        errors: List["ModelError"], entity: Optional[str] = None, verbose: bool = True
+        errors: list["ModelError"],
+        entity: str | None = None,
+        verbose: bool = True,
     ) -> pd.DataFrame:
         """
         Get false positive ModelErrors as pd.DataFrame
         """
         return ModelError.get_errors_df(
-            errors=errors, error_type=ErrorType.FP, entity=entity, verbose=verbose
+            errors=errors,
+            error_type=ErrorType.FP,
+            entity=entity,
+            verbose=verbose,
         )
 
     @staticmethod
     def get_fns_dataframe(
-        errors: List["ModelError"], entity: Optional[str] = None, verbose: bool = True
+        errors: list["ModelError"],
+        entity: str | None = None,
+        verbose: bool = True,
     ) -> pd.DataFrame:
         """
         Get false negative ModelErrors as pd.DataFrame
         """
         return ModelError.get_errors_df(
-            errors=errors, error_type=ErrorType.FN, entity=entity, verbose=verbose
+            errors=errors,
+            error_type=ErrorType.FN,
+            entity=entity,
+            verbose=verbose,
         )
 
     @staticmethod
     def get_wrong_entity_dataframe(
-        errors: List["ModelError"], entity: Optional[str] = None, verbose: bool = True
+        errors: list["ModelError"],
+        entity: str | None = None,
+        verbose: bool = True,
     ) -> pd.DataFrame:
         """
         Get wrong entity ModelErrors as pd.DataFrame
@@ -210,8 +218,10 @@ class ModelError:
 
     @staticmethod
     def __get_error_of_type(
-        errors: List["ModelError"], error_type: ErrorType, entity: Optional[str] = None
-    ) -> List["ModelError"]:
+        errors: list["ModelError"],
+        error_type: ErrorType,
+        entity: str | None = None,
+    ) -> list["ModelError"]:
         """
         Get a list of all errors of a specific type in the results
         """
@@ -238,8 +248,9 @@ class ModelError:
 
     @staticmethod
     def get_false_positives(
-        errors: List["ModelError"], entity: Optional[str] = None
-    ) -> List["ModelError"]:
+        errors: list["ModelError"],
+        entity: str | None = None,
+    ) -> list["ModelError"]:
         """
         Get a list of all false positive errors in the results
         """
@@ -249,8 +260,9 @@ class ModelError:
 
     @staticmethod
     def get_false_negatives(
-        errors: List["ModelError"], entity: Optional[str] = None
-    ) -> List["ModelError"]:
+        errors: list["ModelError"],
+        entity: str | None = None,
+    ) -> list["ModelError"]:
         """
         Get a list of all false negative errors in the results
         """
@@ -261,10 +273,10 @@ class ModelError:
 
     @staticmethod
     def get_wrong_entities(
-        errors: List["ModelError"],
-        annotated_entity: Optional[str] = None,
-        predicted_entity: Optional[str] = None,
-    ) -> List["ModelError"]:
+        errors: list["ModelError"],
+        annotated_entity: str | None = None,
+        predicted_entity: str | None = None,
+    ) -> list["ModelError"]:
         """
         Get a list of all mismatches in the results
         (wrongEntity detection)
