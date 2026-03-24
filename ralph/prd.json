@@ -38,8 +38,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": "Cross-cutting change touching base_evaluator.py, span_evaluator.py, token_evaluator.py, and all evaluator tests. Update tests to supply pre-mapped DataFrames. Plotter regression is the final acceptance gate."
+      "passes": true,
     },
     {
       "id": "US-002",

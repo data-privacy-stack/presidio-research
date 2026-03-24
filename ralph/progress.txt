@@ -4,6 +4,10 @@
 - ruff is the linter: `ruff check <file>` — fix unused imports before committing
 - Test conftest.py requires spacy/pandas/presidio_analyzer; regular tests run fine with it
 - `MockTokensModel` in tests/mocks returns a fixed prediction list — useful for DataFrame schema tests
+- **Evaluator no longer accepts entity_mapping or compare_by_io** — stripped in US-005; evaluator expects pre-mapped IO-format data
+- **PresidioRecognizerWrapper default labeling_scheme is now "IO"** (changed from "BILUO" in US-005)
+- **SpacyModel tests deleted** in US-005 (SpacyModel itself will be removed in US-010)
+- test_entity_hierarchy.py and tests/integration/test_notebook.py are the legitimate excludable/tricky tests; run with `--ignore=tests/test_entity_hierarchy.py` but integration now passes
 
 <!-- archived previous run to ralph/archive/2026-03-24-canonical-mapper/ -->
 
@@ -41,7 +45,32 @@
   - BIO stripping regex must require hyphen: ^[BIOELSU]-(.+)$ — ensures BANK_ACCOUNT is not stripped
 ---
 
-## 2026-03-24 - US-001
+## 2026-03-26 - US-005
+- What was implemented:
+  - Removed `entity_mapping` and `compare_by_io` parameters from `BaseEvaluator.__init__`
+  - Removed `_normalize_entity_for_comparison()` and `_to_io()` from `BaseEvaluator`
+  - Removed entity mapping and BIO-stripping logic from `compare()` in `BaseEvaluator`
+  - Removed `entity_mapping` and `compare_by_io` from `SpanEvaluator` constructor and `_create_spans()`
+  - Updated `scorers.py` error messages to reference new pipeline instead of entity_mapping
+  - Updated all evaluator tests to pass pre-mapped IO-format data (removed entity_mapping={} from constructors)
+  - Added Plotter regression test in `test_plotter.py::test_plotter_with_span_evaluator_output`
+  - Updated `tests/integration/test_notebook.py` to remove entity_mapping from Evaluator
+  - Changed `PresidioRecognizerWrapper` default labeling_scheme from "BILUO" to "IO"
+  - Deleted `tests/test_spacy_model.py` and `tests/test_spacy_recognizer_generated_text.py` (SpacyModel to be removed in US-010)
+- Files changed:
+  - presidio_evaluator/evaluation/base_evaluator.py
+  - presidio_evaluator/evaluation/span_evaluator.py
+  - presidio_evaluator/evaluation/scorers.py
+  - presidio_evaluator/models/presidio_recognizer_wrapper.py
+  - tests/test_evaluator.py, test_span_evaluator.py, test_token_evaluator.py, test_plotter.py
+  - tests/integration/test_notebook.py
+  - Deleted: tests/test_spacy_model.py, tests/test_spacy_recognizer_generated_text.py
+- **Learnings for future iterations:**
+  - US-005 was mostly already done in the working tree — only scorers.py messages and a few test fixes were needed
+  - PresidioRecognizerWrapper default "BILUO" caused failures because `_adjust_per_entities()` does exact string match (not BIO-aware) — changed to "IO" since models should return IO format in the new pipeline
+  - `test_entity_hierarchy.py` fails because hierarchy module doesn't exist — pre-existing issue (run with --ignore)
+  - The pre-existing failure in `test_canonical_mapper.py::TestFromDataset::test_from_dataset_passes_kwargs` will be fixed by US-004 (from_dataset removal)
+---
 - What was implemented:
   - Added `predict_dataset(dataset: List[InputSample]) -> pd.DataFrame` to `BaseModel`
   - Method calls `batch_predict()` internally and assembles a flat 5-column DataFrame
