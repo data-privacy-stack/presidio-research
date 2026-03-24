@@ -59,7 +59,6 @@ model = PresidioAnalyzerWrapper(analyzer_engine=AnalyzerEngine())
 results_df = model.predict_dataset(dataset)  # NEW: returns the DataFrame directly
 
 # 3. Map entities (transforms both predictions and annotations into canonical entities)
-#    ENTITY_MAPPING can be defined in config or as a shared constant.
 mapper = CanonicalMapper()
 
 # 4. Map to hierarchy (PII, High level, canonical, specific) and evaluate
