@@ -150,7 +150,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Pure deletion story. Check for stray imports with grep before finishing."
     },
     {

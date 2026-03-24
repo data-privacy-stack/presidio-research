@@ -172,3 +172,21 @@
   - `stacklevel=2` ensures the warning points to the caller's line, not inside base_evaluator.py
   - Soft deprecation = method runs, just warns. Hard stop (US-007) = method raises immediately.
 ---
+
+## 2026-03-24 22:35 - US-010
+- What was implemented:
+  - Deleted `presidio_evaluator/models/flair_model.py`, `spacy_model.py`, `stanza_model.py`, `text_analytics_wrapper.py`
+  - Updated `presidio_evaluator/models/__init__.py` to export only `BaseModel`, `PresidioAnalyzerWrapper`, `PresidioRecognizerWrapper`
+  - Removed `[tool.poetry.group.ner]` and its dependencies from `pyproject.toml`
+  - Note: `tests/test_spacy_model.py` and `tests/test_spacy_recognizer_generated_text.py` were already deleted in US-005
+- Files changed:
+  - presidio_evaluator/models/flair_model.py (deleted)
+  - presidio_evaluator/models/spacy_model.py (deleted)
+  - presidio_evaluator/models/stanza_model.py (deleted)
+  - presidio_evaluator/models/text_analytics_wrapper.py (deleted)
+  - presidio_evaluator/models/__init__.py
+  - pyproject.toml
+- **Learnings for future iterations:**
+  - Test for stray imports with `grep -r "SpacyModel\|FlairModel\|StanzaModel\|TextAnalyticsWrapper" presidio_evaluator/` before committing
+  - Notebook files in notebooks/models/ still reference removed models (they will be replaced in US-012)
+---
