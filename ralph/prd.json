@@ -73,8 +73,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "Depends on US-005 (evaluator stripped of mapping first). The integration test is the capstone for the full pipeline."
+      "passes": true,
     },
     {
       "id": "US-003",

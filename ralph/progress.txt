@@ -45,6 +45,25 @@
   - BIO stripping regex must require hyphen: ^[BIOELSU]-(.+)$ — ensures BANK_ACCOUNT is not stripped
 ---
 
+## 2026-03-26 - US-006
+- What was implemented:
+  - Added `calculate_score_on_df(results_df, beta=2.0) -> EvaluationResult` to `TokenEvaluator`
+  - Groups DataFrame by sentence_id, creates InputSample per sentence, calls `compare()`, aggregates via `calculate_score()`
+  - Added `import pandas as pd` to token_evaluator.py
+  - Added 3 unit tests in test_token_evaluator.py (schema, correct metrics, per-sample fields)
+  - Added `test_full_pipeline_integration()` to tests/integration/test_notebook.py
+    - Exercises full pipeline: predict_dataset → get_mapped_results_dataframe → calculate_score_on_df (both SpanEvaluator and TokenEvaluator) → Plotter.plot_scores()
+  - Updated integration test imports to include all new classes
+- Files changed:
+  - presidio_evaluator/evaluation/token_evaluator.py
+  - tests/test_token_evaluator.py
+  - tests/integration/test_notebook.py
+- **Learnings for future iterations:**
+  - TokenEvaluator.compare() needs an InputSample with tokens + tags set; construct it from DataFrame slice
+  - model=None in evaluator constructor raises UserWarning (not error) — perfectly fine for calculate_score_on_df
+  - Integration test uses entities_to_keep=["PERSON"] to keep results small/fast
+---
+
 ## 2026-03-26 - US-002
 - What was implemented:
   - Made `CanonicalMapper.__init__` labels parameter optional (default `None` → empty list)
