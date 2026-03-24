@@ -72,6 +72,30 @@ plotter = Plotter(results=results)
 plotter.plot_scores()
 ```
 
+For multi-hierarchical evaluations (on different granularities):
+```python
+# 1. Load dataset
+dataset = InputSample.read_dataset_json("data/dataset.json")
+
+# 2. Choose model and run predictions → get DataFrame directly
+model = PresidioAnalyzerWrapper(analyzer_engine=AnalyzerEngine())
+results_df = model.predict_dataset(dataset)  # NEW: returns the DataFrame directly
+
+# 3. Map entities (transforms both predictions and annotations into canonical entities)
+mapper = CanonicalMapper()
+
+# 4. Map to hierarchy (PII, High level, canonical, specific) and evaluate
+evaluator = SpanEvaluator()
+results_per_hierarchy = []
+for hierarchy in [1,2,3]):
+    results_df_hierarchy = mapper.map_entities(results_df, hierarchy=hierarchy)
+    results_per_hierarchy = evaluator.calculate_score_on_df(results_df=results_df_hierarchy)
+
+# 5. Analyze/plot
+plotter = Plotter(results=results_per_hierarchy[0])
+plotter.plot_scores()
+```
+
 ### Concrete changes
 
 | Component | Current | Proposed |
