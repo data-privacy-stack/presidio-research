@@ -102,8 +102,7 @@
         "Typecheck/lint passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": "from_dataset() was implemented in the prior canonical-mapper run and must now be removed. Mapper only accepts labels (list/set) or extracts labels via get_mapped_results_dataframe()."
+      "passes": true,
     },
     {
       "id": "US-007",
