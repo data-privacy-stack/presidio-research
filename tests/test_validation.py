@@ -10,7 +10,6 @@ from presidio_evaluator.validation import (
 
 @pytest.fixture(scope="session")
 def mock_4_samples():
-
     samples = []
     for i in range(4):
         sample = InputSample(
@@ -95,7 +94,6 @@ def test_split_dataset_two_sets():
 
 
 def test_split_dataset_four_sets(mock_4_samples):
-
     train, test, val, dev = split_dataset(mock_4_samples, [0.25, 0.25, 0.25, 0.25])
     assert len(train) == 1
     assert len(test) == 1

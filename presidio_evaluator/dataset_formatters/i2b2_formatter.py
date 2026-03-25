@@ -77,7 +77,6 @@ class I2B22014Formatter(DatasetFormatter):
 
     @staticmethod
     def dataset_to_json(input_path, output_path) -> None:
-
         formatter = I2B22014Formatter(files_path=input_path)
         train_samples = formatter.to_input_samples()
         json_dataset = [example.to_dict() for example in train_samples]

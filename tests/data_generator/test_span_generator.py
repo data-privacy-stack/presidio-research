@@ -44,7 +44,6 @@ def span_faker(test_provider):
     ],
 )
 def test_one_replacement(span_faker, pattern, expected):
-
     res = span_faker.parse(pattern, add_spans=True)
 
     assert res.full_text == expected
@@ -146,7 +145,6 @@ def test_generated_text_contains_spans_text(span_faker):
 def test_generated_text_duplicate_types_returns_different_results(
     span_faker, pattern, non_element_text
 ):
-
     res = span_faker.parse(pattern, add_spans=True)
 
     # assert that span values exist in the text

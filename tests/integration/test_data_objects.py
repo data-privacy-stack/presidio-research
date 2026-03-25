@@ -102,7 +102,6 @@ def test_count_entities(input_sample_result, input_sample_result_2):
 
 
 def test_remove_unsupported_entities(input_sample_result, input_sample_result_2):
-
     filtered = InputSample.remove_unsupported_entities(
         [input_sample_result, input_sample_result_2], {"name": "PERSON"}
     )

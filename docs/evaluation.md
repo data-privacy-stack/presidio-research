@@ -102,18 +102,28 @@ dataset: List[InputSample] = [...]  # Load your dataset here
 f_beta = 2
 analyzer = AnalyzerEngine(default_score_threshold=0.3)
 
-evaluator = SpanEvaluator(model=analyzer)
+from presidio_evaluator.models import PresidioAnalyzerWrapper
+from presidio_evaluator.entity_mapping import CanonicalMapper
 
-# 2. Evaluate on a dataset
-evaluation_results = evaluator.evaluate_all(dataset)
-results = evaluator.calculate_score(evaluation_results, beta=f_beta)
+model = PresidioAnalyzerWrapper(analyzer_engine=analyzer)
+evaluator = SpanEvaluator()
 
-# 3. Extract confusion matrix and entities
+# 2. Get predictions as a DataFrame
+results_df = model.predict_dataset(dataset)
+
+# 3. Map entity types to the same namespace
+mapper = CanonicalMapper()
+mapped_df = mapper.get_mapped_results_dataframe(results_df)
+
+# 4. Evaluate
+results = evaluator.calculate_score_on_df(mapped_df, beta=f_beta)
+
+# 5. Extract confusion matrix and entities
 entities, confmatrix = results.to_confusion_matrix()
 
-# 4. Visualize results
+# 6. Visualize results
 plotter = Plotter(results=results,
-                  model_name=evaluator.model.name,
+                  model_name=model.name,
                   beta=f_beta)
 
 plotter.plot_scores()
@@ -125,7 +135,7 @@ plotter.plot_confusion_matrix(entities=entities, confmatrix=confmatrix)
 The evaluation framework offers several customization options:
 
 - **Entity Filtering**: Focus evaluation on specific entity types
-- **Entity Mapping**: Map entity types between the dataset and the model/presidio instance
+- **Entity Mapping**: Use `CanonicalMapper.get_mapped_results_dataframe()` to resolve entity types to a shared canonical namespace before evaluation
 - **Generic Entities**: Compare specific entities to generic entities that may not have specific types, like "ID" or "
   PII". (only available in token evaluation)
 - **Skip Words**: Configure words to ignore during evaluation

@@ -22,7 +22,6 @@ class CONLL2003Formatter(DatasetFormatter):
         local_data_path=Path("../../data/conll2003").resolve(),  # noqa: B008
         conll_gh_path="https://raw.githubusercontent.com/glample/tagger/master/dataset/",
     ) -> None:
-
         for fold in ("eng.train", "eng.testa", "eng.testb"):
             fold_path = conll_gh_path + fold
             if not local_data_path.exists():

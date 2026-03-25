@@ -7,7 +7,6 @@ from presidio_evaluator.data_generator import PresidioPseudonymization
 
 @pytest.fixture(scope="session")
 def faker_providers():
-
     person_provider = DynamicProvider("person", ["James"])
     location_provider = DynamicProvider("location", ["Africa"])
 
@@ -46,7 +45,6 @@ def faker_providers():
 def test_presidio_pseudonymize_two_entities(
     text, entity1, entity2, start1, end1, start2, end2, value1, value2, faker_providers
 ):
-
     presidio_response = [
         RecognizerResult(entity_type=entity1, start=start1, end=end1, score=0.85),
         RecognizerResult(entity_type=entity2, start=start2, end=end2, score=0.85),

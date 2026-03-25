@@ -33,8 +33,7 @@ The `TokenEvaluator` can handle different tagging schemes:
 - **BIO**: Beginning/Inside/Outside (e.g., "B-PERSON", "I-PERSON", "O")
 - **BILUO**: Beginning/Inside/Last/Unit/Outside
 
-When `compare_by_io` is set to `True` (default), all tagging schemes are converted to the IO scheme for evaluation,
-focusing on entity type rather than boundary detection.
+The evaluator expects labels already in IO scheme. BIO/BILUO prefix stripping is performed by `CanonicalMapper` before evaluation.
 
 ## Metrics Calculation
 
@@ -93,19 +92,21 @@ The `TokenEvaluator` class in Presidio Evaluator:
 ```python
 from presidio_evaluator.evaluation import TokenEvaluator
 
-# Initialize the evaluator with a model
-evaluator = TokenEvaluator(
-    model=my_model,
-    compare_by_io=True,  # Convert all schemes to IO
-    entities_to_keep=["PERSON", "LOCATION", "ORGANIZATION"]  # Optional filtering
-)
+from presidio_evaluator.entity_mapping import CanonicalMapper
 
-# Evaluate on a dataset
-evaluation_results = evaluator.evaluate_all(dataset)
+# Initialize the evaluator
+evaluator = TokenEvaluator(entities_to_keep=["PERSON", "LOCATION", "ORGANIZATION"])
 
-# Calculate scores (optionally filtering for specific entities)
-final_result = evaluator.calculate_score(
-    evaluation_results,
+# 1. Get predictions as a DataFrame
+results_df = my_model.predict_dataset(dataset)
+
+# 2. Map entity types to the same namespace
+mapper = CanonicalMapper()
+mapped_df = mapper.get_mapped_results_dataframe(results_df)
+
+# 3. Evaluate
+final_result = evaluator.calculate_score_on_df(
+    mapped_df,
     entities=["PERSON", "LOCATION"],
     beta=1.0  # F1 score
 )
