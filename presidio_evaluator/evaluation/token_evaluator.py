@@ -171,7 +171,7 @@ class Evaluator(TokenEvaluator):
     def __init__(self, *args, **kwargs) -> None:
         warnings.warn(
             "Evaluator is deprecated and will be removed in a future version. "
-            "Use SpanEvaluator instead.",
+            "Use TokenEvaluator instead.",
             DeprecationWarning,
             stacklevel=2,
         )

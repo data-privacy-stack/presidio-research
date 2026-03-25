@@ -23,7 +23,7 @@ The easiest way to get started is by reviewing the notebooks.
 
 ### Installation
 
->Note: Presidio evaluator requires Python version 3.9 or higher.
+>Note: Presidio evaluator requires Python version 3.11 or higher.
 
 #### From PyPI
 
@@ -65,8 +65,7 @@ Note that some dependencies (such as Flair and Stanza) are no longer supported. 
 
 1. **Fake data generator** for PII recognizers and NER models
 2. **Data representation layer** for data generation, modeling and analysis
-3. Multiple **Model/Recognizer evaluation** files (e.g. for Presidio, Spacy, Flair, Azure AI Language)
-4. **Training and modeling code** for multiple models
+3. **Model/Recognizer evaluation** for Presidio Analyzer and custom Presidio recognizers
 5. Helper functions for **results analysis**
 
 ## 1. Data generation
@@ -117,13 +116,6 @@ The standardized structure, `List[InputSample]`, can be translated into differen
   from presidio_evaluator import InputSample
   dataset = InputSample.read_dataset_json("data/synth_dataset_v2.json")
   InputSample.create_spacy_dataset(dataset, output_path="dataset.spacy")
-  ```
-
-- Flair
-  ```python
-  from presidio_evaluator import InputSample
-  dataset = InputSample.read_dataset_json("data/synth_dataset_v2.json")
-  flair = InputSample.create_flair_dataset(dataset)
   ```
 
 - json

@@ -19,11 +19,10 @@ The evaluation module consists of several key components:
 The `BaseEvaluator` class provides the foundation for all evaluation strategies. It implements common functionality such
 as:
 
-- Converting between different entity tagging schemes (BIO, BILUO, IO)
-- Performing an end-to-end evaluation of a model/presidio configuration against a dataset
-- Comparing ground truth annotations with predictions
+- Comparing ground truth annotations with predictions (expects pre-mapped IO-format data from `CanonicalMapper`)
 - Error detection and classification
 - Calculation of global and class specific metrics (precision, recall, F-score)
+- `calculate_score_on_df()` — the primary entry point, accepts a 5-column DataFrame
 
 ### 2. Evaluation Strategies
 
@@ -106,7 +105,7 @@ from presidio_evaluator.models import PresidioAnalyzerWrapper
 from presidio_evaluator.entity_mapping import CanonicalMapper
 
 model = PresidioAnalyzerWrapper(analyzer_engine=analyzer)
-evaluator = SpanEvaluator()
+evaluator = SpanEvaluator(model=None)
 
 # 2. Get predictions as a DataFrame
 results_df = model.predict_dataset(dataset)

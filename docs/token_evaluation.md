@@ -107,8 +107,7 @@ mapped_df = mapper.get_mapped_results_dataframe(results_df)
 # 3. Evaluate
 final_result = evaluator.calculate_score_on_df(
     mapped_df,
-    entities=["PERSON", "LOCATION"],
-    beta=1.0  # F1 score
+    beta=1.0,  # F1 score
 )
 
 # Access metrics
