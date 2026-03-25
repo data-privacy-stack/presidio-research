@@ -88,12 +88,19 @@ def test_notebook():
     # Set up the experiment tracker to log the experiment for reproducibility
     experiment = get_experiment_tracker()
 
-    # Create the evaluator object (entity mapping is no longer passed to the evaluator;
-    # it is applied to the dataset/predictions via CanonicalMapper before evaluation)
-    evaluator = TokenEvaluator(model=analyzer_engine)
+    # Wrap the analyzer engine so it can predict and report metrics
+    wrapped_analyzer = PresidioAnalyzerWrapper(analyzer_engine=analyzer_engine)
 
-    results_df = evaluator.model.predict_dataset(dataset)
-    results = evaluator.calculate_score_on_df(results_df)
+    # Step 1: predict
+    results_df = wrapped_analyzer.predict_dataset(dataset)
+
+    # Step 2: map entity names using canonical mapper
+    mapper = CanonicalMapper()
+    mapped_df = mapper.get_mapped_results_dataframe(results_df)
+
+    # Step 3: evaluate
+    evaluator = TokenEvaluator(model=None)
+    results = evaluator.calculate_score_on_df(mapped_df)
 
     print(results_df)
 
@@ -102,8 +109,8 @@ def test_notebook():
     experiment.log_confusion_matrix(matrix=confmatrix, labels=entities)
 
     # Track model and dataset params
-    params = {"dataset_name": data_path, "model_name": evaluator.model.name}
-    params.update(evaluator.model.to_log())
+    params = {"dataset_name": data_path, "model_name": wrapped_analyzer.name}
+    params.update(wrapped_analyzer.to_log())
     experiment.log_parameters(params)
     experiment.log_dataset_hash(dataset)
     experiment.log_parameter("entity_mappings", json.dumps(entities_mapping))

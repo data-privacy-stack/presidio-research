@@ -98,7 +98,7 @@ def test_credit_card_recognizer_with_template(
         entities_to_keep=["CREDIT_CARD"],
     )
     results_df = model.predict_dataset(input_samples)
-    evaluator = TokenEvaluator(model=model)
+    evaluator = TokenEvaluator(model=None, entities_to_keep=model.entities)
     scores = evaluator.calculate_score_on_df(results_df)
 
     if not np.isnan(scores.pii_f):

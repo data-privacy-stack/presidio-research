@@ -50,7 +50,7 @@ def test_analyzer_simple_input():
     )
 
     prediction = model.predict(sample)
-    evaluator = TokenEvaluator(model=model)
+    evaluator = TokenEvaluator(model=None)
 
     evaluated = evaluator.evaluate_sample(sample, prediction)
     metrics = evaluator.calculate_score([evaluated])
@@ -80,7 +80,7 @@ def test_analyzer_with_generated_text(test_input, acceptance_threshold):
 
     analyzer = PresidioAnalyzerWrapper()
     results_df = analyzer.predict_dataset(input_samples)
-    evaluator = TokenEvaluator(model=analyzer)
+    evaluator = TokenEvaluator(model=None)
     scores = evaluator.calculate_score_on_df(results_df)
 
     assert acceptance_threshold <= scores.pii_precision
