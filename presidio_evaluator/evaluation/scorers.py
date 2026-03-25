@@ -25,7 +25,7 @@ def score_model(
         results_df = model.predict_dataset(dataset)
         mapper = CanonicalMapper()
         results_df_mapped = mapper.get_mapped_results_dataframe(results_df)
-        evaluator = SpanEvaluator(model=None)
+        evaluator = SpanEvaluator()
         result = evaluator.calculate_score_on_df(results_df_mapped)
 
     See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.
@@ -62,7 +62,7 @@ def score_presidio_recognizer(
         results_df = model.predict_dataset(dataset)
         mapper = CanonicalMapper()
         results_df_mapped = mapper.get_mapped_results_dataframe(results_df)
-        evaluator = SpanEvaluator(model=None)
+        evaluator = SpanEvaluator()
         result = evaluator.calculate_score_on_df(results_df_mapped)
 
     See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.

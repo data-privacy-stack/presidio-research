@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Literal
 
 import pandas as pd
 from presidio_analyzer import AnalyzerEngine
@@ -18,8 +19,8 @@ class SpanEvaluator(BaseEvaluator):
 
     def __init__(
         self,
-        model: BaseModel | AnalyzerEngine | None,
         verbose: bool = False,
+        model: BaseModel | AnalyzerEngine | None = None,
         entities_to_keep: list[str] | None = None,
         generic_entities: list[str] | None = None,
         skip_words: list | None = None,
@@ -401,14 +402,14 @@ class SpanEvaluator(BaseEvaluator):
             evaluation_results=evaluation_results,
             entities=entities,
         )
-        evaluation_result = self.calculate_score_on_df(
+        evaluation_result = self._run_score_pass(
             per_type=True,
             results_df=df,
             beta=beta,
             evaluation_result=evaluation_result,
         )
         global_pii_df = self.create_global_entities_df(results_df=df)
-        evaluation_result = self.calculate_score_on_df(
+        evaluation_result = self._run_score_pass(
             per_type=False,
             results_df=global_pii_df,
             beta=beta,
@@ -418,16 +419,54 @@ class SpanEvaluator(BaseEvaluator):
 
     def calculate_score_on_df(
         self,
+        results_df: pd.DataFrame,
+        level: Literal["entity", "pii", "both"] = "both",
+        beta: float = 2,
+        evaluation_result: EvaluationResult | None = None,
+    ) -> EvaluationResult:
+        """
+        Evaluate predictions against ground truth annotations.
+
+        :param results_df: DataFrame containing sentence_id, tokens, token start indices,
+                        annotations and predictions columns — as produced by
+                        model.predict_dataset() and optionally processed by
+                        CanonicalMapper.get_mapped_results_dataframe().
+        :param level: Which metrics to compute. One of:
+
+                    - ``"entity"`` — per-entity-type precision/recall/F only
+                    - ``"pii"`` — global PII (everything vs ``"O"`` ) metrics only
+                    - ``"both"`` (default) — both passes; the returned
+                      ``EvaluationResult`` contains per-type **and** global PII metrics.
+        :param beta: F-beta parameter (default 2).
+        :param evaluation_result: Optional existing EvaluationResult to accumulate into.
+        :return: EvaluationResult with the requested metrics populated.
+        """
+        if level in ("entity", "both"):
+            evaluation_result = self._run_score_pass(
+                per_type=True,
+                results_df=results_df,
+                beta=beta,
+                evaluation_result=evaluation_result,
+            )
+        if level in ("pii", "both"):
+            global_pii_df = self.create_global_entities_df(results_df)
+            evaluation_result = self._run_score_pass(
+                per_type=False,
+                results_df=global_pii_df,
+                beta=beta,
+                evaluation_result=evaluation_result,
+            )
+        return evaluation_result
+
+    def _run_score_pass(
+        self,
         per_type: bool,
         results_df: pd.DataFrame,
         beta: float = 2,
         evaluation_result: EvaluationResult | None = None,
     ) -> EvaluationResult:
         """
-        Evaluate the predictions against ground truth annotations.
-        This method processes a DataFrame containing evaluation results and calculates metrics
-        using span-based fuzzy matching with IoU threshold. It can operate in two modes:
-        per-entity type evaluation or global PII evaluation.
+        Run a single scoring pass over the results DataFrame.
 
         :param per_type: If True, performs per-entity type evaluation; if False, performs
                     global PII vs non-PII evaluation
@@ -438,7 +477,6 @@ class SpanEvaluator(BaseEvaluator):
         :param evaluation_result: Optional existing EvaluationResult to update. If None,
                                 creates a new one.
         :return: EvaluationResult object containing computed metrics, counts, and error analysis
-
         """
         if not evaluation_result:
             evaluation_result = EvaluationResult()

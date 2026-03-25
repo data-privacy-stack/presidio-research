@@ -1,6 +1,7 @@
 import logging
 import warnings
 from collections import Counter
+from typing import Literal
 
 import pandas as pd
 from spacy.tokens import Token
@@ -181,6 +182,7 @@ class TokenEvaluator(BaseEvaluator):
         self,
         results_df: pd.DataFrame,
         beta: float = 2.0,
+        level: Literal["entity", "pii", "both"] = "both",
     ) -> EvaluationResult:
         """
         Evaluate predictions against ground truth using a pre-mapped DataFrame.
@@ -195,7 +197,9 @@ class TokenEvaluator(BaseEvaluator):
             prediction, start_indices — as produced by model.predict_dataset() and
             optionally processed by CanonicalMapper.get_mapped_results_dataframe().
         :param beta: F-beta parameter for score calculation (default 2.0).
-        :return: EvaluationResult with per-entity and aggregate precision/recall/F metrics.
+        :param level: Which metrics to compute. One of ``"entity"``, ``"pii"``,
+            or ``"both"`` (default).
+        :return: EvaluationResult with the requested precision/recall/F metrics.
         """
         evaluation_results: list[EvaluationResult] = []
 
@@ -227,13 +231,14 @@ class TokenEvaluator(BaseEvaluator):
                 ),
             )
 
-        return self.calculate_score(evaluation_results, beta=beta)
+        return self.calculate_score(evaluation_results, beta=beta, level=level)
 
     def calculate_score(
         self,
         evaluation_results: list[EvaluationResult],
         entities: list[str] | None = None,
         beta: float = 2.0,
+        level: Literal["entity", "pii", "both"] = "both",
     ) -> EvaluationResult:
         """
         Calculates the evaluation score based on the provided evaluation results.
@@ -276,35 +281,39 @@ class TokenEvaluator(BaseEvaluator):
         # aggregate results
         all_results = sum([er.results for er in evaluation_results], Counter())
 
-        # compute pii_recall per entity
+        # per-entity metrics
         entity_recall = {}
         entity_precision = {}
         n = {}
-        if not entities:
-            entities1 = list({x[0] for x in all_results.keys() if x[0] != "O"})
-            entities2 = list({x[1] for x in all_results.keys() if x[1] != "O"})
-            entities = list(set(entities1).union(set(entities2)))
+        if level in ("entity", "both"):
+            if not entities:
+                entities1 = list({x[0] for x in all_results.keys() if x[0] != "O"})
+                entities2 = list({x[1] for x in all_results.keys() if x[1] != "O"})
+                entities = list(set(entities1).union(set(entities2)))
 
-        for entity in entities:
-            # all annotation of given type
-            annotated = sum([all_results[x] for x in all_results if x[0] == entity])
-            predicted = sum([all_results[x] for x in all_results if x[1] == entity])
-            n[entity] = annotated
-            tp = all_results[(entity, entity)]
+            for entity in entities:
+                annotated = sum([all_results[x] for x in all_results if x[0] == entity])
+                predicted = sum([all_results[x] for x in all_results if x[1] == entity])
+                n[entity] = annotated
+                tp = all_results[(entity, entity)]
+                entity_recall[entity] = self.recall(tp=tp, num_annotated=annotated)
+                entity_precision[entity] = self.precision(
+                    tp=tp, num_predicted=predicted
+                )
 
-            entity_recall[entity] = self.recall(tp=tp, num_annotated=annotated)
-
-            entity_precision[entity] = self.precision(tp=tp, num_predicted=predicted)
-
-        # compute pii_precision and pii_recall
-        annotated_all = sum([all_results[x] for x in all_results if x[0] != "O"])
-        predicted_all = sum([all_results[x] for x in all_results if x[1] != "O"])
-
-        tp = sum([all_results[x] for x in all_results if (x[0] != "O" and x[1] != "O")])
-        pii_recall = self.recall(tp=tp, num_annotated=annotated_all)
-        pii_precision = self.precision(tp=tp, num_predicted=predicted_all)
-
-        pii_f_beta = self.f_beta(pii_precision, pii_recall, beta)
+        # global PII metrics
+        pii_recall = None
+        pii_precision = None
+        pii_f_beta = None
+        if level in ("pii", "both"):
+            annotated_all = sum([all_results[x] for x in all_results if x[0] != "O"])
+            predicted_all = sum([all_results[x] for x in all_results if x[1] != "O"])
+            tp = sum(
+                [all_results[x] for x in all_results if (x[0] != "O" and x[1] != "O")]
+            )
+            pii_recall = self.recall(tp=tp, num_annotated=annotated_all)
+            pii_precision = self.precision(tp=tp, num_predicted=predicted_all)
+            pii_f_beta = self.f_beta(pii_precision, pii_recall, beta)
 
         # aggregate errors
         errors = []

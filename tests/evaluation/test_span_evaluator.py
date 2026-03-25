@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from presidio_evaluator.data_objects import Span
-from presidio_evaluator.evaluation import ErrorType, EvaluationResult, SpanEvaluator
+from presidio_evaluator.evaluation import ErrorType, SpanEvaluator
 
 
 @pytest.fixture
@@ -174,10 +174,7 @@ def test_scenario_group1(
     )
 
     # Run evaluation
-    result = EvaluationResult()
-    result = span_evaluator.calculate_score_on_df(
-        per_type=True, results_df=df, evaluation_result=result
-    )
+    result = span_evaluator.calculate_score_on_df(results_df=df, level="entity")
 
     # Check true positives, false positives, and false negatives
     total_tp = sum(pii_type.true_positives for pii_type in result.per_type.values())
@@ -324,10 +321,7 @@ def test_scenario_group2(
     )
 
     # Run evaluation
-    result = EvaluationResult()
-    result = span_evaluator.calculate_score_on_df(
-        per_type=True, results_df=df, evaluation_result=result
-    )
+    result = span_evaluator.calculate_score_on_df(results_df=df, level="entity")
 
     # Check true positives, false positives, and false negatives
     total_tp = sum(pii_type.true_positives for pii_type in result.per_type.values())
@@ -498,11 +492,7 @@ def test_global_metrics(
     )
 
     # Run evaluation
-    result = EvaluationResult()
-    pii_df = span_evaluator.create_global_entities_df(df)
-    result = span_evaluator.calculate_score_on_df(
-        per_type=False, results_df=pii_df, evaluation_result=result
-    )
+    result = span_evaluator.calculate_score_on_df(results_df=df, level="pii")
 
     # Check global counts
     assert result.pii_annotated == expected_annotated, (
@@ -637,11 +627,8 @@ def test_combined_per_type_and_global_metrics(
         }
     )
 
-    # Run per-type evaluation
-    result = EvaluationResult()
-    result = span_evaluator.calculate_score_on_df(
-        per_type=True, results_df=df, evaluation_result=result
-    )
+    # Run evaluation (both per-type and global)
+    result = span_evaluator.calculate_score_on_df(results_df=df, level="both")
 
     # Check per-type metrics
     for entity_type, expected_metrics in expected_per_type_metrics.items():
@@ -656,12 +643,6 @@ def test_combined_per_type_and_global_metrics(
             assert_metric(
                 expected_metrics["f_beta"], "f_beta", per_type_result, scenario
             )
-
-    # Run global evaluation
-    pii_df = span_evaluator.create_global_entities_df(df)
-    result = span_evaluator.calculate_score_on_df(
-        per_type=False, results_df=pii_df, evaluation_result=result
-    )
 
     # Check global metrics
     assert_metric(
@@ -1082,10 +1063,7 @@ def test_match_predictions_with_annotations_error_generation(
     )
 
     # Run evaluation
-    result = EvaluationResult()
-    result = span_evaluator.calculate_score_on_df(
-        per_type=True, results_df=df, evaluation_result=result
-    )
+    result = span_evaluator.calculate_score_on_df(results_df=df, level="entity")
 
     # Check that expected error types are present
     error_types = [error.error_type for error in result.model_errors]

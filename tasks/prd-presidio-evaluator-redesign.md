@@ -143,6 +143,26 @@ This redesign separates concerns into three clean layers — **Model → Mapper 
 
 ---
 
+### US-009: Decouple model from evaluators
+
+**Description:** As a user, I want `SpanEvaluator` and `TokenEvaluator` to accept a pre-built results DataFrame instead of a model, so that I can separate prediction, mapping, and scoring into distinct steps and swap evaluators interchangeably.
+
+**Acceptance Criteria:**
+- [ ] `BaseEvaluator.__init__` raises `DeprecationError` when a non-`None` model is passed, directing users to `model.predict_dataset()` + `evaluator.calculate_score_on_df()`
+- [ ] `SpanEvaluator()` and `TokenEvaluator()` are the standard construction patterns — no model required
+- [ ] `calculate_score_on_df(results_df)` is the primary entry point for both evaluators and requires no model
+- [ ] `evaluate_sample()` emits a `DeprecationWarning` with a migration message referencing `predict_dataset()` and `calculate_score_on_df()`
+- [ ] `evaluate_sample()` still executes (soft deprecation)
+- [ ] Unit test: constructing `SpanEvaluator(model=<model>)` raises `DeprecationError`
+- [ ] Unit test: constructing `SpanEvaluator()` does not raise
+- [ ] Unit test: `evaluate_sample()` emits `DeprecationWarning`
+- [ ] All existing tests that pass `model=<mock>` to the evaluator constructor are updated to use `` and call `calculate_score_on_df()` directly
+- [ ] Typecheck/lint passes
+
+**Notes:** Core decoupling story per ADR-001. The evaluator becomes a pure scoring engine — it scores a pre-built DataFrame and has no knowledge of model inference. `evaluate_sample()` soft-deprecation is included here as part of the same decoupling effort.
+
+---
+
 ### US-010: Remove non-Presidio model wrappers
 
 **Description:** As a user, I want the models package to contain only Presidio-based wrappers so that I am not confused by unmaintained model integrations, and the dependency footprint is reduced.
@@ -296,6 +316,7 @@ This redesign separates concerns into three clean layers — **Model → Mapper 
 - FR-5: Labels mapped to `None` pass through unchanged to the evaluator. They will always produce FP or FN since they won't match anything on the other side.
 - FR-6: `CanonicalMapper.from_dataset()` and `CanonicalMapper.from_results_data_frame()` are removed.
 - FR-7: `BaseEvaluator` has no `entity_mapping` parameter, no `_normalize_entity_for_comparison()`, no `_to_io()`, and no `compare_by_io`. All entity mapping is the mapper's responsibility.
+- FR-7a: Passing a non-`None` `model` to `BaseEvaluator.__init__` raises `DeprecationError` (hard stop — mirrors `evaluate_all()`). The standard construction is `SpanEvaluator()` / `TokenEvaluator()` with no arguments. `calculate_score_on_df(results_df)` is the primary entry point. `evaluate_sample()` emits a `DeprecationWarning` (soft) but still executes.
 - FR-8: `TokenEvaluator.calculate_score_on_df(results_df)` returns an `EvaluationResult`, matching `SpanEvaluator`'s interface.
 - FR-9: `evaluate_all()` raises `DeprecationError` with migration instructions. `get_results_dataframe()` emits `DeprecationWarning`.
 - FR-10: `EvaluationResult` remains the return type for all evaluators and is compatible with `Plotter`.

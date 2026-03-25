@@ -49,7 +49,7 @@ class BaseEvaluator(ABC):
                 "  1. results_df = model.predict_dataset(dataset)\n"
                 "  2. mapper = CanonicalMapper()\n"
                 "     mapped_df = mapper.get_mapped_results_dataframe(results_df)\n"
-                "  3. result = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)\n"
+                "  3. result = evaluator.calculate_score_on_df(results_df=mapped_df)\n"
                 "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
             )
 
@@ -92,15 +92,13 @@ class BaseEvaluator(ABC):
                 # Step 3: evaluate
                 from presidio_evaluator.evaluation import SpanEvaluator
                 evaluator = SpanEvaluator()
-                result_per_type = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)
-                global_df = SpanEvaluator.create_global_entities_df(mapped_df)
-                result = evaluator.calculate_score_on_df(per_type=False, results_df=global_df, evaluation_result=result_per_type)
+                result = evaluator.calculate_score_on_df(results_df=mapped_df)
         """
         raise DeprecationError(
             "evaluate_all() has been removed. Use the new 3-step pipeline:\n"
             "  1. results_df = model.predict_dataset(dataset)\n"
             "  2. mapper = CanonicalMapper(); mapped_df = mapper.get_mapped_results_dataframe(results_df)\n"
-            "  3. result = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)\n"
+            "  3. result = evaluator.calculate_score_on_df(results_df=mapped_df)\n"
             "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
         )
 

@@ -24,7 +24,7 @@ Dataset (List[InputSample])
 
 This design has four concrete pain points:
 
-1. **Model is coupled to the Evaluator** — `BaseEvaluator.__init__` takes a `model` argument, and `evaluate_all()` calls `model.batch_predict`, `model.filter_tags_in_supported_entities`, and `model.to_scheme` internally. While it is technically possible to evaluate a pre-computed result set via `SpanEvaluator(model=None)` and `calculate_score_on_df()` on a results DataFrame, this coupling makes that path non-obvious and discourages treating the DataFrame-based interface as a first-class entry point.
+1. **Model is coupled to the Evaluator** — `BaseEvaluator.__init__` takes a `model` argument, and `evaluate_all()` calls `model.batch_predict`, `model.filter_tags_in_supported_entities`, and `model.to_scheme` internally. While it is technically possible to evaluate a pre-computed result set via `SpanEvaluator()` and `calculate_score_on_df()` on a results DataFrame, this coupling makes that path non-obvious and discourages treating the DataFrame-based interface as a first-class entry point.
 
 2. **`evaluate_all()` does two things** — it runs model inference AND builds per-sample `EvaluationResult` objects. These objects are simple data carriers holding `(tokens, actual_tags, predicted_tags, start_indices)`, yet they require callers to go through the evaluator just to get predictions into a usable shape.
 
@@ -131,7 +131,7 @@ plotter.plot_scores()
 
 2. **Add `map_entities()` utility** — add the function (and `Dict` import) to `presidio_evaluator/evaluation/` (e.g., in a new `utils.py` or alongside `get_results_dataframe`). Add a unit test verifying that both `annotation` and `prediction` columns are remapped.
 
-3. **Make `model` optional in `BaseEvaluator`** — change `BaseEvaluator.__init__(self, model=None, ...)` so that `model` defaults to `None`, relying on the existing runtime check in `evaluate_all()` that raises a clear error when `model is None`.
+3. **Make `model` optional in `BaseEvaluator`** — change `BaseEvaluator.__init__(self, , ...)` so that `model` defaults to `None`, relying on the existing runtime check in `evaluate_all()` that raises a clear error when `model is None`.
 
 4. **Update `evaluate_all()` to delegate to `predict_dataset` + `calculate_score_on_df`** — refactor `SpanEvaluator.evaluate_all()` and `TokenEvaluator.evaluate_all()` to call `self.model.predict_dataset(dataset)` and then pass the result to `calculate_score_on_df()`. This ensures a single code path for both old and new usage.
 

@@ -173,7 +173,7 @@ This is a **cross-cutting change** that affects multiple files:
 | E4 | Deprecate `get_results_dataframe()` | 🔴 Not started | Add `DeprecationWarning` with migration message: "Use `model.predict_dataset()` + `mapper.get_mapped_results_dataframe()` instead." |
 | E5 | Deprecate `evaluate_all()` | 🔴 Not started | Raise `DeprecationError` (hard stop) with migration message pointing to the new pipeline. |
 | E6 | `EvaluationResult` retains all fields for metrics + error analysis + plotting | 🟡 Verify | Confirm `EvaluationResult` has everything needed. Per-sample carrier fields (`tokens`, `actual_tags`, `predicted_tags`) may still be needed for error analysis. Verify `Plotter` works after changes. |
-| E7 | `SpanEvaluator` decoupled from model | 🟡 Partial | `model=None` already works. Ensure `calculate_score_on_df()` is fully usable without a model instance (no `self.model` references). |
+| E7 | `SpanEvaluator` decoupled from model | 🟡 Partial | `` already works. Ensure `calculate_score_on_df()` is fully usable without a model instance (no `self.model` references). |
 | E8 | `model` param becomes truly optional in `BaseEvaluator` | ✅ Done | Already handled. |
 | E9 | Update notebooks & documentation | 🔴 Not started | Notebooks 4, 5, 6 → new pipeline. |
 

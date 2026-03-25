@@ -42,7 +42,7 @@ def evaluation_result() -> EvaluationResult:
 
 @pytest.fixture(scope="session")
 def evaluator():
-    evaluator = Evaluator(model=None)
+    evaluator = Evaluator()
     return evaluator
 
 

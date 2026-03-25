@@ -13,7 +13,7 @@ class PresidioAnalyzerWrapper(BaseModel):
     def __init__(
         self,
         analyzer_engine: AnalyzerEngine | None = None,
-        entities_to_keep: list[str] = None,
+        entities_to_keep: list[str] | None = None,
         verbose: bool = False,
         labeling_scheme: str = "IO",
         score_threshold: float = 0.4,

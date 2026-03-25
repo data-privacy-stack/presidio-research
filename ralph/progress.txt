@@ -10,14 +10,14 @@
 - test_entity_hierarchy.py and tests/integration/test_notebook.py are the legitimate excludable/tricky tests; run with `--ignore=tests/test_entity_hierarchy.py` but integration now passes
 - **Run tests via .venv/bin/pytest** when Poetry venv is activated in the shell — uv run picks up the Poetry VIRTUAL_ENV and finds the wrong pytest binary
 - **ruff is in `dev` optional-dependencies** — run `uv sync --extra dev` to install ruff into .venv before committing (pre-commit hooks use `uv run ruff`)
-- **BaseEvaluator.__init__ raises DeprecationError** when any non-None model is passed (US-009 hard stop) — standard construction is now `SpanEvaluator(model=None)` / `TokenEvaluator(model=None)`
+- **BaseEvaluator.__init__ raises DeprecationError** when any non-None model is passed (US-009 hard stop) — standard construction is now `SpanEvaluator()` / `TokenEvaluator()`
 - **evaluate_sample() emits DeprecationWarning** (US-009, soft) — still executes; migrate to predict_dataset + calculate_score_on_df
 - **evaluate_all() raises DeprecationError** (US-007 hard stop) — use predict_dataset() + calculate_score_on_df() instead
 - **DeprecationError** is defined in base_evaluator.py and exported from presidio_evaluator.evaluation
 - **Mock model predictions must be in IO format** (not BIO/BILUO) since `_adjust_per_entities()` does exact string match and BIO prefix stripping is now the mapper's job
 - **Root-level duplicate test files** (tests/test_*.py) were moved to subdirs in US-017; if they reappear, don't commit them — `git restore --staged` and `git clean -f` to remove
 - **pre-commit ruff format check runs on entire codebase** (pass_filenames=false) — any file with format issues will block the commit; run `ruff format .` then carefully stage only format-fix files when committing unrelated story changes
-- **Passing model to evaluator constructor emits DeprecationWarning** (US-009) — use model=None and calculate_score_on_df() instead
+- **Passing model to evaluator constructor emits DeprecationWarning** (US-009) — use  and calculate_score_on_df() instead
 - **evaluate_sample() emits DeprecationWarning** (US-009, soft) — still executes; migrate to predict_dataset + calculate_score_on_df
 - **Run tests via .venv/bin/pytest** when Poetry venv is activated in the shell — uv run picks up the Poetry VIRTUAL_ENV and finds the wrong pytest binary
 - **uv sync --group dev only audits if packages are already installed** — use `uv pip install pytest` directly if pytest is missing from .venv/bin/
@@ -79,7 +79,7 @@
   - tests/integration/test_notebook.py
 - **Learnings for future iterations:**
   - TokenEvaluator.compare() needs an InputSample with tokens + tags set; construct it from DataFrame slice
-  - model=None in evaluator constructor raises UserWarning (not error) — perfectly fine for calculate_score_on_df
+  -  in evaluator constructor raises UserWarning (not error) — perfectly fine for calculate_score_on_df
   - Integration test uses entities_to_keep=["PERSON"] to keep results small/fast
 ---
 
@@ -327,8 +327,8 @@
   - `BaseEvaluator.__init__` now raises `DeprecationError` (hard stop) when any non-None model is passed
   - Removed `AnalyzerEngine` wrapping, `PresidioAnalyzerWrapper` instantiation, and model.entities propagation from constructor
   - `evaluate_sample()` now emits `DeprecationWarning` (soft — still executes) before running
-  - Removed stale `if not self.model: raise ValueError` guard from `evaluate_sample()` since model=None is now the standard
-  - Updated all tests in `tests/evaluation/test_evaluator.py`, `test_token_evaluator.py`, `test_span_evaluator.py`, `test_evaluation_result.py` to use `model=None`
+  - Removed stale `if not self.model: raise ValueError` guard from `evaluate_sample()` since  is now the standard
+  - Updated all tests in `tests/evaluation/test_evaluator.py`, `test_token_evaluator.py`, `test_span_evaluator.py`, `test_evaluation_result.py` to use ``
   - Fixed `tests that called `evaluator.model.predict_dataset()` to call `model.predict_dataset()` directly
   - Added 3 new unit tests: `test_model_constructor_raises_deprecation_error`, `test_model_none_constructor_does_not_raise`, `test_evaluate_sample_emits_deprecation_warning`
   - Cleaned up root-level duplicate test files (unstaged + git clean) that were accidentally staged

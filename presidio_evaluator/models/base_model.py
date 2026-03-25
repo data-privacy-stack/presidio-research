@@ -9,7 +9,7 @@ class BaseModel(ABC):
     def __init__(
         self,
         labeling_scheme: str = "IO",
-        entities_to_keep: list[str] = None,
+        entities_to_keep: list[str] | None = None,
         entity_mapping: dict[str, str] | None = None,
         verbose: bool = False,
     ) -> None:

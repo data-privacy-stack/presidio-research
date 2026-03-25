@@ -99,7 +99,7 @@ def test_notebook():
     mapped_df = mapper.get_mapped_results_dataframe(results_df)
 
     # Step 3: evaluate
-    evaluator = TokenEvaluator(model=None)
+    evaluator = TokenEvaluator()
     results = evaluator.calculate_score_on_df(mapped_df)
 
     print(results_df)
@@ -208,19 +208,15 @@ def test_full_pipeline_integration():
     assert mapped_df.shape == results_df.shape
 
     # Step 3a: SpanEvaluator path
-    span_evaluator = SpanEvaluator(model=None, skip_words=[])
-    result_per_type = span_evaluator.calculate_score_on_df(
-        per_type=True, results_df=mapped_df
-    )
-    global_df = SpanEvaluator.create_global_entities_df(mapped_df)
+    span_evaluator = SpanEvaluator(skip_words=[])
     result_global = span_evaluator.calculate_score_on_df(
-        per_type=False, results_df=global_df, evaluation_result=result_per_type
+        results_df=mapped_df, level="both"
     )
     assert result_global.pii_recall is not None
     assert result_global.pii_precision is not None
 
     # Step 3b: TokenEvaluator path
-    token_evaluator = TokenEvaluator(model=None, skip_words=[])
+    token_evaluator = TokenEvaluator(skip_words=[])
     token_result = token_evaluator.calculate_score_on_df(mapped_df)
     assert token_result.pii_recall is not None
     assert token_result.entity_recall_dict is not None

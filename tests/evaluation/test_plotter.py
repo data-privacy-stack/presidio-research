@@ -257,13 +257,7 @@ def test_plotter_with_span_evaluator_output():
     )
 
     evaluator = SpanEvaluator(model=None, skip_words=[])
-    evaluation_result = evaluator.calculate_score_on_df(
-        per_type=True, results_df=results_df
-    )
-    global_df = SpanEvaluator.create_global_entities_df(results_df)
-    evaluation_result = evaluator.calculate_score_on_df(
-        per_type=False, results_df=global_df, evaluation_result=evaluation_result
-    )
+    evaluation_result = evaluator.calculate_score_on_df(results_df=results_df)
 
     # Verify all fields Plotter.plot_scores() requires
     assert evaluation_result.entity_recall_dict is not None
