@@ -105,7 +105,7 @@ from presidio_evaluator.models import PresidioAnalyzerWrapper
 from presidio_evaluator.entity_mapping import CanonicalMapper
 
 model = PresidioAnalyzerWrapper(analyzer_engine=analyzer)
-evaluator = SpanEvaluator(model=None)
+evaluator = SpanEvaluator()
 
 # 2. Get predictions as a DataFrame
 results_df = model.predict_dataset(dataset)
@@ -281,7 +281,7 @@ evaluation_result = EvaluationResult(
 )
 
 # Initialize evaluator and evaluate
-evaluator = TokenEvaluator(model=None)
+evaluator = TokenEvaluator()
 final_result = evaluator.calculate_score([evaluation_result])
 
 print(f"Precision: {final_result.pii_precision:.4f}")
@@ -316,7 +316,7 @@ evaluation_result = EvaluationResult(
 )
 
 # Initialize span evaluator with no skip words
-evaluator = SpanEvaluator(iou_threshold=0.5, model=None, skip_words=[])
+evaluator = SpanEvaluator(iou_threshold=0.5, , skip_words=[])
 scores = evaluator.calculate_score([evaluation_result])
 
 print(f"Precision: {scores.pii_precision:.4f}")
@@ -351,7 +351,7 @@ evaluation_result = EvaluationResult(
 )
 
 # Initialize span evaluator with no skip words
-evaluator = SpanEvaluator(iou_threshold=0.5, model=None)
+evaluator = SpanEvaluator(iou_threshold=0.5, )
 scores = evaluator.calculate_score([evaluation_result])
 
 print(f"Precision: {scores.pii_precision:.4f}")

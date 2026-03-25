@@ -1,10 +1,19 @@
+import logging
 import warnings
 from collections import Counter
 
 import pandas as pd
+from spacy.tokens import Token
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import BaseEvaluator, EvaluationResult
+from presidio_evaluator.evaluation import (
+    BaseEvaluator,
+    ErrorType,
+    EvaluationResult,
+    ModelError,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class TokenEvaluator(BaseEvaluator):
@@ -12,6 +21,161 @@ class TokenEvaluator(BaseEvaluator):
     Evaluates the performance of a token-based Named Entity Recognition (NER) model.
     This class is designed to assess the model's ability to correctly identify and classify tokens in text.
     """
+
+    def compare(
+        self,
+        input_sample: InputSample,
+        prediction: list[str],
+    ) -> tuple[Counter, list[ModelError]]:
+        """
+        Compares ground truth tags (annotation) and predicted (prediction)
+        :param input_sample: input sample containing list of tags
+        :param prediction: predicted value for each token
+        """
+        annotation = list(input_sample.tags)
+        tokens = input_sample.tokens
+
+        if len(annotation) != len(prediction):
+            logger.warning(
+                "Annotation and prediction do not have the"
+                f"same length. Sample={input_sample}",
+            )
+            return Counter(), []
+
+        results = Counter()
+        mistakes = []
+
+        if self.entities_to_keep:
+            prediction = self._adjust_per_entities(prediction)
+            annotation = self._adjust_per_entities(annotation)
+
+        for i in range(0, len(annotation)):
+            cur_token = tokens[i]
+            cur_prediction = prediction[i]
+            cur_annotation = annotation[i]
+
+            results[(cur_annotation, cur_prediction)] += 1
+
+            if self.verbose:
+                logger.info("Annotation: %s", cur_annotation)
+                logger.info("Prediction: %s", cur_prediction)
+                logger.info("Results: %s", results)
+
+            is_error = cur_annotation != cur_prediction
+
+            if is_error:
+                reverted = self.__revert_known_errors(
+                    cur_annotation,
+                    cur_prediction,
+                    cur_token,
+                    results,
+                )
+                if reverted:
+                    continue
+
+                if prediction[i] == "O":
+                    mistakes.append(
+                        ModelError(
+                            error_type=ErrorType.FN,
+                            annotation=cur_annotation,
+                            prediction=cur_prediction,
+                            token=cur_token,
+                            full_text=input_sample.full_text,
+                            metadata=input_sample.metadata,
+                        ),
+                    )
+                elif annotation[i] == "O":
+                    mistakes.append(
+                        ModelError(
+                            error_type=ErrorType.FP,
+                            annotation=cur_annotation,
+                            prediction=cur_prediction,
+                            token=cur_token,
+                            full_text=input_sample.full_text,
+                            metadata=input_sample.metadata,
+                        ),
+                    )
+                else:
+                    mistakes.append(
+                        ModelError(
+                            error_type=ErrorType.WrongEntity,
+                            annotation=cur_annotation,
+                            prediction=cur_prediction,
+                            token=cur_token,
+                            full_text=input_sample.full_text,
+                            metadata=input_sample.metadata,
+                        ),
+                    )
+
+        return results, mistakes
+
+    def __revert_known_errors(
+        self,
+        current_annotation: str,
+        current_prediction: str,
+        current_token: str | Token,
+        results: Counter[tuple[str, str]],
+    ) -> bool:
+        reverted = False
+
+        if str(current_token).lower().strip() in self.skip_words:
+            # Ignore cases where the token is a skip word
+            results[(current_annotation, current_prediction)] -= 1
+            reverted = True
+
+        if current_prediction in self.generic_entities and current_annotation != "O":
+            # Ignore cases where the prediction is generic
+            results[(current_annotation, current_prediction)] -= 1
+            # Add a result which assumes the generic equals the specific
+            results[(current_annotation, current_annotation)] += 1
+            reverted = True
+
+        elif current_annotation in self.generic_entities and current_prediction != "O":
+            # Ignore cases where the prediction is generic
+            results[(current_annotation, current_prediction)] -= 1
+            # Add a result which assumes the generic equals the specific
+            results[(current_prediction, current_prediction)] += 1
+            reverted = True
+
+        # Remove temporary keys which should not be counted
+        if results[(current_annotation, current_prediction)] == 0:
+            del results[(current_annotation, current_prediction)]
+
+        return reverted
+
+    def _adjust_per_entities(self, tags: list[str]) -> list[str]:
+        if self.entities_to_keep:
+            return [tag if tag in self.entities_to_keep else "O" for tag in tags]
+        else:
+            return tags
+
+    def evaluate_sample(
+        self,
+        sample: InputSample,
+        prediction: list[str],
+    ) -> EvaluationResult:
+        warnings.warn(
+            "evaluate_sample() is deprecated. Use predict_dataset() + calculate_score_on_df() instead:\n"
+            "  results_df = model.predict_dataset(dataset)\n"
+            "  result = evaluator.calculate_score_on_df(results_df=results_df)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        if self.verbose:
+            logger.debug(f"Input sentence: {sample.full_text}")
+
+        results, model_errors = self.compare(input_sample=sample, prediction=prediction)
+
+        return EvaluationResult(
+            results=results,
+            model_errors=model_errors,
+            text=sample.full_text,
+            tokens=[str(token) for token in sample.tokens],
+            actual_tags=sample.tags,
+            predicted_tags=prediction,
+            start_indices=sample.start_indices,
+        )
 
     def calculate_score_on_df(
         self,

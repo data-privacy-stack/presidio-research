@@ -2,11 +2,12 @@ import pandas as pd
 import pytest
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import BaseEvaluator, ErrorType, EvaluationResult
+from presidio_evaluator.evaluation import ErrorType, EvaluationResult
+from presidio_evaluator.evaluation.token_evaluator import TokenEvaluator
 from tests.mocks import MockTokensModel
 
 
-class MockEvaluator(BaseEvaluator):
+class MockEvaluator(TokenEvaluator):
     def calculate_score(
         self,
         evaluation_results: list[EvaluationResult],
@@ -88,7 +89,7 @@ def test_evaluate_multiple_entities_to_keep_correct_statistics():
 def test_generic_entities_are_treated_like_specific_entities(
     tags, predicted_tags, expected_dict
 ):
-    evaluator = MockEvaluator(model=None)
+    evaluator = MockEvaluator()
 
     tokens = ["A", "123", "456"]
 
@@ -110,7 +111,7 @@ def test_error_type_classification():
     """
     prediction = ["O", "EMAIL", "PHONE", "LOCATION", "PERSON"]
 
-    evaluator = MockEvaluator(model=None)
+    evaluator = MockEvaluator()
 
     # Ground truth: [PERSON, O, EMAIL, PHONE, O]
     # Prediction:   [PERSON, EMAIL, PHONE, LOCATION, PERSON]
@@ -167,7 +168,7 @@ def test_get_results_dataframe_basic():
         )
     ]
 
-    evaluator = MockEvaluator(model=None)
+    evaluator = MockEvaluator()
     df = evaluator.get_results_dataframe(evaluation_results)
 
     # Verify the dataframe has the correct shape and columns
@@ -216,7 +217,7 @@ def test_get_results_dataframe_with_entity_filtering():
         )
     ]
 
-    evaluator = MockEvaluator(model=None)
+    evaluator = MockEvaluator()
     # Filter to only include PERSON entities
     df = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
 
@@ -270,7 +271,7 @@ def test_get_results_dataframe_with_multiple_entities():
         )
     ]
 
-    evaluator = MockEvaluator(model=None)
+    evaluator = MockEvaluator()
     # Filter to only include PERSON entities
     df_person = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
     assert list(df_person["annotation"]) == [
@@ -338,7 +339,7 @@ def test_get_results_dataframe_with_mismatched_predictions():
         )
     ]
 
-    evaluator = MockEvaluator(model=None)
+    evaluator = MockEvaluator()
     # Filter to only include PERSON entities
     df_person = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
     assert list(df_person["annotation"]) == ["PERSON", "PERSON", "O", "O", "O", "O"]
@@ -397,7 +398,7 @@ def test_get_results_dataframe_with_multiple_sentences():
         ),
     ]
 
-    evaluator = MockEvaluator(model=None)
+    evaluator = MockEvaluator()
     # Filter to only include PERSON entities
     df = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
 
@@ -427,7 +428,7 @@ def test_get_results_dataframe_with_multiple_sentences():
 
 def test_empty_evaluation_results():
     """Test that an error is raised when evaluation results are empty."""
-    evaluator = MockEvaluator(model=None)
+    evaluator = MockEvaluator()
     with pytest.raises(ValueError):
         evaluator.get_results_dataframe([])
 
@@ -439,7 +440,7 @@ def test_evaluation_results_without_tokens():
         tokens=[], actual_tags=[], predicted_tags=[], start_indices=[], results={}
     )
 
-    evaluator = MockEvaluator(model=None)
+    evaluator = MockEvaluator()
     with pytest.raises(ValueError):
         evaluator.get_results_dataframe([empty_result])
 
@@ -453,7 +454,7 @@ def test_results_to_dataframe_with_entity_filtering():
     tokens = ["John", "details", "john@example.com", "New York", "Smith"]
     tags = ["PERSON", "O", "EMAIL", "LOCATION", "PERSON"]
     start_indices = [0, 5, 13, 27, 40]
-    evaluator = MockEvaluator(model=None)
+    evaluator = MockEvaluator()
 
     sample = InputSample(
         full_text="John details john@example.com New York Smith",
@@ -540,7 +541,7 @@ def test_model_constructor_raises_deprecation_error():
 
 
 def test_model_none_constructor_does_not_raise():
-    """SpanEvaluator(model=None) must not raise."""
+    """SpanEvaluator() must not raise."""
     from presidio_evaluator.evaluation import SpanEvaluator
 
     evaluator = SpanEvaluator(model=None, skip_words=[])

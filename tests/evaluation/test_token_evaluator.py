@@ -179,7 +179,7 @@ def test_confusion_matrix_2_correct_metrics():
         )
     ]
 
-    evaluator = TokenEvaluator(model=None)
+    evaluator = TokenEvaluator()
     scores = evaluator.calculate_score(evaluated, beta=2.5)
 
     pii_tp = (
@@ -219,7 +219,7 @@ def test_dataset_to_metric_identity_model():
     )
 
     model = IdentityTokensMockModel()
-    evaluator = TokenEvaluator(model=None)
+    evaluator = TokenEvaluator()
     results_df = model.predict_dataset(input_samples)
     metrics = evaluator.calculate_score_on_df(results_df)
 
@@ -306,7 +306,7 @@ def test_results_to_dataframe():
     tokens = ["John", "details", "john@mail.com", "123-456-7890", "today"]
     tags = ["PERSON", "O", "EMAIL", "PHONE", "O"]
     start_indices = [0, 5, 13, 27, 40]
-    evaluator = TokenEvaluator(model=None)
+    evaluator = TokenEvaluator()
 
     sample = InputSample(
         full_text="John details john@mail.com 123-456-7890 today",
@@ -346,7 +346,7 @@ def test_score_calculation():
     """
     prediction = ["PERSON", "PHONE", "O", "ORGANIZATION"]
 
-    evaluator = TokenEvaluator(model=None)
+    evaluator = TokenEvaluator()
 
     # Ground truth: [PERSON, O, EMAIL]
     # Prediction:   [PERSON, PHONE, LOCATION]
@@ -425,7 +425,7 @@ def test_calculate_score_existing_results_counter_individual_entities():
     expected_z_precision = z_tp / z_fp_tp if z_fp_tp != 0 else np.nan
     expected_z_recall = z_tp / z_fn_tp if z_fn_tp != 0 else np.nan
 
-    evaluator = TokenEvaluator(model=None)
+    evaluator = TokenEvaluator()
     evaluation_score = evaluator.calculate_score(
         evaluation_results=[EvaluationResult(results)]
     )
@@ -442,7 +442,7 @@ def test_calculate_score_on_df_schema():
     """calculate_score_on_df() accepts a 5-column DataFrame and returns an EvaluationResult."""
     import pandas as pd
 
-    evaluator = TokenEvaluator(model=None)
+    evaluator = TokenEvaluator()
     df = pd.DataFrame(
         {
             "sentence_id": [0, 0, 0],
@@ -462,7 +462,7 @@ def test_calculate_score_on_df_correct_metrics():
     """calculate_score_on_df() computes correct precision/recall on a known DataFrame."""
     import pandas as pd
 
-    evaluator = TokenEvaluator(model=None)
+    evaluator = TokenEvaluator()
     # 2 PERSON annotations, 1 correct prediction, 1 missed -> recall=0.5
     df = pd.DataFrame(
         {
@@ -482,7 +482,7 @@ def test_calculate_score_on_df_populates_per_sample_fields():
     """calculate_score_on_df() populates tokens, actual_tags, predicted_tags on sub-results."""
     import pandas as pd
 
-    evaluator = TokenEvaluator(model=None)
+    evaluator = TokenEvaluator()
     df = pd.DataFrame(
         {
             "sentence_id": [0, 0],
@@ -500,7 +500,7 @@ def test_calculate_score_on_df_populates_per_sample_fields():
 
 def test_evaluate_all_raises_deprecation_error():
     """evaluate_all() must raise DeprecationError after US-007 hard stop."""
-    evaluator = TokenEvaluator(model=None)
+    evaluator = TokenEvaluator()
     sample = InputSample(full_text="test", spans=None)
     sample.tokens = ["test"]
     sample.tags = ["O"]
