@@ -134,6 +134,26 @@
       "notes": "Soft deprecation — method still runs. Contrast with US-007 which is a hard stop."
     },
     {
+      "id": "US-009",
+      "title": "Decouple model from evaluators",
+      "description": "As a user, I want SpanEvaluator and TokenEvaluator to accept a pre-built results DataFrame instead of a model, so that I can separate prediction, mapping, and scoring into distinct steps and swap evaluators interchangeably.",
+      "acceptanceCriteria": [
+        "BaseEvaluator.__init__ raises DeprecationError when a non-None model is passed, directing users to model.predict_dataset() + evaluator.calculate_score_on_df()",
+        "SpanEvaluator(model=None) and TokenEvaluator(model=None) are the standard construction patterns — no model required",
+        "calculate_score_on_df(results_df) is the primary entry point for both evaluators and requires no model",
+        "evaluate_sample() emits a DeprecationWarning with a migration message referencing predict_dataset() and calculate_score_on_df()",
+        "evaluate_sample() still executes (soft deprecation)",
+        "Unit test: constructing SpanEvaluator(model=<model>) raises DeprecationError",
+        "Unit test: constructing SpanEvaluator(model=None) does not raise",
+        "Unit test: evaluate_sample() emits DeprecationWarning",
+        "All existing tests that pass model=<mock> to the evaluator constructor are updated to use model=None and call calculate_score_on_df() directly",
+        "Typecheck/lint passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Core decoupling story per ADR-001. Passing a model is a hard stop (DeprecationError) — mirrors evaluate_all(). evaluate_sample() is a soft deprecation (DeprecationWarning, still executes). The evaluator becomes a pure scoring engine with no knowledge of model inference."
+    },
+    {
       "id": "US-010",
       "title": "Remove non-Presidio model wrappers",
       "description": "As a user, I want the models package to contain only Presidio-based wrappers so that I am not confused by unmaintained model integrations and the dependency footprint is reduced.",
