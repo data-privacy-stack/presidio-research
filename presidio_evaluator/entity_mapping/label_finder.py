@@ -1,22 +1,35 @@
+"""
+label_finder.py — discover PII/NER entity labels from HuggingFace and reference services.
+
+Two discovery strategies:
+  • Models  — queries HuggingFace token-classification models, reads id2label from
+              each model config, strips BIO prefixes, and aggregates by frequency.
+  • Datasets — queries HuggingFace datasets, extracts ClassLabel feature names from
+               dataset card metadata or by sampling first rows via the datasets-server API.
+
+A curated reference list (THIRD_PARTY_SERVICE_ENTITIES) captures entity names used by
+major PII detection services and is included in the combined frequency totals.
+
+Entry point: run as a module (`python -m presidio_evaluator.entity_mapping.label_finder`) to print ranked summaries for
+the search terms "pii", "phi", and "privacy".
+"""
+
 import ast
 import json
-import re
 import urllib.request
 from collections import Counter
 
 from huggingface_hub import HfApi
 from transformers import AutoConfig
 
+from presidio_evaluator.entity_mapping import EntityHierarchy
+
 # ---------------------------------------------------------------------------
-# Vendor / reference entity lists
-# Sources:
-#   Presidio:           https://microsoft.github.io/presidio/supported_entities/
-#   Azure Deident.:     https://learn.microsoft.com/en-us/dotnet/api/azure.health.deidentification.phicategory
-#   Private.ai:         https://docs.private-ai.com/entities/
-#   Amazon Macie:       https://docs.aws.amazon.com/macie/latest/user/mdis-reference-pii.html
+# Third-party service entity reference list
+# Aggregated from multiple PII detection services and NER datasets.
 # ---------------------------------------------------------------------------
 
-PRESIDIO_ENTITIES = [
+THIRD_PARTY_SERVICE_ENTITIES = [
     # Global
     "CREDIT_CARD",
     "CRYPTO",
@@ -93,10 +106,6 @@ PRESIDIO_ENTITIES = [
     "MEDICAL_BIOLOGICAL_STRUCTURE",
     "MEDICAL_FAMILY_HISTORY",
     "MEDICAL_HISTORY",
-]
-
-# Azure Health Deidentification service — PhiCategory enum values
-AZURE_DEID_ENTITIES = [
     "ACCOUNT",
     "AGE",
     "BIOID",
@@ -110,7 +119,6 @@ AZURE_DEID_ENTITIES = [
     "HEALTH_PLAN",
     "HOSPITAL",
     "ID_NUM",
-    "IP_ADDRESS",
     "LICENSE",
     "LOCATION_OTHER",
     "MEDICAL_RECORD",
@@ -121,30 +129,18 @@ AZURE_DEID_ENTITIES = [
     "SOCIAL_SECURITY",
     "STATE",
     "STREET",
-    "URL",
-    "USERNAME",
     "VEHICLE",
     "ZIP",
-]
-
-# Private.ai — PII + Health Information + PCI entities
-PRIVATE_AI_ENTITIES = [
-    # PII
     "ACCOUNT_NUMBER",
-    "AGE",
-    "DATE",
     "DATE_INTERVAL",
     "DOB",
     "DRIVER_LICENSE",
     "DURATION",
-    "EMAIL_ADDRESS",
     "EVENT",
     "FILENAME",
     "GENDER",
     "HEALTHCARE_NUMBER",
-    "IP_ADDRESS",
     "LANGUAGE",
-    "LOCATION",
     "LOCATION_ADDRESS",
     "LOCATION_ADDRESS_STREET",
     "LOCATION_CITY",
@@ -160,20 +156,16 @@ PRIVATE_AI_ENTITIES = [
     "NAME_MEDICAL_PROFESSIONAL",
     "NUMERICAL_PII",
     "OCCUPATION",
-    "ORGANIZATION",
     "ORGANIZATION_MEDICAL_FACILITY",
     "ORIGIN",
     "PASSPORT_NUMBER",
     "PASSWORD",
-    "PHONE_NUMBER",
     "PHYSICAL_ATTRIBUTE",
     "POLITICAL_AFFILIATION",
     "RELIGION",
     "SEXUALITY",
     "SSN",
     "TIME",
-    "URL",
-    "USERNAME",
     "VEHICLE_ID",
     "ZODIAC_SIGN",
     # Health Information
@@ -186,16 +178,9 @@ PRIVATE_AI_ENTITIES = [
     "STATISTICS",
     # PCI
     "BANK_ACCOUNT",
-    "CREDIT_CARD",
     "CREDIT_CARD_EXPIRATION",
     "CVV",
     "ROUTING_NUMBER",
-]
-
-# Amazon Macie — Managed Data Identifiers for PII
-# Source: https://docs.aws.amazon.com/macie/latest/user/mdis-reference-pii.html
-# Managed data identifier IDs as listed in the official documentation.
-AMAZON_MACIE_ENTITIES = [
     # Birth date
     "DATE_OF_BIRTH",
     # Driver's license (per country)
@@ -233,8 +218,6 @@ AMAZON_MACIE_ENTITIES = [
     "UK_DRIVERS_LICENSE",
     # Electoral roll number
     "UK_ELECTORAL_ROLL_NUMBER",
-    # Full name
-    "NAME",
     # GPS coordinates
     "LATITUDE_LONGITUDE",
     # HTTP cookie
@@ -266,7 +249,6 @@ AMAZON_MACIE_ENTITIES = [
     # Permanent residence number
     "CANADA_NATIONAL_IDENTIFICATION_NUMBER",
     # Phone number (per country)
-    "PHONE_NUMBER",  # Canada and US
     "BRAZIL_PHONE_NUMBER",
     "FRANCE_PHONE_NUMBER",
     "GERMANY_PHONE_NUMBER",
@@ -286,13 +268,11 @@ AMAZON_MACIE_ENTITIES = [
     "AUSTRALIA_TAX_FILE_NUMBER",
     "BRAZIL_CNPJ_NUMBER",
     "BRAZIL_CPF_NUMBER",
-    "CHILE_RUT_NUMBER",
     "COLOMBIA_INDIVIDUAL_NIT_NUMBER",
     "COLOMBIA_ORGANIZATION_NIT_NUMBER",
     "FRANCE_TAX_IDENTIFICATION_NUMBER",
     "GERMANY_TAX_IDENTIFICATION_NUMBER",
     "INDIA_PERMANENT_ACCOUNT_NUMBER",
-    "ITALY_NATIONAL_IDENTIFICATION_NUMBER",
     "MEXICO_INDIVIDUAL_RFC_NUMBER",
     "MEXICO_ORGANIZATION_RFC_NUMBER",
     "SPAIN_NIE_NUMBER",
@@ -304,25 +284,47 @@ AMAZON_MACIE_ENTITIES = [
     "VEHICLE_IDENTIFICATION_NUMBER",
 ]
 
-VENDOR_LISTS = {
-    "Presidio": PRESIDIO_ENTITIES,
-    "Azure Health Deidentification": AZURE_DEID_ENTITIES,
-    "Private.ai": PRIVATE_AI_ENTITIES,
-    "Amazon Macie": AMAZON_MACIE_ENTITIES,
-}
-
-
 # ---------------------------------------------------------------------------
 # HuggingFace model scraping
 # ---------------------------------------------------------------------------
 
 
-def strip_bio_tags(label: str) -> str:
-    """Remove BIO/BIOLU prefix or postfix tags (e.g. B-LOC, LOC-B, I-LOC, LOC-U)."""
-    label = str(label)
-    label = re.sub(r"^[BILUS]-", "", label)  # prefix: B-LOC  → LOC
-    label = re.sub(r"-[BILUS]$", "", label)  # postfix: LOC-B → LOC
-    return label
+def _normalize(label: str) -> str:
+    """Normalize a label to UPPER_SNAKE_CASE for deduplication and comparison."""
+    return (
+        EntityHierarchy._strip_bio(str(label))
+        .upper()
+        .replace(" ", "_")
+        .replace("-", "_")
+    )
+
+
+def _clean_label(raw: str) -> str | None:
+    """
+    Strip BIO prefix/suffix and return None for labels that should be discarded
+    (outside token, generic LABEL_ placeholders).
+    """
+    clean = EntityHierarchy._strip_bio(str(raw))
+    if _normalize(clean) in ("O", "OTHER") or "LABEL" in _normalize(clean):
+        return None
+    return clean
+
+
+def _add_to_counter(counter: "Counter[str]", label: str) -> None:
+    """
+    Add *label* to *counter* using its normalized form as the key.
+
+    The stored key is the UPPER_SNAKE_CASE form: if the normalized key already
+    exists in the counter we keep whatever spelling is already there; otherwise
+    we record the label as-is (preserving the first-seen spelling).
+    """
+    key = _normalize(label)
+    # Find the existing display name for this key, or use the new label
+    for existing in list(counter):
+        if _normalize(existing) == key:
+            counter[existing] += 1
+            return
+    counter[label] += 1
 
 
 def extract_entities_from_query(search_terms, limit_per_term=50):
@@ -339,7 +341,7 @@ def extract_entities_from_query(search_terms, limit_per_term=50):
 
         try:
             models = api.list_models(
-                task="token-classification",
+                pipeline_tag="token-classification",
                 search=term,
                 sort="downloads",
                 limit=limit_per_term,
@@ -361,16 +363,14 @@ def extract_entities_from_query(search_terms, limit_per_term=50):
 
                 model_clean_labels = set()
                 for label_name in labels.values():
-                    clean = strip_bio_tags(label_name)
-                    if (
-                        clean.upper() not in ("O", "OTHER")
-                        and "LABEL_" not in clean.upper()
-                    ):
+                    clean = _clean_label(label_name)
+                    if clean is not None:
                         model_clean_labels.add(clean)
 
                 if model_clean_labels:
                     model_entities[model_id] = sorted(model_clean_labels)
-                    entity_counts.update(model_clean_labels)
+                    for label in model_clean_labels:
+                        _add_to_counter(entity_counts, label)
 
             except Exception:  # noqa: S112 — intentional: skip datasets that fail to load
                 continue
@@ -391,52 +391,86 @@ def extract_entities_from_query(search_terms, limit_per_term=50):
 # ---------------------------------------------------------------------------
 
 
-def print_summary(results, title) -> None:
-    print(f"\n{'=' * 20} {title} {'=' * 20}")
-    for term, data in results.items():
-        entity_counts = data["entity_counts"]
-        model_entities = data["model_entities"]
+def _merge_results(results):
+    """
+    Merge per-search-term result dicts into one combined entry.
 
-        print(f"\nKeyword: {term.upper()}")
+    For model results (keys: ``entity_counts``, ``model_entities``) and dataset
+    results (keys: ``entity_counts``, ``dataset_entities``), counters are summed
+    and item dicts are union-merged.
 
-        print("\n  Entities by popularity (# models):")
-        if entity_counts:
-            for entity, count in entity_counts.most_common():
-                print(f"    {entity}: {count} model(s)")
-        else:
-            print("    No specific entities found.")
+    Returns a dict with the same structure as a single per-term result.
+    """
+    merged_counts: Counter = Counter()
+    merged_items: dict = {}  # model_entities or dataset_entities
+    items_key = None
 
-        print("\n  Entities per model:")
-        if model_entities:
-            for model_id, entities in model_entities.items():
-                print(f"    {model_id}: {', '.join(entities)}")
-        else:
-            print("    No models with labeled entities found.")
+    for data in results.values():
+        merged_counts.update(data["entity_counts"])
+        for key in data:
+            if key != "entity_counts":
+                items_key = key
+                merged_items.update(data[key])
+
+    out = {"entity_counts": merged_counts}
+    if items_key:
+        out[items_key] = merged_items
+    return out
 
 
-def print_combined_totals(results, vendor_lists=None) -> None:
-    """Aggregate entity counts across all search terms and vendor lists, then print ranked."""
+def print_summary(results, title, top_n=20) -> None:
+    merged = _merge_results(results)
+    entity_counts = merged["entity_counts"]
+    model_entities = merged.get("model_entities", {})
+
+    print(
+        f"\n{'=' * 20} {title} {'=' * 20}\n"
+        f"  {len(model_entities)} models · {len(entity_counts)} unique entities"
+    )
+
+    if not entity_counts:
+        print("  No specific entities found.")
+        return
+
+    ranked = entity_counts.most_common()
+    top = ranked[:top_n]
+    rest = len(ranked) - top_n
+    print(f"  Top {min(top_n, len(ranked))} entities by model count:")
+    max_len = max(len(e) for e, _ in top)
+    for entity, count in top:
+        bar = "█" * count
+        print(f"    {entity:<{max_len}}  {count:>3}  {bar}")
+    if rest > 0:
+        print(f"    ... and {rest} more")
+
+
+def print_combined_totals(results, reference_entities=None, top_n=30) -> None:
+    """Aggregate entity counts across all search terms and optional reference entity list, then print ranked."""
     combined = Counter()
     for data in results.values():
         combined.update(data["entity_counts"])
 
-    if vendor_lists:
-        for entities in vendor_lists.values():
-            combined.update(entities)
+    if reference_entities:
+        combined.update(reference_entities)
 
-    print(f"\n{'=' * 20} COMBINED TOTALS (HuggingFace models + vendors) {'=' * 20}")
-    if combined:
-        for entity, count in combined.most_common():
-            print(f"  {entity}: {count}")
-    else:
+    print(
+        f"\n{'=' * 20} COMBINED TOTALS (HuggingFace + third-party services) {'=' * 20}"
+    )
+    if not combined:
         print("  No entities found.")
+        return
 
-
-def print_vendor_lists(vendor_lists) -> None:
-    print(f"\n{'=' * 20} VENDOR / REFERENCE ENTITY LISTS {'=' * 20}")
-    for vendor, entities in vendor_lists.items():
-        print(f"\n  {vendor} ({len(entities)} entities):")
-        print(f"    {', '.join(sorted(entities))}")
+    ranked = combined.most_common()
+    top = ranked[:top_n]
+    rest = len(ranked) - top_n
+    max_len = max(len(e) for e, _ in top)
+    max_count = top[0][1] if top else 1
+    bar_width = 30
+    for entity, count in top:
+        bar = "█" * int(count / max_count * bar_width)
+        print(f"  {entity:<{max_len}}  {count:>4}  {bar}")
+    if rest > 0:
+        print(f"  ... and {rest} more")
 
 
 # ---------------------------------------------------------------------------
@@ -493,11 +527,8 @@ def _classlabels_from_feature_list(features):
                 names = container["class_label"].get("names", {})
                 name_iter = names.values() if isinstance(names, dict) else names
                 for name in name_iter:
-                    clean = strip_bio_tags(str(name))
-                    if (
-                        clean.upper() not in ("O", "OTHER")
-                        and "LABEL_" not in clean.upper()
-                    ):
+                    clean = _clean_label(str(name))
+                    if clean is not None:
                         entities.add(clean)
         # Recurse into nested list subfields (span-based schemas)
         sub_list = f.get("list")
@@ -544,8 +575,8 @@ def _scan_row(obj, entities) -> None:
     if isinstance(obj, dict):
         for k, v in obj.items():
             if k.lower() in _SPAN_ENTITY_FIELDS and isinstance(v, str) and v:
-                clean = strip_bio_tags(v)
-                if clean.upper() not in ("O", "OTHER"):
+                clean = _clean_label(v)
+                if clean is not None:
                     entities.add(clean)
             else:
                 _scan_row(v, entities)
@@ -644,7 +675,8 @@ def extract_entities_from_datasets(search_terms, limit_per_term=30):
                 entities = _entities_for_one_dataset(ds_id)
                 if entities:
                     dataset_entities[ds_id] = sorted(entities)
-                    entity_counts.update(entities)
+                    for label in entities:
+                        _add_to_counter(entity_counts, label)
             except Exception:  # noqa: S112
                 continue
 
@@ -665,27 +697,124 @@ def extract_entities_from_datasets(search_terms, limit_per_term=30):
 # ---------------------------------------------------------------------------
 
 
-def print_dataset_summary(results, title) -> None:
+def print_dataset_summary(results, title, top_n=50) -> None:
+    merged = _merge_results(results)
+    entity_counts = merged["entity_counts"]
+    dataset_entities = merged.get("dataset_entities", {})
+
+    print(
+        f"\n{'=' * 20} {title} {'=' * 20}\n"
+        f"  {len(dataset_entities)} datasets · {len(entity_counts)} unique entities"
+    )
+
+    if not entity_counts:
+        print("  No specific entities found.")
+        return
+
+    ranked = entity_counts.most_common()
+    top = ranked[:top_n]
+    rest = len(ranked) - top_n
+    print(f"  Top {min(top_n, len(ranked))} entities by dataset count:")
+    max_len = max(len(e) for e, _ in top)
+    for entity, count in top:
+        bar = "█" * count
+        print(f"    {entity:<{max_len}}  {count:>3}  {bar}")
+    if rest > 0:
+        print(f"    ... and {rest} more")
+
+
+# ---------------------------------------------------------------------------
+# Hierarchy mapping and histograms
+# ---------------------------------------------------------------------------
+
+
+def _build_combined_counter(results, reference_entities=None):
+    """Build a single Counter from HuggingFace results and an optional reference list."""
+    combined = Counter()
+    for data in results.values():
+        combined.update(data["entity_counts"])
+    if reference_entities:
+        for label in reference_entities:
+            _add_to_counter(combined, label)
+    return combined
+
+
+def _map_to_hierarchy_buckets(entity_counts):
+    """
+    Map entity labels to their 2nd- and 3rd-level hierarchy nodes.
+
+    Attempts to canonicalize each entity via EntityHierarchy (exact →
+    country-prefix → fuzzy). Entities that cannot be resolved are tracked
+    separately.
+
+    Returns:
+        depth2_counts  Counter(2nd-level node  -> total count)
+        depth3_counts  Counter(3rd-level canonical -> total count)
+        unresolved     dict(entity -> count) for labels not in the hierarchy
+    """
+
+    h = EntityHierarchy()
+    depth2_counts: Counter = Counter()
+    depth3_counts: Counter = Counter()
+    unresolved: dict[str, int] = {}
+
+    for entity, count in entity_counts.items():
+        try:
+            branch = h.get_branch(entity)
+            # branch: ['PII', '<2nd-level>', '<canonical>']
+            if len(branch) >= 2:
+                depth2_counts[branch[1]] += count
+            depth3_counts[branch[-1]] += count
+        except Exception:  # noqa: S112 — entity not in hierarchy; skip gracefully
+            unresolved[entity] = count
+
+    return depth2_counts, depth3_counts, unresolved
+
+
+def print_hierarchy_histograms(
+    entity_counts,
+    title="HIERARCHY DISTRIBUTION",
+    bar_width=40,
+) -> None:
+    """
+    Print two histograms showing how entity labels distribute across the PII taxonomy.
+
+    * **2nd-level** — broad semantic categories (PERSON, LOCATION, GOVERNMENT_ID, …)
+    * **3rd-level canonical** — specific canonical entity types (PASSPORT, SSN, …)
+
+    Entities that cannot be resolved by the hierarchy are listed separately.
+
+    Args:
+        entity_counts: Counter or dict mapping entity name → occurrence count.
+        title:         Section heading.
+        bar_width:     Maximum bar width in characters (bars are normalised to the peak).
+    """
+    depth2_counts, depth3_counts, unresolved = _map_to_hierarchy_buckets(entity_counts)
+
     print(f"\n{'=' * 20} {title} {'=' * 20}")
-    for term, data in results.items():
-        entity_counts = data["entity_counts"]
-        dataset_entities = data["dataset_entities"]
 
-        print(f"\nKeyword: {term.upper()}")
+    def _print_histogram(counts, heading) -> None:
+        ranked = counts.most_common()
+        print(f"\n  {heading} ({len(ranked)} buckets):")
+        if not ranked:
+            print("    (empty)")
+            return
+        peak = ranked[0][1]
+        max_label_len = max(len(e) for e, _ in ranked)
+        for entity, count in ranked:
+            bar = "█" * (int(count / peak * bar_width) if peak else 0)
+            print(f"    {entity:<{max_label_len}}  {count:>4}  {bar}")
 
-        print("\n  Entities by popularity (# datasets):")
-        if entity_counts:
-            for entity, count in entity_counts.most_common():
-                print(f"    {entity}: {count} dataset(s)")
-        else:
-            print("    No specific entities found.")
+    _print_histogram(depth2_counts, "By 2nd-level category")
+    _print_histogram(depth3_counts, "By 3rd-level canonical entity")
 
-        print("\n  Entities per dataset:")
-        if dataset_entities:
-            for ds_id, entities in dataset_entities.items():
-                print(f"    {ds_id}: {', '.join(entities)}")
-        else:
-            print("    No datasets with labeled entities found.")
+    if unresolved:
+        top = sorted(unresolved.items(), key=lambda x: -x[1])
+        print(f"\n  Unresolved ({len(unresolved)} labels not in hierarchy):")
+        for entity, count in top[:15]:
+            print(f"    {entity}: {count}")
+        if len(unresolved) > 15:
+            print(f"    ... and {len(unresolved) - 15} more")
 
 
 # ---------------------------------------------------------------------------
@@ -693,16 +822,20 @@ def print_dataset_summary(results, title) -> None:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    privacy_results = extract_entities_from_query(["pii", "phi", "privacy"])
+    privacy_results = extract_entities_from_query(["pii", "privacy"])
 
-    print_summary(privacy_results, "PRIVACY/PII ENTITIES FROM MODELS (per search term)")
-    print_combined_totals(privacy_results, VENDOR_LISTS)
-    print_vendor_lists(VENDOR_LISTS)
-
-    dataset_results = extract_entities_from_datasets(["pii", "phi", "privacy"])
-
-    print_dataset_summary(
-        dataset_results,
-        "PRIVACY/PII ENTITIES FROM DATASETS (per search term)",
+    combined_model_counts = _build_combined_counter(
+        privacy_results, THIRD_PARTY_SERVICE_ENTITIES
     )
+    print_combined_totals(privacy_results, THIRD_PARTY_SERVICE_ENTITIES)
+    print_hierarchy_histograms(
+        combined_model_counts, "HIERARCHY DISTRIBUTION (models + reference)"
+    )
+
+    dataset_results = extract_entities_from_datasets(["pii", "privacy"])
+
+    combined_dataset_counts = _build_combined_counter(dataset_results)
     print_combined_totals(dataset_results)
+    print_hierarchy_histograms(
+        combined_dataset_counts, "HIERARCHY DISTRIBUTION (datasets)"
+    )

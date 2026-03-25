@@ -26,17 +26,6 @@ _BIO_PREFIX_RE = re.compile(r"^[BIOELSU]-(.+)$", re.IGNORECASE)
 _BIO_SUFFIX_RE = re.compile(r"^(.+)-[BIOELSU]$", re.IGNORECASE)
 
 
-def _strip_bio(label: str) -> str:
-    """Strip a single BIO/BIOES/BILOU/BILUO prefix or suffix (e.g. B-PERSON → PERSON)."""
-    m = _BIO_PREFIX_RE.match(label)
-    if m:
-        return m.group(1)
-    m = _BIO_SUFFIX_RE.match(label)
-    if m:
-        return m.group(1)
-    return label
-
-
 # ---------------------------------------------------------------------------
 # Exception
 # ---------------------------------------------------------------------------
@@ -62,12 +51,12 @@ class EntityHierarchy:
     PII entity taxonomy with canonicalization, branch lookup, and customization.
 
     Wraps a (deep-copied) taxonomy dict and exposes methods to resolve raw
-    labels to canonical names, look up their branch in the tree, and mutate
-    the taxonomy (add/remove entities and aliases, rename nodes).
+    labels to canonical names, look up their branch in the tree, and add
+    aliases to existing entities.
 
     Example — create a custom variant::
 
-        h = EntityHierarchy.default().copy()
+        h = EntityHierarchy()
         h.add_alias("EMAIL_ADDRESS", "ELECTRONIC_MAIL")
         h.canonicalize("ELECTRONIC_MAIL")   # -> 'EMAIL_ADDRESS'
     """
@@ -85,21 +74,73 @@ class EntityHierarchy:
         self.country_prefixed_doc_types: dict[str, str] = {}
         self._rebuild()
 
-    @classmethod
-    def default(cls) -> EntityHierarchy:
-        """Return the module-level default instance (read-only by convention)."""
-        return _DEFAULT_HIERARCHY
+    @staticmethod
+    def normalize(label: str) -> str:
+        """Normalize a label: strip BIO prefix/suffix, uppercase, remove underscores and dashes."""
+        return (
+            EntityHierarchy._strip_bio(label).upper().replace("_", "").replace("-", "")
+        )
 
-    def copy(self) -> EntityHierarchy:
-        """Return an independent deep copy of this instance."""
-        return copy.deepcopy(self)
+    def canonicalize(self, raw_label: str, threshold: float = 0.80) -> str:
+        """
+        Return the canonical entity name for a raw label.
+
+        Resolution order: exact alias map → country-prefix → fuzzy fallback.
+        Raises EntityNotMappedError if the label cannot be resolved.
+        """
+        norm = self.normalize(raw_label)
+        if norm in self.raw_to_canonical:
+            return self.raw_to_canonical[norm]
+        country_match = self._country_prefix_canonical(raw_label, threshold=threshold)
+        if country_match:
+            return country_match
+        fuzzy_match = self._fuzzy_resolve(raw_label, threshold)
+        if fuzzy_match:
+            return fuzzy_match
+        raise EntityNotMappedError(f"Unknown entity label: {raw_label!r}")
+
+    def get_branch(self, raw_label: str) -> list[str]:
+        """
+        Return the full ancestor path for a raw (or canonical) entity label.
+
+        Example: ``get_branch("GERMANY_PASSPORT_NUMBER")`` → ``['PII', 'GOVERNMENT_ID', 'PASSPORT']``
+        """
+        canonical = self.canonicalize(raw_label)
+        branch = self.canonical_to_branch.get(canonical)
+        if branch is None:
+            raise EntityNotMappedError(
+                f"Canonical entity {canonical!r} has no branch in hierarchy",
+            )
+        return branch
+
+    def add_alias(self, entity_name: str, alias: str) -> None:
+        """Add a raw alias for an existing entity."""
+        found = self._find_node(entity_name)
+        if found is None:
+            raise KeyError(f"Entity {entity_name!r} not found in hierarchy")
+        parent_dict, key = found
+        value = parent_dict[key]
+        if isinstance(value, list):
+            if alias not in value:
+                value.append(alias)
+        else:
+            value[alias] = []
+        self._rebuild()
 
     @staticmethod
-    def _normalize(label: str) -> str:
-        return label.upper().replace("_", "").replace("-", "")
+    def _strip_bio(label: str) -> str:
+        """Strip a single BIO/BIOES/BILOU/BILUO prefix or suffix (e.g. B-PERSON → PERSON)."""
+        m = _BIO_PREFIX_RE.match(label)
+        if m:
+            return m.group(1)
+        m = _BIO_SUFFIX_RE.match(label)
+        if m:
+            return m.group(1)
+        return label
 
     @staticmethod
     def _collect_all_raw(value) -> list[str]:
+        """Recursively collect all raw alias strings from a hierarchy value (list or nested dict)."""
         items: list[str] = []
         if isinstance(value, list):
             items.extend(value)
@@ -115,18 +156,19 @@ class EntityHierarchy:
         canonical_depth: int = 3,
         depth: int = 1,
     ) -> dict[str, str]:
+        """Build a normalized-label → canonical-name lookup dict by walking the hierarchy tree."""
         mapping: dict[str, str] = {}
         for key, value in node.items():
             if depth >= canonical_depth:
-                mapping[EntityHierarchy._normalize(key)] = key
+                mapping[EntityHierarchy.normalize(key)] = key
                 for alias in EntityHierarchy._collect_all_raw(value):
-                    mapping[EntityHierarchy._normalize(alias)] = key
+                    mapping[EntityHierarchy.normalize(alias)] = key
             elif isinstance(value, list):
-                mapping[EntityHierarchy._normalize(key)] = key
+                mapping[EntityHierarchy.normalize(key)] = key
                 for alias in value:
-                    mapping[EntityHierarchy._normalize(alias)] = key
+                    mapping[EntityHierarchy.normalize(alias)] = key
             elif isinstance(value, dict):
-                mapping[EntityHierarchy._normalize(key)] = key
+                mapping[EntityHierarchy.normalize(key)] = key
                 mapping.update(
                     EntityHierarchy._build_alias_map(value, canonical_depth, depth + 1),
                 )
@@ -138,6 +180,7 @@ class EntityHierarchy:
         canonical_depth: int = 3,
         depth: int = 1,
     ) -> list[str]:
+        """Collect the names of all canonical-depth leaf nodes from the hierarchy tree."""
         result: list[str] = []
         for key, value in node.items():
             if depth >= canonical_depth:
@@ -161,6 +204,7 @@ class EntityHierarchy:
         current_path: list[str] | None = None,
         depth: int = 1,
     ) -> dict[str, list[str]]:
+        """Build a canonical-name → ancestor-path dict by walking the hierarchy tree."""
         if current_path is None:
             current_path = []
         result: dict[str, list[str]] = {}
@@ -183,6 +227,7 @@ class EntityHierarchy:
         return result
 
     def _rebuild(self) -> None:
+        """Recompute raw_to_canonical, all_canonical_entities, and canonical_to_branch from the current hierarchy."""
         self.raw_to_canonical: dict[str, str] = self._build_alias_map(
             self.hierarchy,
             self.canonical_depth,
@@ -197,6 +242,7 @@ class EntityHierarchy:
         )
 
     def _resolve_remainder(self, remainder: str, threshold: float) -> str:
+        """Canonicalize the document-type portion of a country-prefixed label, falling back to NATIONAL_ID."""
         override = self.country_prefixed_doc_types.get(remainder.upper())
         if override:
             return override
@@ -206,6 +252,7 @@ class EntityHierarchy:
             return "NATIONAL_ID"
 
     def _country_prefix_canonical(self, raw: str, threshold: float = 1.0) -> str | None:
+        """Return the canonical entity for a country-prefixed label using exact country matching, or None."""
         upper = raw.upper()
         parts3 = upper.split("_", 2)
         if len(parts3) == 3 and f"{parts3[0]}_{parts3[1]}" in self.countries:
@@ -219,6 +266,7 @@ class EntityHierarchy:
         return self._resolve_remainder(remainder, threshold)
 
     def _fuzzy_country_prefix_canonical(self, raw: str, threshold: float) -> str | None:
+        """Return the canonical entity for a country-prefixed label using fuzzy country matching, or None."""
         upper = raw.upper()
         parts3 = upper.split("_", 2)
         if len(parts3) == 3:
@@ -240,10 +288,11 @@ class EntityHierarchy:
         return None
 
     def _fuzzy_resolve(self, raw_label: str, threshold: float) -> str | None:
+        """Attempt fuzzy matching against the alias map and fuzzy country prefixes, returning a canonical name or None."""
         country_match = self._fuzzy_country_prefix_canonical(raw_label, threshold)
         if country_match:
             return country_match
-        norm = self._normalize(raw_label)
+        norm = self.normalize(raw_label)
         matches = difflib.get_close_matches(
             norm,
             self.raw_to_canonical,
@@ -254,59 +303,12 @@ class EntityHierarchy:
             return self.raw_to_canonical[matches[0]]
         return None
 
-    def canonicalize(self, raw_label: str, threshold: float = 0.80) -> str:
-        """
-        Return the canonical entity name for a raw label.
-
-        Resolution order: exact alias map → country-prefix → fuzzy fallback.
-        Raises EntityNotMappedError if the label cannot be resolved.
-        """
-        norm = self._normalize(raw_label)
-        if norm in self.raw_to_canonical:
-            return self.raw_to_canonical[norm]
-        country_match = self._country_prefix_canonical(raw_label, threshold=threshold)
-        if country_match:
-            return country_match
-        fuzzy_match = self._fuzzy_resolve(raw_label, threshold)
-        if fuzzy_match:
-            return fuzzy_match
-        raise EntityNotMappedError(f"Unknown entity label: {raw_label!r}")
-
-    def fuzzy_canonicalize(self, raw_label: str, threshold: float = 0.80) -> str:
-        """Convenience alias for ``canonicalize(raw_label, threshold=threshold)``."""
-        return self.canonicalize(raw_label, threshold=threshold)
-
-    def get_branch(self, raw_label: str) -> list[str]:
-        """
-        Return the full ancestor path for a raw (or canonical) entity label.
-
-        Example: ``get_branch("GERMANY_PASSPORT_NUMBER")`` → ``['PII', 'GOVERNMENT_ID', 'PASSPORT']``
-        """
-        canonical = self.canonicalize(raw_label)
-        branch = self.canonical_to_branch.get(canonical)
-        if branch is None:
-            raise EntityNotMappedError(
-                f"Canonical entity {canonical!r} has no branch in hierarchy",
-            )
-        return branch
-
-    def print_hierarchy(self, node: dict | None = None, indent: int = 0) -> None:
-        """Pretty-print the hierarchy tree."""
-        if node is None:
-            node = self.hierarchy
-        prefix = "  " * indent
-        for key, value in node.items():
-            if isinstance(value, list):
-                print(f"{prefix}├─ {key}  ({len(value)} aliases)")
-            else:
-                print(f"{prefix}├─ {key}/")
-                self.print_hierarchy(value, indent + 1)
-
     def _find_node(
         self,
         name: str,
         tree: dict | None = None,
     ) -> tuple[dict, str] | None:
+        """Return (parent_dict, key) for the first node matching name in the hierarchy tree, or None."""
         if tree is None:
             tree = self.hierarchy
         for key, value in tree.items():
@@ -317,87 +319,6 @@ class EntityHierarchy:
                 if result:
                     return result
         return None
-
-    def add_entity(
-        self,
-        parent_path: list[str],
-        entity_name: str,
-        aliases: list[str] | None = None,
-    ) -> None:
-        """Add a new entity node under parent_path."""
-        node = self.hierarchy
-        for part in parent_path:
-            if part not in node:
-                raise KeyError(f"Node {part!r} not found in hierarchy")
-            node = node[part]
-        if not isinstance(node, dict):
-            raise TypeError(
-                "Parent node is a leaf (alias list). "
-                "Use add_alias() to add an alias instead.",
-            )
-        node[entity_name] = list(aliases) if aliases else []
-        self._rebuild()
-
-    def remove_entity(self, entity_name: str) -> None:
-        """Remove a node (and all its children/aliases) from the hierarchy."""
-        found = self._find_node(entity_name)
-        if found is None:
-            raise KeyError(f"Entity {entity_name!r} not found in hierarchy")
-        parent_dict, key = found
-        del parent_dict[key]
-        self._rebuild()
-
-    def rename_entity(self, old_name: str, new_name: str) -> None:
-        """Rename a node, preserving its children and aliases."""
-        found = self._find_node(old_name)
-        if found is None:
-            raise KeyError(f"Entity {old_name!r} not found in hierarchy")
-        parent_dict, key = found
-        parent_dict[new_name] = parent_dict.pop(key)
-        self._rebuild()
-
-    def add_alias(self, entity_name: str, alias: str) -> None:
-        """Add a raw alias for an existing entity."""
-        found = self._find_node(entity_name)
-        if found is None:
-            raise KeyError(f"Entity {entity_name!r} not found in hierarchy")
-        parent_dict, key = found
-        value = parent_dict[key]
-        if isinstance(value, list):
-            if alias not in value:
-                value.append(alias)
-        else:
-            value[alias] = []
-        self._rebuild()
-
-    def remove_alias(self, entity_name: str, alias: str) -> None:
-        """Remove a raw alias from a leaf entity's alias list."""
-        found = self._find_node(entity_name)
-        if found is None:
-            raise KeyError(f"Entity {entity_name!r} not found in hierarchy")
-        parent_dict, key = found
-        value = parent_dict[key]
-        if not isinstance(value, list):
-            raise TypeError(
-                f"Entity {entity_name!r} has sub-entities, not a plain alias list. "
-                f"Use remove_entity() to remove a sub-entity.",
-            )
-        if alias not in value:
-            raise ValueError(f"Alias {alias!r} not found for entity {entity_name!r}")
-        value.remove(alias)
-        self._rebuild()
-
-    def add_country_doc_type(self, suffix_key: str, canonical: str) -> None:
-        """Register an explicit override for country-prefixed doc-type patterns."""
-        self.country_prefixed_doc_types[suffix_key.upper()] = canonical
-
-    def remove_country_doc_type(self, suffix_key: str) -> None:
-        """Remove a country-prefix suffix keyword mapping."""
-        self.country_prefixed_doc_types.pop(suffix_key.upper(), None)
-
-
-# Built once at import time.  Treat as read-only; use .copy() for a mutable variant.
-_DEFAULT_HIERARCHY = EntityHierarchy()
 
 
 # ---------------------------------------------------------------------------
@@ -449,10 +370,11 @@ class CanonicalMapper:
                 hierarchy=hierarchy,
                 canonical_depth=canonical_depth,
             )
-        elif hierarchy is not None:
+        elif isinstance(hierarchy, EntityHierarchy):
             self._hierarchy = hierarchy
         else:
-            self._hierarchy = EntityHierarchy.default()
+            self._hierarchy = EntityHierarchy()
+
         self._fuzzy_threshold = fuzzy_threshold
         self._canonical_depth = canonical_depth
 
@@ -466,104 +388,65 @@ class CanonicalMapper:
 
         # BIO-stripped version of each label (original label remains the dict key)
         self._stripped: dict[str, str] = {
-            label: _strip_bio(label) for label in self._labels
+            label: EntityHierarchy._strip_bio(label) for label in self._labels
         }
 
         self._records: dict[str, _Resolution] = {}
         self._auto_resolve()
 
-    # ── Auto-resolve pass ────────────────────────────────────────────────────
+    def get_mapped_results_dataframe(
+        self,
+        results_df: pd.DataFrame,
+        hierarchy: int | None = None,
+    ) -> pd.DataFrame:
+        """
+        Apply entity mapping to annotation and prediction columns of results_df.
 
-    def _auto_resolve_one(self, label: str) -> _Resolution | None:
-        """Return a _Resolution for *label* if auto-resolvable, else None."""
-        h = self._hierarchy
-        stripped = self._stripped[label]
+        Extracts unique labels from both columns, auto-resolves any that have
+        not been seen before, then returns a new DataFrame with the annotation
+        and prediction columns replaced by their canonical equivalents.
 
-        # Handle the outside token (O) — never enters the resolution pipeline
-        if stripped.upper() == "O":
-            logger.info("[NONE] O -> None  (outside token)")
-            return _Resolution(tier="NONE", canonical=None, score=None)
+        Labels that map to None (suppressed) are passed through unchanged —
+        they will appear as false positives or false negatives during evaluation.
 
-        norm = h._normalize(stripped)
+        When annotation and prediction map to different canonical entities that
+        are related by the hierarchy (e.g., model predicts PERSON but dataset
+        annotates FIRSTNAME), a user-friendly warning is emitted.
 
-        # Tier 1: exact alias map
-        if norm in h.raw_to_canonical:
-            canonical = h.raw_to_canonical[norm]
-            logger.info("[EXACT]   %s -> %s", label, canonical)
-            return _Resolution(tier="EXACT", canonical=canonical, score=None)
+        :param results_df: DataFrame with at least 'annotation' and 'prediction'
+            columns (the 5-column schema returned by model.predict_dataset()).
+        :param hierarchy: Canonical depth override. If None, uses the depth set
+            at construction time (default 3).
+        :return: New DataFrame with remapped annotation and prediction columns.
+        """
+        if hierarchy is not None and hierarchy != self._canonical_depth:
+            # Rebuild hierarchy with the requested depth
+            self._canonical_depth = hierarchy
+            self._hierarchy = EntityHierarchy(canonical_depth=hierarchy)
+            # Re-resolve all known labels with the new depth
+            self._records.clear()
+            self._auto_resolve()
 
-        # Tier 2/3: country-prefix (exact remainder then NATIONAL_ID fallback)
-        upper = stripped.upper()
-        parts3 = upper.split("_", 2)
-        parts2 = upper.split("_", 1)
-        has_country = (
-            len(parts3) == 3 and f"{parts3[0]}_{parts3[1]}" in h.countries
-        ) or (len(parts2) >= 2 and parts2[0] in h.countries)
-        if has_country:
-            result = h._country_prefix_canonical(stripped, threshold=1.0)
-            if result is not None:
-                if result == "NATIONAL_ID":
-                    logger.warning(
-                        "[COUNTRY-FALLBACK] %s -> NATIONAL_ID  ⚠ document type not recognized",
-                        label,
-                    )
-                    return _Resolution(
-                        tier="COUNTRY_FALLBACK",
-                        canonical="NATIONAL_ID",
-                        score=None,
-                    )
-                logger.info("[COUNTRY] %s -> %s", label, result)
-                return _Resolution(tier="COUNTRY", canonical=result, score=None)
-
-        # Tier 4: fuzzy (alias or fuzzy country-prefix)
-        try:
-            canonical = h.canonicalize(stripped, threshold=self._fuzzy_threshold)
-            nm = difflib.get_close_matches(
-                norm,
-                list(h.raw_to_canonical.keys()),
-                n=1,
-                cutoff=self._fuzzy_threshold,
+        # Discover any new labels in the DataFrame, excluding the non-entity "O" tag
+        all_labels = [
+            label
+            for label in (
+                list(results_df["annotation"].dropna().unique())
+                + list(results_df["prediction"].dropna().unique())
             )
-            score = difflib.SequenceMatcher(None, norm, nm[0]).ratio() if nm else None
-            logger.info(
-                "[FUZZY %s] %s -> %s",
-                f"{score:.0%}" if score else "?",
-                label,
-                canonical,
-            )
-            return _Resolution(tier="FUZZY", canonical=canonical, score=score)
-        except EntityNotMappedError:
-            return None
+            if label != "O"
+        ]
+        self._add_labels(all_labels)
 
-    def _auto_resolve(self, new_labels: list[str] | None = None) -> None:
-        labels_to_process = new_labels if new_labels is not None else self._labels
-        for label in labels_to_process:
-            resolution = self._auto_resolve_one(label)
-            if resolution is not None:
-                self._records[label] = resolution
+        # Build the remapped columns
+        mapped_df = results_df.copy()
+        mapped_df["annotation"] = results_df["annotation"].map(self._map_tag)
+        mapped_df["prediction"] = results_df["prediction"].map(self._map_tag)
 
-        if new_labels is None:
-            # Initial pass — log summary
-            n_total = len(self._labels)
-            n_resolved = len(self._records)
-            n_fuzzy = sum(1 for r in self._records.values() if r.tier == "FUZZY")
-            n_fallback = sum(
-                1 for r in self._records.values() if r.tier == "COUNTRY_FALLBACK"
-            )
-            n_pending = n_total - n_resolved
+        # Warn about mixed-granularity pairs
+        self._warn_mixed_granularity(results_df)
 
-            logger.info(
-                "Resolved %d/%d labels automatically (%d fuzzy, %d country-fallback). "
-                "%d require manual mapping.",
-                n_resolved,
-                n_total,
-                n_fuzzy,
-                n_fallback,
-                n_pending,
-            )
-            for label in self._labels:
-                if label not in self._records:
-                    logger.warning("[UNRESOLVED] %s  — no automatic match found", label)
+        return mapped_df
 
     # ── State ────────────────────────────────────────────────────────────────
 
@@ -625,11 +508,11 @@ class CanonicalMapper:
             return self
 
         canonicals = self._hierarchy.all_canonical_entities
-        norm_to_canonical = {self._hierarchy._normalize(c): c for c in canonicals}
+        norm_to_canonical = {self._hierarchy.normalize(c): c for c in canonicals}
         normalized_canonicals = list(norm_to_canonical.keys())
 
         for label in to_resolve:
-            norm = self._hierarchy._normalize(label)
+            norm = self._hierarchy.normalize(label)
             close = difflib.get_close_matches(
                 norm,
                 normalized_canonicals,
@@ -673,6 +556,143 @@ class CanonicalMapper:
 
     # ── Output ───────────────────────────────────────────────────────────────
 
+    def get_mapping(
+        self,
+        mode: str | None = None,
+    ) -> dict[str, str | None] | str:
+        """
+        Return the entity label mapping.
+
+        Without arguments (default) returns a ``dict[str, str | None]`` mapping
+        each label to its canonical equivalent (or ``None`` for suppressed labels).
+        Raises :class:`IncompleteMapping` if any labels are still pending.
+
+        :param mode: Optional rendering mode.
+            * ``None`` (default) — return ``dict[str, str | None]``
+            * ``"html"`` — return an HTML ``<table>`` string; pending labels are
+              shown as ``(pending)`` without raising.
+            * ``"text"`` — return a plain-text table string; pending labels are
+              shown as ``(pending)`` without raising.
+        :raises IncompleteMapping: if ``mode`` is ``None`` and any labels are pending.
+        :return: Mapping dict, HTML string, or plain-text string depending on mode.
+        """
+        if mode is None:
+            if self.pending:
+                raise IncompleteMapping(self.pending)
+            return {label: self._records[label].canonical for label in self._labels}
+        if mode == "html":
+            return self._build_html()
+        if mode == "text":
+            return self._build_text()
+        raise ValueError(f"Unknown mode {mode!r}. Use None, 'html', or 'text'.")
+
+    def render_html(self) -> None:
+        """Render an audit table. Uses IPython.display.HTML in Jupyter; plain text fallback."""
+        try:
+            from IPython.display import HTML, display
+
+            display(HTML(self._build_html()))
+        except ImportError:
+            self._print_text()
+
+    def __repr__(self) -> str:
+        n, p = len(self._labels), len(self.pending)
+        return f"CanonicalMapper({n - p} resolved, {p} pending)"
+
+    # ── Auto-resolve pass ────────────────────────────────────────────────────
+
+    def _auto_resolve_one(self, label: str) -> _Resolution | None:
+        """Return a _Resolution for *label* if auto-resolvable, else None."""
+        h = self._hierarchy
+        stripped = self._stripped[label]
+
+        # Handle the outside token (O) — never enters the resolution pipeline
+        if stripped.upper() == "O":
+            logger.info("[NONE] O -> None  (outside token)")
+            return _Resolution(tier="NONE", canonical=None, score=None)
+
+        norm = h.normalize(stripped)
+
+        # Tier 1: exact alias map
+        if norm in h.raw_to_canonical:
+            canonical = h.raw_to_canonical[norm]
+            logger.info("[EXACT]   %s -> %s", label, canonical)
+            return _Resolution(tier="EXACT", canonical=canonical, score=None)
+
+        # Tier 2/3: country-prefix (exact remainder then NATIONAL_ID fallback)
+        upper = stripped.upper()
+        parts3 = upper.split("_", 2)
+        parts2 = upper.split("_", 1)
+        has_country = (
+            len(parts3) == 3 and f"{parts3[0]}_{parts3[1]}" in h.countries
+        ) or (len(parts2) >= 2 and parts2[0] in h.countries)
+        if has_country:
+            result = h._country_prefix_canonical(stripped, threshold=1.0)
+            if result is not None:
+                if result == "NATIONAL_ID":
+                    logger.warning(
+                        "[COUNTRY-FALLBACK] %s -> NATIONAL_ID  ⚠ document type not recognized",
+                        label,
+                    )
+                    return _Resolution(
+                        tier="COUNTRY_FALLBACK",
+                        canonical="NATIONAL_ID",
+                        score=None,
+                    )
+                logger.info("[COUNTRY] %s -> %s", label, result)
+                return _Resolution(tier="COUNTRY", canonical=result, score=None)
+
+        # Tier 4: fuzzy (alias or fuzzy country-prefix)
+        try:
+            canonical = h.canonicalize(stripped, threshold=self._fuzzy_threshold)
+            nm = difflib.get_close_matches(
+                norm,
+                list(h.raw_to_canonical.keys()),
+                n=1,
+                cutoff=self._fuzzy_threshold,
+            )
+            score = difflib.SequenceMatcher(None, norm, nm[0]).ratio() if nm else None
+            logger.info(
+                "[FUZZY %s] %s -> %s",
+                f"{score:.0%}" if score else "?",
+                label,
+                canonical,
+            )
+            return _Resolution(tier="FUZZY", canonical=canonical, score=score)
+        except EntityNotMappedError:
+            return None
+
+    def _auto_resolve(self, new_labels: list[str] | None = None) -> None:
+        """Run the auto-resolution pass over all labels (or only new_labels) and log a summary."""
+        labels_to_process = new_labels if new_labels is not None else self._labels
+        for label in labels_to_process:
+            resolution = self._auto_resolve_one(label)
+            if resolution is not None:
+                self._records[label] = resolution
+
+        if new_labels is None:
+            # Initial pass — log summary
+            n_total = len(self._labels)
+            n_resolved = len(self._records)
+            n_fuzzy = sum(1 for r in self._records.values() if r.tier == "FUZZY")
+            n_fallback = sum(
+                1 for r in self._records.values() if r.tier == "COUNTRY_FALLBACK"
+            )
+            n_pending = n_total - n_resolved
+
+            logger.info(
+                "Resolved %d/%d labels automatically (%d fuzzy, %d country-fallback). "
+                "%d require manual mapping.",
+                n_resolved,
+                n_total,
+                n_fuzzy,
+                n_fallback,
+                n_pending,
+            )
+            for label in self._labels:
+                if label not in self._records:
+                    logger.warning("[UNRESOLVED] %s  — no automatic match found", label)
+
     def _add_labels(self, new_labels: list[str]) -> None:
         """Incrementally add new labels that have not been seen before."""
         truly_new: list[str] = []
@@ -681,7 +701,7 @@ class CanonicalMapper:
             if label not in seen:
                 seen.add(label)
                 self._labels.append(label)
-                self._stripped[label] = _strip_bio(label)
+                self._stripped[label] = EntityHierarchy._strip_bio(label)
                 truly_new.append(label)
         if truly_new:
             self._auto_resolve(new_labels=truly_new)
@@ -692,55 +712,6 @@ class CanonicalMapper:
             return tag  # label was never added or is pending
         canonical = self._records[tag].canonical
         return canonical if canonical is not None else tag
-
-    def get_mapped_results_dataframe(
-        self,
-        results_df: pd.DataFrame,
-        hierarchy: int | None = None,
-    ) -> pd.DataFrame:
-        """
-        Apply entity mapping to annotation and prediction columns of results_df.
-
-        Extracts unique labels from both columns, auto-resolves any that have
-        not been seen before, then returns a new DataFrame with the annotation
-        and prediction columns replaced by their canonical equivalents.
-
-        Labels that map to None (suppressed) are passed through unchanged —
-        they will appear as false positives or false negatives during evaluation.
-
-        When annotation and prediction map to different canonical entities that
-        are related by the hierarchy (e.g., model predicts PERSON but dataset
-        annotates FIRSTNAME), a user-friendly warning is emitted.
-
-        :param results_df: DataFrame with at least 'annotation' and 'prediction'
-            columns (the 5-column schema returned by model.predict_dataset()).
-        :param hierarchy: Canonical depth override. If None, uses the depth set
-            at construction time (default 3).
-        :return: New DataFrame with remapped annotation and prediction columns.
-        """
-        if hierarchy is not None and hierarchy != self._canonical_depth:
-            # Rebuild hierarchy with the requested depth
-            self._canonical_depth = hierarchy
-            self._hierarchy = EntityHierarchy(canonical_depth=hierarchy)
-            # Re-resolve all known labels with the new depth
-            self._records.clear()
-            self._auto_resolve()
-
-        # Discover any new labels in the DataFrame
-        all_labels = list(results_df["annotation"].dropna().unique()) + list(
-            results_df["prediction"].dropna().unique(),
-        )
-        self._add_labels(all_labels)
-
-        # Build the remapped columns
-        mapped_df = results_df.copy()
-        mapped_df["annotation"] = results_df["annotation"].map(self._map_tag)
-        mapped_df["prediction"] = results_df["prediction"].map(self._map_tag)
-
-        # Warn about mixed-granularity pairs
-        self._warn_mixed_granularity(results_df)
-
-        return mapped_df
 
     def _warn_mixed_granularity(self, results_df: pd.DataFrame) -> None:
         """Emit a warning for annotation/prediction pairs at different hierarchy levels."""
@@ -778,48 +749,10 @@ class CanonicalMapper:
                 stacklevel=3,
             )
 
-    def get_mapping(
-        self,
-        mode: str | None = None,
-    ) -> dict[str, str | None] | str:
-        """
-        Return the entity label mapping.
-
-        Without arguments (default) returns a ``dict[str, str | None]`` mapping
-        each label to its canonical equivalent (or ``None`` for suppressed labels).
-        Raises :class:`IncompleteMapping` if any labels are still pending.
-
-        :param mode: Optional rendering mode.
-            * ``None`` (default) — return ``dict[str, str | None]``
-            * ``"html"`` — return an HTML ``<table>`` string; pending labels are
-              shown as ``(pending)`` without raising.
-            * ``"text"`` — return a plain-text table string; pending labels are
-              shown as ``(pending)`` without raising.
-        :raises IncompleteMapping: if ``mode`` is ``None`` and any labels are pending.
-        :return: Mapping dict, HTML string, or plain-text string depending on mode.
-        """
-        if mode is None:
-            if self.pending:
-                raise IncompleteMapping(self.pending)
-            return {label: self._records[label].canonical for label in self._labels}
-        if mode == "html":
-            return self._build_html()
-        if mode == "text":
-            return self._build_text()
-        raise ValueError(f"Unknown mode {mode!r}. Use None, 'html', or 'text'.")
-
     # ── HTML rendering ───────────────────────────────────────────────────────
 
-    def render_html(self) -> None:
-        """Render an audit table. Uses IPython.display.HTML in Jupyter; plain text fallback."""
-        try:
-            from IPython.display import HTML, display
-
-            display(HTML(self._build_html()))
-        except ImportError:
-            self._print_text()
-
     def _tier_sort_key(self, label: str) -> int:
+        """Return a sort key that orders labels by tier: pending first, then fallback/fuzzy/resolved/suppressed."""
         rec = self._records.get(label)
         if rec is None:
             return 0  # pending first
@@ -843,6 +776,7 @@ class CanonicalMapper:
     }
 
     def _build_html(self) -> str:
+        """Build and return a self-contained HTML table string showing all labels, tiers, and canonical mappings."""
         sorted_labels = sorted(self._labels, key=self._tier_sort_key)
 
         counts: dict[str, int] = {}
@@ -911,6 +845,7 @@ class CanonicalMapper:
         )
 
     def _print_text(self) -> None:
+        """Print a plain-text audit table to stdout."""
         sorted_labels = sorted(self._labels, key=self._tier_sort_key)
         n, p = len(self._labels), len(self.pending)
         print(f"Entity Label Mapping  ({n} total, {p} pending)\n")
@@ -947,36 +882,3 @@ class CanonicalMapper:
             score = f"{rec.score:.0%}" if rec and rec.score is not None else "—"
             lines.append(f"{label:<30} {tier:<18} {canonical:<30} {score}")
         return "\n".join(lines)
-
-    def __repr__(self) -> str:
-        n, p = len(self._labels), len(self.pending)
-        return f"CanonicalMapper({n - p} resolved, {p} pending)"
-
-
-# ---------------------------------------------------------------------------
-# Module-level API (convenience wrappers around the default EntityHierarchy)
-# ---------------------------------------------------------------------------
-
-
-def canonicalize(raw_label: str) -> str:
-    """Resolve a raw label to its canonical entity name using the default hierarchy."""
-    return _DEFAULT_HIERARCHY.canonicalize(raw_label)
-
-
-def get_branch(raw_label: str) -> list[str]:
-    """Return the full ancestor path for a raw label using the default hierarchy."""
-    return _DEFAULT_HIERARCHY.get_branch(raw_label)
-
-
-def print_hierarchy(node: dict | None = None, indent: int = 0) -> None:
-    """Pretty-print the default hierarchy tree."""
-    _DEFAULT_HIERARCHY.print_hierarchy(node, indent)
-
-
-# Read-only snapshots of the default instance's lookup tables.
-RAW_TO_CANONICAL: dict[str, str] = _DEFAULT_HIERARCHY.raw_to_canonical
-ALL_CANONICAL_ENTITIES: list[str] = sorted(
-    set(_DEFAULT_HIERARCHY.all_canonical_entities)
-    | set(_DEFAULT_HIERARCHY.raw_to_canonical.values()),
-)
-CANONICAL_TO_BRANCH: dict[str, list[str]] = _DEFAULT_HIERARCHY.canonical_to_branch

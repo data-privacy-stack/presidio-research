@@ -3,9 +3,16 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Temporary scripts (maintain in .gitignore to exclude from git and ruff)
-update_notebooks.py
+# Temporary notebook/data scripts (excluded from ruff)
+fix_notebooks.py
+fix_mapper_pattern.py
+patch_mapper_nb.py
 replace_model_notebooks.py
+restructure_flow.py
+restructure_notebooks.py
+update_notebooks.py
+verify_nb.py
+.git_commit_msg.txt
 
 # C extensions
 *.so
