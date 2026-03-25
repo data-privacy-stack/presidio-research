@@ -106,7 +106,7 @@ sequenceDiagram
 - [ ] Labels that resolve via exact alias-map lookup are mapped without any user interaction.
 - [ ] Labels that resolve via fuzzy match (above the default threshold) are also mapped automatically,
       with the resolved canonical and score logged.
-- [ ] Labels whose first token is a recognised country code, but whose remainder cannot be matched to any
+- [ ] Labels whose first token is a recognized country code, but whose remainder cannot be matched to any
       known document type, are automatically resolved to `NATIONAL_ID` (country-prefix fallback).
 - [ ] When `pending` is empty after construction, `get_mapping()` succeeds immediately.
 
@@ -169,7 +169,7 @@ sequenceDiagram
   - `[EXACT]   B-EMAIL_ADDRESS → EMAIL_ADDRESS  (stripped: B-)`
   - `[FUZZY 87%] EMAILADRES → EMAIL_ADDRESS`
   - `[COUNTRY] GERMAN_PASSPORT_NUMBER → PASSPORT`
-  - `[COUNTRY-FALLBACK] NIGERIA_UNICORN_CARD → NATIONAL_ID  ⚠ document type not recognised`
+  - `[COUNTRY-FALLBACK] NIGERIA_UNICORN_CARD → NATIONAL_ID  ⚠ document type not recognized`
   - `[MANUAL]  MY_UNKNOWN_LABEL → GOVERNMENT_ID`
   - `[NONE]    O → None  (outside token)`
   - `[NONE]    EXTRA_LABEL → None  (suppressed from evaluation)`
@@ -261,7 +261,7 @@ class CanonicalMapper:
 ```
 
 Resolution tiers (in order, first match wins):
-1. **EXACT** — normalised alias-map lookup
+1. **EXACT** — normalized alias-map lookup
 2. **COUNTRY** — country-prefix, remainder resolves to a known document type
 3. **COUNTRY_FALLBACK** — country-prefix, remainder unknown → `NATIONAL_ID`
 4. **FUZZY** — difflib fuzzy match ≥ `fuzzy_threshold` against alias map

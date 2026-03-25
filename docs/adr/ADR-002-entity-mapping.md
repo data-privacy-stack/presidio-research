@@ -26,7 +26,7 @@ The current approach has two pain points:
 ## Decision
 
 Introduce a single, stateful class — `CanonicalMapper` — as the sole entry point for resolving
-user-defined labels to **canonical entities**. In this ADR, a canonical entity is a normalised,
+user-defined labels to **canonical entities**. In this ADR, a canonical entity is a normalized,
 taxonomy-defined label corresponding to a 3rd-level (leaf) node in the `EntityHierarchy`
 vocabulary (e.g. `NAME`, `AGE`, `ADDRESS`). Mapping a raw label to a canonical entity means
 finding the single 3rd-level taxonomy entry that best represents the concept the raw label
@@ -46,8 +46,8 @@ canonical-to-canonical.
 | Resolution Tier | Matching Condition | Output |
 |---|---|---|
 | **EXACT** | Label (after normalisation) matches a known alias | Canonical entity |
-| **COUNTRY** | Label begins with a recognised country prefix; remainder resolves to a known document type | Canonical entity |
-| **COUNTRY_FALLBACK** | Label begins with a recognised country prefix; remainder is not a known document type | `NATIONAL_ID` (with warning) |
+| **COUNTRY** | Label begins with a recognized country prefix; remainder resolves to a known document type | Canonical entity |
+| **COUNTRY_FALLBACK** | Label begins with a recognized country prefix; remainder is not a known document type | `NATIONAL_ID` (with warning) |
 | **FUZZY** | Approximate string match against the alias vocabulary meets the confidence threshold | Canonical entity |
 | **PENDING** | None of the above | Requires user action |
 

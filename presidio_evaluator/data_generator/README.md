@@ -57,7 +57,7 @@ templates: `My name is John` -> `My name is [PERSON]`
      - Optionally extend with provided templates accessible via `from presidio_evaluator.data_generator import presidio_templates_file_path`
    - Passing in any custom entity providers (or default to those provided)
      - Optionally extend with inbuilt presidio entity providers accessible via `from presidio_evaluator.data_generator import presidio_additional_entity_providers`
-     - Adding a mapping from the output provider entity type to a Presidio recognised entity type where appropriate
+     - Adding a mapping from the output provider entity type to a Presidio recognized entity type where appropriate
        - e.g. For a `TownProvider` which outputs entity type of `town`, execute `PresidioSentenceFaker.ENTITY_TYPE_MAPPING['town'] = 'GPE'`)
    - Passing in a DataFrame representing your underlying PII records (or default to those provided)
      - Optionally extend with inbuilt presidio entity providers accessible via `from presidio_evaluator.data_generator.faker_extensions.datasets import load_fake_person_df`

@@ -27,7 +27,6 @@ other tools are:
 1. PHI discovery based on column or field names.
 1. Statistical de-identification of data sets.
 
-To provide these two capabilities above, Presidio needs to support the 18 PHI types listed [here](./phi.md). Detailed
-requirements for each one of these data types and a review of current Presidio support for them can be found [here](./phi18.md).
+To provide these two capabilities above, Presidio needs to support the 18 PHI types listed [here](./phi.md).
 
 Sources: [Source material](./source-material.md)

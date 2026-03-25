@@ -1,5 +1,3 @@
-# Import order matters: span_generator must come before sentences to avoid circular imports
-# (sentences.py imports SpanGenerator from this package)
 from .providers import (  # noqa: I001
     AddressProviderNew,
     AgeProvider,

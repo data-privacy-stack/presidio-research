@@ -8,12 +8,12 @@ and shows how to work with the `EntityHierarchy` API.
 Different PII detection tools and models
 each define their own entity label vocabularies. A model trained for healthcare may emit `PATIENT_NAME` or `HCW`, while another
 emits `FULLNAME` or `PassengerID`. Evaluation across these tools requires a shared canonical vocabulary that every raw label
-can be normalised to.
+can be normalized to.
 
-`presidio_evaluator.entity_mapping.hierarchy` provides:
+`presidio_evaluator.entity_mapping` provides:
 
 - **`HIERARCHY`** — a single nested Python dict that is the authoritative taxonomy.
-- **`EntityHierarchy`** — a class that wraps the taxonomy and exposes canonicalisation, branch lookup, and a mutation API.
+- **`EntityHierarchy`** — a class that wraps the taxonomy and exposes canonicalization, branch lookup, and a mutation API.
 - **Module-level shortcuts** — `canonicalize()`, `get_branch()`, and `print_hierarchy()` delegate to a shared default
   instance so most callers never need to instantiate the class directly.
 
@@ -26,9 +26,9 @@ can be normalised to.
 - a **`dict`** → an intermediate (parent) node that has children, or
 - a **`list`** → a leaf node whose list contains raw aliases that also resolve to this entity.
 
-### Depth and canonicalisation
+### Depth and canonicalization
 
-`CANONICAL_DEPTH = 3`. Nodes are counted from the root (`PII` = depth 1):
+The default canonical depth is **3** (passed as `canonical_depth=3` to `EntityHierarchy.__init__`). Nodes are counted from the root (`PII` = depth 1):
 
 | Depth | Role | Behaviour |
 |-------|------|-----------|
@@ -37,7 +37,7 @@ can be normalised to.
 | 3 | **Canonical entity** (e.g. `EMAIL_ADDRESS`, `PASSPORT`) | The resolution target |
 | 4+ | Fine-grained sub-type (e.g. `CARD_NUMBER` under `CREDIT_CARD` under `FINANCIAL`) | Rolls up to its depth-3 ancestor |
 
-Canonicalisation is **case- and delimiter-agnostic**: `credit_card`, `CREDIT_CARD`, and `CreditCard` all resolve the
+canonicalization is **case- and delimiter-agnostic**: `credit_card`, `CREDIT_CARD`, and `CreditCard` all resolve the
 same way.
 
 ### Top-level branches
@@ -50,14 +50,14 @@ same way.
 | `LOCATION` | Addresses (street → postal code), geo-coordinates |
 | `ORGANIZATION` | Companies, schools, government agencies, medical facilities |
 | `EMPLOYMENT` | Job titles, departments, employee/customer IDs |
-| `GOVERNMENT_ID` | SSN, passport, driver licence, tax ID, national ID, and similar |
+| `GOVERNMENT_ID` | SSN, passport, driver license, tax ID, national ID, and similar |
 | `FINANCIAL_PII` | Credit cards, bank accounts, crypto wallets, financial amounts |
 | `DEVICE_IDENTIFIER` | Device IDs, IMEI, MAC address, user-agent |
 | `BIOMETRIC` | Fingerprint, face, iris, DNA — GDPR Article 9 special-category data |
 | `NETWORK_IDENTIFIER` | IP address, URL, domain, cookies |
 | `AUTHENTICATION` | Passwords, PINs, API keys, tokens |
 | `PHI` | Protected health information (patient ID, health insurance, conditions, medications, clinical research) |
-| `VEHICLE_PII` | Licence plates, VIN |
+| `VEHICLE_PII` | License plates, VIN |
 | `LEGAL_PII` | Case numbers, court and arrest records, inmate IDs |
 | `TRAVEL_PII` | Passenger name records, e-tickets, world-tracer numbers |
 | `EDUCATION` | Student IDs, academic records, institution IDs |
@@ -89,9 +89,9 @@ canonicalize("FINANCIAL_PII") # → "FINANCIAL_PII"  (depth-2 self-map)
 Rather than listing every `URUGUAY_TAX_ID`, `AUSTRALIA_DRIVERS_LICENSE`, etc. explicitly, the module keeps two tables:
 
 - **`COUNTRIES`** — all 249 ISO 3166-1 alpha-2 codes plus full English country name tokens (e.g. `AUSTRALIA`, `GERMANY`).
-- **`COUNTRY_PREFIXED_DOC_TYPES`** — a suffix keyword → canonical entity mapping (e.g. `"DRIVER"` → `"DRIVER_LICENSE"`).
+- **`country_prefixed_doc_types`** — an instance attribute on `EntityHierarchy`; a suffix keyword → canonical entity mapping (e.g. `"DRIVER"` → `"DRIVER_LICENSE"`). Add entries via `h.add_country_doc_type()`.
 
-Any `<COUNTRY>_<SUFFIX>` label is resolved automatically. An unrecognised suffix with a known country prefix defaults
+Any `<COUNTRY>_<SUFFIX>` label is resolved automatically. An unrecognized suffix with a known country prefix defaults
 to `"NATIONAL_ID"`.
 
 ```python
@@ -115,7 +115,7 @@ mapping. Requires nothing from the user but makes cross-model comparison impossi
 things.
 
 **2. One model's schema as standard** — all models map to one model's native label set. Simple but arbitrary: it
-privileges one model's worldview, penalises others for not conforming to it, and creates a moving target if that
+privileges one model's worldview, penalizes others for not conforming to it, and creates a moving target if that
 model's schema changes.
 
 **3. User labels as standard** — model outputs map to whatever labels the user used in their dataset. Feels natural
@@ -138,7 +138,7 @@ dataset maps to once. The only approach that achieves full comparability, reusab
 time. The trade-off is a one-time mapping step; mapping decisions can silently affect scores, making transparency in
 the mapping layer important.
 
-| Approach | Comparability | User burden | Stability | Customisability |
+| Approach | Comparability | User burden | Stability | Customizability |
 |---|---|---|---|---|
 | 1. Score against own labels | None | None | High | Low |
 | 2. One model as standard | Biased | Low | Low | Low |
@@ -153,7 +153,7 @@ A flat `{raw: canonical}` dict was the original approach. It breaks down as the 
 every new model means manually adding dozens of aliases. The nested hierarchy makes the *relationship* between entities
 explicit and lets the country-prefix engine generate thousands of aliases automatically.
 
-### Why `CANONICAL_DEPTH = 3`?
+### Why depth 3 as the default?
 
 Depth 2 (the domain branches) is useful for coarse-grained comparison (e.g. "did the model find any government ID?").
 Depth 3 provides enough specificity for meaningful evaluation without fragmenting into micro-types that no realistic
@@ -180,7 +180,7 @@ clinical data governed by health-data regulations (HIPAA, GDPR Article 9) rather
 For most use cases, import the three module-level functions directly:
 
 ```python
-from presidio_evaluator.entity_mapping.hierarchy import (
+from presidio_evaluator.entity_mapping import (
     canonicalize,
     get_branch,
     EntityNotMappedError,
@@ -211,8 +211,8 @@ except EntityNotMappedError as e:
 The module exposes read-only snapshots of the default instance's lookup tables — useful for bulk operations:
 
 ```python
-from presidio_evaluator.entity_mapping.hierarchy import (
-    RAW_TO_CANONICAL,       # dict[str, str]  — normalised raw → canonical
+from presidio_evaluator.entity_mapping import (
+    RAW_TO_CANONICAL,       # dict[str, str]  — normalized raw → canonical
     ALL_CANONICAL_ENTITIES, # list[str]       — every depth-3 (or shallower-leaf) node
     CANONICAL_TO_BRANCH,    # dict[str, list] — canonical → ancestor path
 )
@@ -228,7 +228,7 @@ When you need to extend or restrict the default taxonomy for a specific project,
 it. The original default instance is never modified.
 
 ```python
-from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
+from presidio_evaluator.entity_mapping import EntityHierarchy
 
 h = EntityHierarchy.default().copy()
 
@@ -251,7 +251,7 @@ h.remove_entity("INSTANT_MESSAGE")
 h.remove_alias("EMAIL_ADDRESS", "ELECTRONIC_MAIL")
 ```
 
-### Country-prefix customisation
+### Country-prefix Customization
 
 ```python
 h = EntityHierarchy.default().copy()
@@ -293,12 +293,13 @@ print(h.canonical_to_branch["PASSPORT"])  # ["PII", "GOVERNMENT_ID", "PASSPORT"]
 |--------|------|-------------|
 | `canonicalize(raw)` | `str` | Resolve a raw label to its canonical form |
 | `get_branch(raw)` | `list[str]` | Full ancestor path for a raw label |
-| `RAW_TO_CANONICAL` | `dict[str, str]` | Pre-built normalised-raw → canonical map |
+| `RAW_TO_CANONICAL` | `dict[str, str]` | Pre-built normalized-raw → canonical map |
 | `ALL_CANONICAL_ENTITIES` | `list[str]` | Every canonical entity name |
 | `CANONICAL_TO_BRANCH` | `dict[str, list[str]]` | Canonical → ancestor path map |
 | `EntityHierarchy.default()` | `EntityHierarchy` | Shared read-only default instance |
 | `EntityHierarchy.default().copy()` | `EntityHierarchy` | Mutable independent copy |
 | `EntityNotMappedError` | `ValueError` subclass | Raised for unresolvable labels |
+| `IncompleteMapping` | `RuntimeError` subclass | Raised by `get_mapping()` when labels are still pending |
 | `HIERARCHY` | `dict` | The raw taxonomy dict |
-| `COUNTRIES` | `set[str]` | All recognised country tokens |
-| `COUNTRY_PREFIXED_DOC_TYPES` | `dict[str, str]` | Suffix → canonical mapping |
+| `COUNTRIES` | `set[str]` | All recognized country tokens |
+| `h.country_prefixed_doc_types` | `dict[str, str]` | Instance attr: suffix → canonical mapping (mutate via `add_country_doc_type()`) |

@@ -504,7 +504,7 @@ class CanonicalMapper:
             if result is not None:
                 if result == "NATIONAL_ID":
                     logger.warning(
-                        "[COUNTRY-FALLBACK] %s -> NATIONAL_ID  ⚠ document type not recognised",
+                        "[COUNTRY-FALLBACK] %s -> NATIONAL_ID  ⚠ document type not recognized",
                         label,
                     )
                     return _Resolution(
