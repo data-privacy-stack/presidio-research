@@ -1,6 +1,6 @@
 import pytest
 
-from presidio_evaluator.entity_mapping.hierarchy import (
+from presidio_evaluator.entity_mapping import (
     ALL_CANONICAL_ENTITIES,
     CANONICAL_TO_BRANCH,
     HIERARCHY,
@@ -621,7 +621,7 @@ class TestFuzzyCanonicalize:
         assert self.h.fuzzy_canonicalize("COSTA_RIC_PASSPORT") == "PASSPORT"
 
     def test_fuzzy_country_unknown_suffix_defaults_to_national_id(self):
-        # Recognisable country, unknown document type → NATIONAL_ID
+        # recognizable country, unknown document type → NATIONAL_ID
         assert self.h.fuzzy_canonicalize("GERMANX_UNKNOWN_DOC") == "NATIONAL_ID"
 
     # ── fuzzy suffix token (typos in the doc-type part) ─────────────────────
@@ -663,7 +663,7 @@ class TestFuzzyCanonicalize:
             self.h.fuzzy_canonicalize("ARGENTENIAN_TAX_ID", threshold=0.95)
 
     def test_lenient_threshold_accepts_more(self):
-        # At 0.70, ARGENT is close enough to ARGENTINA to be recognised as a country.
+        # At 0.70, ARGENT is close enough to ARGENTINA to be recognized as a country.
         # The remainder TAX_ID contains "TAX" so it resolves to TAX_ID.
         assert self.h.fuzzy_canonicalize("ARGENT_TAX_ID", threshold=0.70) == "TAX_ID"
 
