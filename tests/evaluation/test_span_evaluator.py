@@ -4,14 +4,13 @@ import pytest
 
 from presidio_evaluator.data_objects import Span
 from presidio_evaluator.evaluation import ErrorType, EvaluationResult, SpanEvaluator
-from tests.mocks import MockModel
 
 
 @pytest.fixture
 def span_evaluator():
     """Create a SpanEvaluator instance for testing."""
     return SpanEvaluator(
-        model=MockModel(), iou_threshold=0.75, char_based=True, skip_words=None
+        model=None, iou_threshold=0.75, char_based=True, skip_words=None
     )
 
 
@@ -23,9 +22,9 @@ def assert_error_types(expected_error_types, result, scenario):
     if expected_error_types:
         error_types = [error.error_type for error in result.model_errors]
         for expected_type in expected_error_types:
-            assert (
-                expected_type in error_types
-            ), f"In {scenario}, expected error type {expected_type} not found in {error_types}"
+            assert expected_type in error_types, (
+                f"In {scenario}, expected error type {expected_type} not found in {error_types}"
+            )
 
 
 def assert_confusion_matrix(expected_results, result, scenario):
@@ -57,13 +56,13 @@ def assert_metric(expected_pii_metric, metric_name, result, scenario):
             raise ValueError(f"Unknown metric name: {metric_name}")
 
     if np.isnan(expected_pii_metric):
-        assert np.isnan(
-            metric
-        ), f"In {scenario}, expected {metric_name} score to be None, got {metric}"
+        assert np.isnan(metric), (
+            f"In {scenario}, expected {metric_name} score to be None, got {metric}"
+        )
     else:
-        assert (
-            metric == pytest.approx(expected_pii_metric, 3)
-        ), f"In {scenario}, expected {metric_name} score {expected_pii_metric}, got {metric}"
+        assert metric == pytest.approx(expected_pii_metric, 3), (
+            f"In {scenario}, expected {metric_name} score {expected_pii_metric}, got {metric}"
+        )
 
 
 @pytest.mark.parametrize(
@@ -185,15 +184,15 @@ def test_scenario_group1(
     total_fp = sum(pii_type.false_positives for pii_type in result.per_type.values())
     total_fn = sum(pii_type.false_negatives for pii_type in result.per_type.values())
 
-    assert (
-        total_tp == expected_tp
-    ), f"In {scenario}, expected {expected_tp} TPs, got {total_tp}"
-    assert (
-        total_fp == expected_fp
-    ), f"In {scenario}, expected {expected_fp} FPs, got {total_fp}"
-    assert (
-        total_fn == expected_fn
-    ), f"In {scenario}, expected {expected_fn} FNs, got {total_fn}"
+    assert total_tp == expected_tp, (
+        f"In {scenario}, expected {expected_tp} TPs, got {total_tp}"
+    )
+    assert total_fp == expected_fp, (
+        f"In {scenario}, expected {expected_fp} FPs, got {total_fp}"
+    )
+    assert total_fn == expected_fn, (
+        f"In {scenario}, expected {expected_fn} FNs, got {total_fn}"
+    )
 
     # Check confusion matrix results
     for (ann, pred), expected_count in expected_results.items():
@@ -207,9 +206,9 @@ def test_scenario_group1(
     if expected_error_types:
         error_types = [error.error_type for error in result.model_errors]
         for expected_type in expected_error_types:
-            assert (
-                expected_type in error_types
-            ), f"In {scenario}, expected error type {expected_type} not found in {error_types}"
+            assert expected_type in error_types, (
+                f"In {scenario}, expected error type {expected_type} not found in {error_types}"
+            )
 
         assert len(result.model_errors) == len(expected_error_types)
 
@@ -335,15 +334,15 @@ def test_scenario_group2(
     total_fp = sum(pii_type.false_positives for pii_type in result.per_type.values())
     total_fn = sum(pii_type.false_negatives for pii_type in result.per_type.values())
 
-    assert (
-        total_tp == expected_tp
-    ), f"In {scenario}, expected {expected_tp} TPs, got {total_tp}"
-    assert (
-        total_fp == expected_fp
-    ), f"In {scenario}, expected {expected_fp} FPs, got {total_fp}"
-    assert (
-        total_fn == expected_fn
-    ), f"In {scenario}, expected {expected_fn} FNs, got {total_fn}"
+    assert total_tp == expected_tp, (
+        f"In {scenario}, expected {expected_tp} TPs, got {total_tp}"
+    )
+    assert total_fp == expected_fp, (
+        f"In {scenario}, expected {expected_fp} FPs, got {total_fp}"
+    )
+    assert total_fn == expected_fn, (
+        f"In {scenario}, expected {expected_fn} FNs, got {total_fn}"
+    )
 
     assert_confusion_matrix(expected_results, result, scenario)
 
@@ -506,25 +505,25 @@ def test_global_metrics(
     )
 
     # Check global counts
-    assert (
-        result.pii_annotated == expected_annotated
-    ), f"In {scenario}, expected {expected_annotated} annotated PII spans, got {result.pii_annotated}"
+    assert result.pii_annotated == expected_annotated, (
+        f"In {scenario}, expected {expected_annotated} annotated PII spans, got {result.pii_annotated}"
+    )
 
-    assert (
-        result.pii_predicted == expected_predicted
-    ), f"In {scenario}, expected {expected_predicted} predicted PII spans, got {result.pii_predicted}"
+    assert result.pii_predicted == expected_predicted, (
+        f"In {scenario}, expected {expected_predicted} predicted PII spans, got {result.pii_predicted}"
+    )
 
-    assert (
-        result.pii_true_positives == expected_tp
-    ), f"In {scenario}, expected {expected_tp} true positives, got {result.pii_true_positives}"
+    assert result.pii_true_positives == expected_tp, (
+        f"In {scenario}, expected {expected_tp} true positives, got {result.pii_true_positives}"
+    )
 
-    assert (
-        result.pii_false_positives == expected_fp
-    ), f"In {scenario}, expected {expected_fp} false positives, got {result.pii_false_positives}"
+    assert result.pii_false_positives == expected_fp, (
+        f"In {scenario}, expected {expected_fp} false positives, got {result.pii_false_positives}"
+    )
 
-    assert (
-        result.pii_false_negatives == expected_fn
-    ), f"In {scenario}, expected {expected_fn} false negatives, got {result.pii_false_negatives}"
+    assert result.pii_false_negatives == expected_fn, (
+        f"In {scenario}, expected {expected_fn} false negatives, got {result.pii_false_negatives}"
+    )
 
     # Check global metrics
     assert_metric(expected_precision, "pii_precision", result, scenario)
@@ -718,7 +717,7 @@ def test_calculate_iou_token_based():
         normalized_end_index=19,
     )
     span_evaluator = SpanEvaluator(
-        model=MockModel(), iou_threshold=0.75, char_based=False, skip_words=[]
+        model=None, iou_threshold=0.75, char_based=False, skip_words=[]
     )
     # Test token-based IoU calculations for individual spans
     iou_exact = span_evaluator.calculate_iou(span1, span2, char_based=False)
@@ -766,9 +765,9 @@ def test_calculate_iou_token_based():
     combined_iou_perfect = span_evaluator._calculate_combined_iou(
         annotation_full, [pred_span_1, pred_span_2]
     )
-    assert (
-        combined_iou_perfect == 1.0
-    ), f"Expected perfect IoU 1.0, got {combined_iou_perfect}"
+    assert combined_iou_perfect == 1.0, (
+        f"Expected perfect IoU 1.0, got {combined_iou_perfect}"
+    )
 
     # Case 2: Multiple prediction spans with partial overlap
     pred_span_partial = Span(
@@ -786,9 +785,9 @@ def test_calculate_iou_token_based():
         annotation_full, [pred_span_partial]
     )
     expected_partial_iou = 1 / 3  # 1 token intersection / 3 tokens union
-    assert (
-        combined_iou_partial == expected_partial_iou
-    ), f"Expected IoU {expected_partial_iou}, got {combined_iou_partial}"
+    assert combined_iou_partial == expected_partial_iou, (
+        f"Expected IoU {expected_partial_iou}, got {combined_iou_partial}"
+    )
 
     # Case 3: Multiple prediction spans with extra tokens (lower IoU)
     annotation_simple = Span(
@@ -826,15 +825,15 @@ def test_calculate_iou_token_based():
         annotation_simple, [pred_extra_1, pred_extra_2]
     )
     expected_extra_iou = 2 / 3
-    assert (
-        abs(combined_iou_extra - expected_extra_iou) < 0.001
-    ), f"Expected IoU {expected_extra_iou}, got {combined_iou_extra}"
+    assert abs(combined_iou_extra - expected_extra_iou) < 0.001, (
+        f"Expected IoU {expected_extra_iou}, got {combined_iou_extra}"
+    )
 
     # Case 4: Empty prediction spans list
     combined_iou_empty = span_evaluator._calculate_combined_iou(annotation_simple, [])
-    assert (
-        combined_iou_empty == 0.0
-    ), f"Expected IoU 0.0 for empty predictions, got {combined_iou_empty}"
+    assert combined_iou_empty == 0.0, (
+        f"Expected IoU 0.0 for empty predictions, got {combined_iou_empty}"
+    )
 
 
 # Test error analysis
@@ -1093,14 +1092,14 @@ def test_match_predictions_with_annotations_error_generation(
 
     # Verify each expected error type is present
     for expected_type in expected_error_types:
-        assert (
-            expected_type in error_types
-        ), f"In {scenario}, expected error type {expected_type} not found in {error_types}"
+        assert expected_type in error_types, (
+            f"In {scenario}, expected error type {expected_type} not found in {error_types}"
+        )
 
     # Check that we have the expected number of errors
-    assert (
-        len(result.model_errors) == expected_error_count
-    ), f"In {scenario}, expected {expected_error_count} errors, got {len(result.model_errors)}"
+    assert len(result.model_errors) == expected_error_count, (
+        f"In {scenario}, expected {expected_error_count} errors, got {len(result.model_errors)}"
+    )
 
     # Count occurrences of each error type
     error_type_counts = {}
@@ -1115,17 +1114,17 @@ def test_match_predictions_with_annotations_error_generation(
 
     for expected_type, expected_count in expected_type_counts.items():
         actual_count = error_type_counts.get(expected_type, 0)
-        assert (
-            actual_count == expected_count
-        ), f"In {scenario}, expected {expected_count} errors of type {expected_type}, got {actual_count}"
+        assert actual_count == expected_count, (
+            f"In {scenario}, expected {expected_count} errors of type {expected_type}, got {actual_count}"
+        )
 
     # Check error explanations contain expected text
     for i, expected_explanation in enumerate(expected_explanations):
         if i < len(result.model_errors):
             actual_explanation = result.model_errors[i].explanation
-            assert (
-                expected_explanation in actual_explanation
-            ), f"In {scenario}, expected explanation to contain '{expected_explanation}', got '{actual_explanation}'"
+            assert expected_explanation in actual_explanation, (
+                f"In {scenario}, expected explanation to contain '{expected_explanation}', got '{actual_explanation}'"
+            )
 
     # Validate confusion matrix entries
     for (
@@ -1133,9 +1132,9 @@ def test_match_predictions_with_annotations_error_generation(
         expected_pred,
     ), expected_count in expected_confusion_matrix.items():
         actual_count = result.results.get((expected_ann, expected_pred), 0)
-        assert (
-            actual_count == expected_count
-        ), f"In {scenario}, confusion matrix entry ({expected_ann}, {expected_pred}) expected {expected_count}, got {actual_count}"
+        assert actual_count == expected_count, (
+            f"In {scenario}, confusion matrix entry ({expected_ann}, {expected_pred}) expected {expected_count}, got {actual_count}"
+        )
 
 
 # Test span creation and skip words handling
@@ -1426,7 +1425,7 @@ def test_span_creation_with_skip_words(
     """
     # Create evaluator with specific skip words
     span_evaluator = SpanEvaluator(
-        model=MockModel(), iou_threshold=0.75, char_based=True, skip_words=skip_words
+        model=None, iou_threshold=0.75, char_based=True, skip_words=skip_words
     )
 
     # Build the DataFrame
@@ -1445,41 +1444,41 @@ def test_span_creation_with_skip_words(
         spans=annotation_spans, df=df
     )
     # Check number of spans after processing
-    assert (
-        len(annotation_spans) == len(expected_spans_after_processing)
-    ), f"In {scenario}, expected {len(expected_spans_after_processing)} spans after processing, got {len(annotation_spans)}"
+    assert len(annotation_spans) == len(expected_spans_after_processing), (
+        f"In {scenario}, expected {len(expected_spans_after_processing)} spans after processing, got {len(annotation_spans)}"
+    )
 
     # Check each span's properties after processing
     for i, expected_span in enumerate(expected_spans_after_processing):
         actual_span = annotation_spans[i]
 
-        assert (
-            actual_span.entity_type == expected_span["entity_type"]
-        ), f"In {scenario}, span {i} entity_type expected {expected_span['entity_type']}, got {actual_span.entity_type}"
+        assert actual_span.entity_type == expected_span["entity_type"], (
+            f"In {scenario}, span {i} entity_type expected {expected_span['entity_type']}, got {actual_span.entity_type}"
+        )
 
-        assert (
-            actual_span.entity_value == expected_span["entity_value"]
-        ), f"In {scenario}, span {i} entity_value expected {expected_span['entity_value']}, got {actual_span.entity_value}"
+        assert actual_span.entity_value == expected_span["entity_value"], (
+            f"In {scenario}, span {i} entity_value expected {expected_span['entity_value']}, got {actual_span.entity_value}"
+        )
 
-        assert (
-            actual_span.start_position == expected_span["start_position"]
-        ), f"In {scenario}, span {i} start_position expected {expected_span['start_position']}, got {actual_span.start_position}"
+        assert actual_span.start_position == expected_span["start_position"], (
+            f"In {scenario}, span {i} start_position expected {expected_span['start_position']}, got {actual_span.start_position}"
+        )
 
-        assert (
-            actual_span.end_position == expected_span["end_position"]
-        ), f"In {scenario}, span {i} end_position expected {expected_span['end_position']}, got {actual_span.end_position}"
+        assert actual_span.end_position == expected_span["end_position"], (
+            f"In {scenario}, span {i} end_position expected {expected_span['end_position']}, got {actual_span.end_position}"
+        )
 
-        assert (
-            actual_span.normalized_tokens == expected_span["normalized_tokens"]
-        ), f"In {scenario}, span {i} normalized_tokens expected {expected_span['normalized_tokens']}, got {actual_span.normalized_tokens}"
+        assert actual_span.normalized_tokens == expected_span["normalized_tokens"], (
+            f"In {scenario}, span {i} normalized_tokens expected {expected_span['normalized_tokens']}, got {actual_span.normalized_tokens}"
+        )
 
-        assert (
-            actual_span.token_start == expected_span["token_start"]
-        ), f"In {scenario}, span {i} token_start expected {expected_span['token_start']}, got {actual_span.token_start}"
+        assert actual_span.token_start == expected_span["token_start"], (
+            f"In {scenario}, span {i} token_start expected {expected_span['token_start']}, got {actual_span.token_start}"
+        )
 
-        assert (
-            actual_span.token_end == expected_span["token_end"]
-        ), f"In {scenario}, span {i} token_end expected {expected_span['token_end']}, got {actual_span.token_end}"
+        assert actual_span.token_end == expected_span["token_end"], (
+            f"In {scenario}, span {i} token_end expected {expected_span['token_end']}, got {actual_span.token_end}"
+        )
 
 
 # ── End of test_span_evaluator.py ─────────────────────────────────────────────

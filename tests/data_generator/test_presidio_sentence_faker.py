@@ -23,9 +23,9 @@ def test_generate_new_fake_sentences(num_sentences: int):
     presidio_providers = _get_classes_from_module(providers)
 
     sentence_faker = PresidioSentenceFaker(locale="en", lower_case_ratio=0)
-    assert (
-        len(sentence_faker._sentence_templates) > 0
-    ), "Did not load default sentence templates"
+    assert len(sentence_faker._sentence_templates) > 0, (
+        "Did not load default sentence templates"
+    )
 
     expected_providers = deepcopy(default_faker_providers)
     expected_providers.extend(presidio_providers)

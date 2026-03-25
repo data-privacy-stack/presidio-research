@@ -5,13 +5,12 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
-from presidio_analyzer import AnalyzerEngine
 from spacy.tokens import Token
 
 from presidio_evaluator import InputSample
 from presidio_evaluator.evaluation import ErrorType, EvaluationResult, ModelError
 from presidio_evaluator.evaluation.skipwords import get_skip_words
-from presidio_evaluator.models import BaseModel, PresidioAnalyzerWrapper
+from presidio_evaluator.models import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -25,62 +24,40 @@ class DeprecationError(RuntimeError):
 class BaseEvaluator(ABC):
     def __init__(
         self,
-        model: BaseModel | AnalyzerEngine | None,
+        model: BaseModel | None = None,
         verbose: bool = False,
         entities_to_keep: list[str] | None = None,
         generic_entities: list[str] | None = None,
         skip_words: list | None = None,
     ) -> None:
         """
-        Evaluate a PII detection model or a Presidio analyzer / recognizer
+        Evaluate PII detection results.
 
-        :param model: Instance of a fitted model (of base type BaseModel),
-        or an instance of Presidio Analyzer
+        :param model: Must be None. Passing a model is no longer supported.
+        Use model.predict_dataset(dataset) to obtain a results DataFrame,
+        then pass it to calculate_score_on_df().
         :param verbose: Whether to print debug information
         :param entities_to_keep: List of entity names to focus the evaluator on (and ignore the rest).
-        Default is None = all entities. If the provided model has a list of entities to keep,
-        this list would be used for evaluation.
+        Default is None = all entities.
         :param generic_entities: List of entities that are not considered an error if
         detected instead of something other entity. For example: PII, ID, number
         :param skip_words: List of words to skip. If None, the default list would be used.
         """
 
-        if model is None:
-            warnings.warn(
-                "Using the evaluator without a model only supports comparing actual vs. existing "
-                "predicted tags. It will not run the model to generate predictions.",
-                stacklevel=2,
-            )
-            self.model = None
-
-        elif isinstance(model, AnalyzerEngine):
-            num_languages = len(model.supported_languages)
-            if num_languages > 1:
-                warnings.warn(
-                    f"Presidio Analyzer supports multiple languages ({num_languages}). "
-                    "Using the first language in the list for evaluation.",
-                    stacklevel=2,
-                )
-
-            self.model = PresidioAnalyzerWrapper(
-                analyzer_engine=model,
-                entities_to_keep=entities_to_keep,
-                score_threshold=model.default_score_threshold,
-                language=model.supported_languages[0],
+        if model is not None:
+            raise DeprecationError(
+                "Passing a model to the evaluator constructor is no longer supported.\n"
+                "Use the new 3-step pipeline instead:\n"
+                "  1. results_df = model.predict_dataset(dataset)\n"
+                "  2. mapper = CanonicalMapper()\n"
+                "     mapped_df = mapper.get_mapped_results_dataframe(results_df)\n"
+                "  3. result = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)\n"
+                "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
             )
 
-        elif isinstance(model, BaseModel):
-            self.model = model
-
-        else:
-            raise ValueError(
-                "Model should be an instance of BaseModel or Presidio Analyzer, or None.",
-            )
-
+        self.model = None
         self.verbose = verbose
         self.entities_to_keep = entities_to_keep
-        if self.entities_to_keep is None and self.model and self.model.entities:
-            self.entities_to_keep = self.model.entities
 
         self.generic_entities = (
             generic_entities if generic_entities else GENERIC_ENTITIES
@@ -228,13 +205,16 @@ class BaseEvaluator(ABC):
         sample: InputSample,
         prediction: list[str],
     ) -> EvaluationResult:
+        warnings.warn(
+            "evaluate_sample() is deprecated. Use predict_dataset() + calculate_score_on_df() instead:\n"
+            "  results_df = model.predict_dataset(dataset)\n"
+            "  result = evaluator.calculate_score_on_df(results_df=results_df)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if self.verbose:
             logger.debug(f"Input sentence: {sample.full_text}")
-
-        if not self.model:
-            raise ValueError(
-                "Model is not set. Please instantiate the evaluator with a model to evaluate the dataset.",
-            )
 
         results, model_errors = self.compare(input_sample=sample, prediction=prediction)
 

@@ -370,9 +370,9 @@ class TestConstants:
 
     def test_canonical_to_branch_covers_all_canonical(self):
         for entity in ALL_CANONICAL_ENTITIES:
-            assert (
-                entity in CANONICAL_TO_BRANCH
-            ), f"{entity} missing from CANONICAL_TO_BRANCH"
+            assert entity in CANONICAL_TO_BRANCH, (
+                f"{entity} missing from CANONICAL_TO_BRANCH"
+            )
 
     def test_canonical_to_branch_paths_start_with_pii(self):
         for entity, branch in CANONICAL_TO_BRANCH.items():
@@ -390,9 +390,9 @@ class TestConstants:
         # nodes that self-map (e.g. PERSON, LOCATION, BIOMETRIC, FINANCIAL_PII).
         canonical_set = set(ALL_CANONICAL_ENTITIES) | set(CANONICAL_TO_BRANCH.keys())
         for raw, canonical in RAW_TO_CANONICAL.items():
-            assert (
-                canonical in canonical_set
-            ), f"RAW_TO_CANONICAL[{raw!r}] = {canonical!r} is not a recognized entity"
+            assert canonical in canonical_set, (
+                f"RAW_TO_CANONICAL[{raw!r}] = {canonical!r} is not a recognized entity"
+            )
 
 
 # ---------------------------------------------------------------------------

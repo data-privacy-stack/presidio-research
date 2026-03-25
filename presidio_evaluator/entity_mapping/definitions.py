@@ -5,6 +5,11 @@ PII entity taxonomy definitions: canonical hierarchy, country tokens, and base e
 
 # ---------------------------------------------------------------------------
 # Canonical hierarchy
+# First level: PII
+# Second level: PERSON, DEMOGRAPHIC, CONTACT, LOCATION, ORGANIZATION, EMPLOYMENT, GOVERNMENT_ID, FINANCIAL_PII,
+# DEVICE_IDENTIFIER, BIOMETRIC, NETWORK_IDENTIFIER, AUTHENTICATION, PHI, VEHICLE_PII,
+# LEGAL_PII, TRAVEL_PII, EDUCATION, DATE_TIME
+# Third level: subtypes of each second-level entity (e.g. PERSON -> NAME, CONTACT -> EMAIL_ADDRESS, etc.)
 # ---------------------------------------------------------------------------
 
 HIERARCHY: dict = {

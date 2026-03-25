@@ -3,9 +3,6 @@ from collections import Counter
 import pytest
 
 from presidio_evaluator.evaluation import EvaluationResult, Evaluator, ModelError
-from tests.mocks import (
-    MockTokensModel,
-)
 
 
 @pytest.fixture(scope="session")
@@ -45,8 +42,7 @@ def evaluation_result() -> EvaluationResult:
 
 @pytest.fixture(scope="session")
 def evaluator():
-    model = MockTokensModel(prediction=None)
-    evaluator = Evaluator(model=model)
+    evaluator = Evaluator(model=None)
     return evaluator
 
 

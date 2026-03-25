@@ -350,9 +350,9 @@ class TestGetMappedResultsDataframe:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             mapper.get_mapped_results_dataframe(df)
-        assert any(
-            issubclass(warning.category, UserWarning) for warning in w
-        ), "Expected a UserWarning for mixed-granularity mapping"
+        assert any(issubclass(warning.category, UserWarning) for warning in w), (
+            "Expected a UserWarning for mixed-granularity mapping"
+        )
 
     def test_no_warning_when_same_canonical(self):
         """No warning when annotation and prediction map to the same canonical entity."""

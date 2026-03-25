@@ -73,7 +73,7 @@ KNOWN_PII_LABELS = [
 @pytest.mark.parametrize("label", KNOWN_PII_LABELS)
 def test_label_is_covered(label: str) -> None:
     """Each known PII label must resolve to a canonical entity without error."""
-    h = EntityHierarchy.default()
+    h = EntityHierarchy()
     result = h.canonicalize(label)
     print(f"{label!r:30} -> {result}")
     assert result is not None

@@ -18,9 +18,8 @@ class MockEvaluator(BaseEvaluator):
 
 def test_evaluate_sample_wrong_entities_to_keep_correct_statistics():
     prediction = ["O", "O", "O", "ANIMAL"]
-    model = MockTokensModel(prediction=prediction)
 
-    evaluator = MockEvaluator(model=model, entities_to_keep=["SPACESHIP"])
+    evaluator = MockEvaluator(model=None, entities_to_keep=["SPACESHIP"])
 
     sample = InputSample(
         full_text="I am the walrus", masked="I am the [ANIMAL]", spans=None
@@ -34,10 +33,7 @@ def test_evaluate_sample_wrong_entities_to_keep_correct_statistics():
 
 def test_evaluate_same_entity_correct_statistics():
     prediction = ["O", "ANIMAL", "O", "ANIMAL"]
-    model = MockTokensModel(prediction=prediction)
-    evaluator = MockEvaluator(
-        model=model, entities_to_keep=["ANIMAL"], skip_words=["-"]
-    )
+    evaluator = MockEvaluator(model=None, entities_to_keep=["ANIMAL"], skip_words=["-"])
     sample = InputSample(
         full_text="I dog the walrus", masked="I [ANIMAL] the [ANIMAL]", spans=None
     )
@@ -53,9 +49,8 @@ def test_evaluate_same_entity_correct_statistics():
 def test_evaluate_multiple_entities_to_keep_correct_statistics():
     prediction = ["O", "ANIMAL", "O", "ANIMAL"]
     entities_to_keep = ["ANIMAL", "PLANT", "SPACESHIP"]
-    model = MockTokensModel(prediction=prediction)
     evaluator = MockEvaluator(
-        model=model, entities_to_keep=entities_to_keep, skip_words=["-"]
+        model=None, entities_to_keep=entities_to_keep, skip_words=["-"]
     )
 
     sample = InputSample(
@@ -93,8 +88,7 @@ def test_evaluate_multiple_entities_to_keep_correct_statistics():
 def test_generic_entities_are_treated_like_specific_entities(
     tags, predicted_tags, expected_dict
 ):
-    model = MockTokensModel(prediction=predicted_tags)
-    evaluator = MockEvaluator(model=model)
+    evaluator = MockEvaluator(model=None)
 
     tokens = ["A", "123", "456"]
 
@@ -116,7 +110,7 @@ def test_error_type_classification():
     """
     prediction = ["O", "EMAIL", "PHONE", "LOCATION", "PERSON"]
 
-    evaluator = MockEvaluator(model=MockTokensModel(prediction))
+    evaluator = MockEvaluator(model=None)
 
     # Ground truth: [PERSON, O, EMAIL, PHONE, O]
     # Prediction:   [PERSON, EMAIL, PHONE, LOCATION, PERSON]
@@ -459,7 +453,7 @@ def test_results_to_dataframe_with_entity_filtering():
     tokens = ["John", "details", "john@example.com", "New York", "Smith"]
     tags = ["PERSON", "O", "EMAIL", "LOCATION", "PERSON"]
     start_indices = [0, 5, 13, 27, 40]
-    evaluator = MockEvaluator(model=MockTokensModel(prediction))
+    evaluator = MockEvaluator(model=None)
 
     sample = InputSample(
         full_text="John details john@example.com New York Smith",
@@ -513,7 +507,7 @@ def test_get_results_dataframe_emits_deprecation_warning():
     tokens = ["Alice", "here"]
     tags = ["PERSON", "O"]
     start_indices = [0, 6]
-    evaluator = MockEvaluator(model=MockTokensModel(prediction), skip_words=[])
+    evaluator = MockEvaluator(model=None, skip_words=[])
 
     sample = InputSample(
         full_text="Alice here",
@@ -534,3 +528,44 @@ def test_get_results_dataframe_emits_deprecation_warning():
     assert "get_mapped_results_dataframe" in str(caught[0].message)
     # method still executes (soft deprecation)
     assert list(df["annotation"]) == ["PERSON", "O"]
+
+
+def test_model_constructor_raises_deprecation_error():
+    """Passing a non-None model to the evaluator constructor raises DeprecationError."""
+    from presidio_evaluator.evaluation import DeprecationError as DE
+
+    model = MockTokensModel(prediction=["O"])
+    with pytest.raises(DE):
+        MockEvaluator(model=model)
+
+
+def test_model_none_constructor_does_not_raise():
+    """SpanEvaluator(model=None) must not raise."""
+    from presidio_evaluator.evaluation import SpanEvaluator
+
+    evaluator = SpanEvaluator(model=None, skip_words=[])
+    assert evaluator is not None
+
+
+def test_evaluate_sample_emits_deprecation_warning():
+    """evaluate_sample() must emit DeprecationWarning (soft deprecation — still executes)."""
+    import warnings
+
+    evaluator = MockEvaluator(model=None, skip_words=[])
+    sample = InputSample(
+        full_text="Alice here",
+        tokens=["Alice", "here"],
+        start_indices=[0, 6],
+        tags=["PERSON", "O"],
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = evaluator.evaluate_sample(sample, ["PERSON", "O"])
+
+    deprecation_warnings = [
+        w for w in caught if issubclass(w.category, DeprecationWarning)
+    ]
+    assert len(deprecation_warnings) >= 1
+    assert any("evaluate_sample" in str(w.message) for w in deprecation_warnings)
+    # still executes
+    assert result is not None

@@ -18,9 +18,8 @@ from tests.mocks import (
 
 def test_evaluator_simple():
     prediction = ["O", "O", "O", "ANIMAL"]
-    model = MockTokensModel(prediction=prediction, entities_to_keep=["ANIMAL"])
 
-    evaluator = TokenEvaluator(model=model)
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"])
     sample = InputSample(
         full_text="I am the walrus", masked="I am the [ANIMAL]", spans=None
     )
@@ -36,8 +35,7 @@ def test_evaluator_simple():
 
 def test_evaluate_multiple_tokens_correct_statistics():
     prediction = ["O", "O", "O", "ANIMAL", "ANIMAL", "ANIMAL"]
-    model = MockTokensModel(prediction=prediction)
-    evaluator = TokenEvaluator(model=model, entities_to_keep=["ANIMAL"])
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"])
     sample = InputSample(
         "I am the walrus amaericanus magnifico", masked=None, spans=None
     )
@@ -53,8 +51,7 @@ def test_evaluate_multiple_tokens_correct_statistics():
 
 def test_evaluate_multiple_tokens_partial_match_correct_statistics():
     prediction = ["O", "O", "O", "ANIMAL", "ANIMAL", "O"]
-    model = MockTokensModel(prediction=prediction)
-    evaluator = TokenEvaluator(model=model, entities_to_keep=["ANIMAL"])
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"])
     sample = InputSample(
         "I am the walrus amaericanus magnifico", masked=None, spans=None
     )
@@ -70,8 +67,7 @@ def test_evaluate_multiple_tokens_partial_match_correct_statistics():
 
 def test_evaluate_multiple_tokens_no_match_match_correct_statistics():
     prediction = ["O", "O", "O", "B-SPACESHIP", "L-SPACESHIP", "O"]
-    model = MockTokensModel(prediction=prediction)
-    evaluator = TokenEvaluator(model=model, entities_to_keep=["ANIMAL"])
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"])
     sample = InputSample(
         "I am the walrus amaericanus magnifico", masked=None, spans=None
     )
@@ -89,13 +85,13 @@ def test_evaluate_multiple_examples_correct_statistics():
     prediction = ["PERSON", "O", "O", "PERSON", "O", "O"]
     model = MockTokensModel(prediction=prediction)
     evaluator = TokenEvaluator(
-        model=model, entities_to_keep=["PERSON"], skip_words=["-"]
+        model=None, entities_to_keep=["PERSON"], skip_words=["-"]
     )
     input_sample = InputSample("My name is Raphael or David", masked=None, spans=None)
     input_sample.tokens = ["My", "name", "is", "Raphael", "or", "David"]
     input_sample.tags = ["O", "O", "O", "PERSON", "O", "PERSON"]
 
-    results_df = evaluator.model.predict_dataset(
+    results_df = model.predict_dataset(
         [input_sample, input_sample, input_sample, input_sample]
     )
     scores = evaluator.calculate_score_on_df(results_df)
@@ -107,14 +103,12 @@ def test_evaluate_multiple_examples_ignore_entity_correct_statistics():
     prediction = ["O", "O", "O", "PERSON", "O", "TENNIS_PLAYER"]
     model = MockTokensModel(prediction=prediction)
 
-    evaluator = TokenEvaluator(
-        model=model, entities_to_keep=["PERSON", "TENNIS_PLAYER"]
-    )
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["PERSON", "TENNIS_PLAYER"])
     input_sample = InputSample("My name is Raphael or David", masked=None, spans=None)
     input_sample.tokens = ["My", "name", "is", "Raphael", "or", "David"]
     input_sample.tags = ["O", "O", "O", "PERSON", "O", "PERSON"]
 
-    results_df = evaluator.model.predict_dataset(
+    results_df = model.predict_dataset(
         [input_sample, input_sample, input_sample, input_sample]
     )
     scores = evaluator.calculate_score_on_df(results_df)
@@ -145,8 +139,7 @@ def test_confusion_matrix_correct_metrics():
         )
     ]
 
-    model = MockTokensModel(prediction=None)
-    evaluator = TokenEvaluator(model=model, entities_to_keep=["PERSON", "COMPANY"])
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["PERSON", "COMPANY"])
     scores = evaluator.calculate_score(evaluated, beta=2.5)
 
     assert scores.pii_precision == 0.625
@@ -186,8 +179,7 @@ def test_confusion_matrix_2_correct_metrics():
         )
     ]
 
-    model = MockTokensModel(prediction=None)
-    evaluator = TokenEvaluator(model=model)
+    evaluator = TokenEvaluator(model=None)
     scores = evaluator.calculate_score(evaluated, beta=2.5)
 
     pii_tp = (
@@ -227,7 +219,7 @@ def test_dataset_to_metric_identity_model():
     )
 
     model = IdentityTokensMockModel()
-    evaluator = TokenEvaluator(model=model)
+    evaluator = TokenEvaluator(model=None)
     results_df = model.predict_dataset(input_samples)
     metrics = evaluator.calculate_score_on_df(results_df)
 
@@ -245,7 +237,7 @@ def test_dataset_to_metric_50_50_model():
 
     # Replace 50% of the predictions with a list of "O"
     model = FiftyFiftyIdentityTokensMockModel()
-    evaluator = TokenEvaluator(model=model, entities_to_keep=["PERSON"])
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["PERSON"])
     results_df = model.predict_dataset(input_samples)
     metrics = evaluator.calculate_score_on_df(results_df)
 
@@ -290,11 +282,7 @@ def test_dataset_to_metric_50_50_model():
 def test_skip_words_are_not_counted_as_errors(
     tokens, tags, predicted_tags, precision, recall
 ):
-    model = MockTokensModel(
-        prediction=predicted_tags, entities_to_keep=["LOCATION", "PERSON"]
-    )
-
-    evaluator = TokenEvaluator(model=model)
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["LOCATION", "PERSON"])
     sample = InputSample(full_text=" ".join(tokens), spans=None)
     sample.tokens = tokens
     sample.tags = tags
@@ -318,7 +306,7 @@ def test_results_to_dataframe():
     tokens = ["John", "details", "john@mail.com", "123-456-7890", "today"]
     tags = ["PERSON", "O", "EMAIL", "PHONE", "O"]
     start_indices = [0, 5, 13, 27, 40]
-    evaluator = TokenEvaluator(model=MockTokensModel(prediction))
+    evaluator = TokenEvaluator(model=None)
 
     sample = InputSample(
         full_text="John details john@mail.com 123-456-7890 today",
@@ -358,7 +346,7 @@ def test_score_calculation():
     """
     prediction = ["PERSON", "PHONE", "O", "ORGANIZATION"]
 
-    evaluator = TokenEvaluator(model=MockTokensModel(prediction))
+    evaluator = TokenEvaluator(model=None)
 
     # Ground truth: [PERSON, O, EMAIL]
     # Prediction:   [PERSON, PHONE, LOCATION]
@@ -437,7 +425,7 @@ def test_calculate_score_existing_results_counter_individual_entities():
     expected_z_precision = z_tp / z_fp_tp if z_fp_tp != 0 else np.nan
     expected_z_recall = z_tp / z_fn_tp if z_fn_tp != 0 else np.nan
 
-    evaluator = TokenEvaluator(model=MockTokensModel(prediction=None))
+    evaluator = TokenEvaluator(model=None)
     evaluation_score = evaluator.calculate_score(
         evaluation_results=[EvaluationResult(results)]
     )
@@ -512,7 +500,7 @@ def test_calculate_score_on_df_populates_per_sample_fields():
 
 def test_evaluate_all_raises_deprecation_error():
     """evaluate_all() must raise DeprecationError after US-007 hard stop."""
-    evaluator = TokenEvaluator(model=MockTokensModel(prediction=["O"]))
+    evaluator = TokenEvaluator(model=None)
     sample = InputSample(full_text="test", spans=None)
     sample.tokens = ["test"]
     sample.tags = ["O"]

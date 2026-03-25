@@ -99,9 +99,9 @@ def test_plot_scores_respects_save_as_format(mock_evaluation_result, tmp_path):
         # Assert - all files should be saved as .svg
         for call in mock_fig_svg.write_image.call_args_list:
             file_path = str(call[0][0])
-            assert file_path.endswith(
-                ".svg"
-            ), f"File {file_path} does not end with .svg"
+            assert file_path.endswith(".svg"), (
+                f"File {file_path} does not end with .svg"
+            )
 
     # Setup for HTML
     output_dir_html = tmp_path / "test_output_html"
@@ -117,9 +117,9 @@ def test_plot_scores_respects_save_as_format(mock_evaluation_result, tmp_path):
         # Assert - all files should be saved as .html using write_html
         for call in mock_fig_html.write_html.call_args_list:
             file_path = str(call[0][0])
-            assert file_path.endswith(
-                ".html"
-            ), f"File {file_path} does not end with .html"
+            assert file_path.endswith(".html"), (
+                f"File {file_path} does not end with .html"
+            )
 
 
 @patch("presidio_evaluator.evaluation.model_error.ModelError.get_fps_dataframe")
