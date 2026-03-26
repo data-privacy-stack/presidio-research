@@ -49,11 +49,9 @@ def test_analyzer_simple_input():
         create_tags_from_span=True,
     )
 
-    prediction = model.predict(sample)
+    results_df = model.predict_dataset([sample])
     evaluator = TokenEvaluator()
-
-    evaluated = evaluator.evaluate_sample(sample, prediction)
-    metrics = evaluator.calculate_score([evaluated])
+    metrics = evaluator.calculate_score_on_df(results_df)
 
     assert metrics.pii_precision == 1
     assert metrics.pii_recall == 1

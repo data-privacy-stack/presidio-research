@@ -22,7 +22,11 @@ as:
 - Comparing ground truth annotations with predictions (expects pre-mapped IO-format data from `CanonicalMapper`)
 - Error detection and classification
 - Calculation of global and class specific metrics (precision, recall, F-score)
-- `calculate_score_on_df()` — the primary entry point, accepts a 5-column DataFrame
+- `calculate_score_on_df()` — the primary entry point, accepts a 5-column DataFrame with columns
+  `sentence_id`, `token`, `annotation`, `prediction`, `start_indices` (schema produced by
+  `model.predict_dataset()` and optionally processed by `CanonicalMapper.get_mapped_results_dataframe`).
+  The `level` parameter controls which metrics are computed: `"entity"` (per-type only), `"pii"` (global
+  PII only), or `"both"` (default).
 
 ### 2. Evaluation Strategies
 
@@ -52,9 +56,17 @@ and actual entities.
 
 The `EvaluationResult` class encapsulates the results of an evaluation, including:
 
-- Confusion matrix between predicted and actual entity types (`EvaluationResult.results`)
-- Precision, recall, and F-score metrics (both global (`EvaluationResult.pii_precision`, `EvaluationResult.pii_recall`,
-  EvaluationResult.pii_f`, and per-entity-type `EvaluationResult.per_type`)
+- Confusion matrix between predicted and actual entity types (`EvaluationResult.results` — a `Counter` keyed
+  by `(actual, predicted)` tuples)
+- Precision, recall, and F-score metrics: global (`EvaluationResult.pii_precision`, `EvaluationResult.pii_recall`,
+  `EvaluationResult.pii_f`) and per-entity-type (`EvaluationResult.per_type`)
+- `EvaluationResult.per_type` is a `dict[str, PIIEvaluationMetrics]`. `PIIEvaluationMetrics` is a dataclass
+  with fields: `precision`, `recall`, `f_beta`, `num_predicted`, `num_annotated`, `true_positives`,
+  `false_positives`, `false_negatives`.
+- Convenience methods:
+  - `to_confusion_matrix()` → `(entities, confmatrix)` — list of entity names and 2-D count matrix
+  - `to_confusion_df()` → `pd.DataFrame` — confusion matrix with precision / recall margins
+  - `to_log()` → `dict` — flat metrics dict suitable for experiment tracking
 - Detailed error information for analysis, such as the error type (false positive, false negative, wrong entity type)
   and the context of the error.
 
@@ -81,51 +93,54 @@ The evaluation framework provides robust error analysis capabilities through:
 
 The `Plotter` class provides visualization capabilities for evaluation results:
 
-- Confusion matrices
-- Performance metrics charts
-- Common error visualizations
+- `plot_scores()` — per-entity precision, recall, and F-beta bar charts
+- `plot_confusion_matrix(entities, confmatrix)` — heatmap of the confusion matrix
+- `plot_most_common_tokens()` — most common false-positive and false-negative tokens per entity
+
+The `Plotter` constructor accepts `display_mode="interactive"` (default, Plotly) or
+`display_mode="static"` (static images suited for GitHub rendering). Pass `output_folder` to
+any plotting method to save figures to disk; also set `save_as` (e.g. `"png"`) on the `Plotter`
+constructor.
 
 ## Common Evaluation Workflows
 
 ### Basic End to End Evaluation Workflow
 
 ```python
-# 1. Initialize an evaluator with a presidio instance
 from typing import List
 
 from presidio_analyzer import AnalyzerEngine
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import SpanEvaluator, Plotter
+from presidio_evaluator.entity_mapping import CanonicalMapper
+from presidio_evaluator.evaluation import Plotter, SpanEvaluator
+from presidio_evaluator.models import PresidioAnalyzerWrapper
 
 dataset: List[InputSample] = [...]  # Load your dataset here
 f_beta = 2
 analyzer = AnalyzerEngine(default_score_threshold=0.3)
 
-from presidio_evaluator.models import PresidioAnalyzerWrapper
-from presidio_evaluator.entity_mapping import CanonicalMapper
-
+# 1. Run the model to get a predictions DataFrame
 model = PresidioAnalyzerWrapper(analyzer_engine=analyzer)
-evaluator = SpanEvaluator()
-
-# 2. Get predictions as a DataFrame
 results_df = model.predict_dataset(dataset)
 
-# 3. Map entity types to the same namespace
+# 2. Map entity types to a shared canonical namespace
 mapper = CanonicalMapper()
 mapped_df = mapper.get_mapped_results_dataframe(results_df)
 
-# 4. Evaluate
+# 3. Evaluate
+evaluator = SpanEvaluator()
 results = evaluator.calculate_score_on_df(mapped_df, beta=f_beta)
 
-# 5. Extract confusion matrix and entities
+# 4. Extract confusion matrix and entities
 entities, confmatrix = results.to_confusion_matrix()
 
-# 6. Visualize results
+# 5. Visualize results
 plotter = Plotter(results=results,
                   model_name=model.name,
                   beta=f_beta)
 
 plotter.plot_scores()
+plotter.plot_most_common_tokens()
 plotter.plot_confusion_matrix(entities=entities, confmatrix=confmatrix)
 ```
 
@@ -133,16 +148,19 @@ plotter.plot_confusion_matrix(entities=entities, confmatrix=confmatrix)
 
 The evaluation framework offers several customization options:
 
-- **Entity Filtering**: Focus evaluation on specific entity types
-- **Entity Mapping**: Use `CanonicalMapper.get_mapped_results_dataframe()` to resolve entity types to a shared canonical namespace before evaluation
-- **Generic Entities**: Compare specific entities to generic entities that may not have specific types, like "ID" or "
-  PII". (only available in token evaluation)
-- **Skip Words**: Configure words to ignore during evaluation
-- **IoU Threshold**: For span evaluation, set the threshold for entity boundary matches (only available in span
-  evaluation)
-- **Character vs. Token-based IoU**: For span evaluation, choose between character-level or token-level span
-  intersection-over-union (only
-  available in span evaluation))
+- **Entity Filtering**: Focus evaluation on specific entity types via `entities_to_keep` in the evaluator constructor.
+- **Entity Mapping**: Use `CanonicalMapper.get_mapped_results_dataframe()` to resolve entity types to a shared
+  canonical namespace before evaluation.
+- **Evaluation Level**: Use the `level` parameter of `calculate_score_on_df()` to select which metrics to compute:
+  `"entity"` (per-type), `"pii"` (global PII), or `"both"` (default).
+- **Generic Entities**: Compare specific entities to generic entities that may not have specific types, like `"ID"` or
+  `"PII"`. (only available in token evaluation)
+- **Skip Words**: Configure words to ignore during evaluation. Pass `skip_words=[]` to disable, or omit to use the
+  built-in default list.
+- **IoU Threshold**: For span evaluation, set the threshold for entity boundary matches (default `0.9`, only available
+  in span evaluation).
+- **Character vs. Token-based IoU**: For span evaluation, choose between character-level (`char_based=True`, default)
+  or token-level span intersection-over-union (only available in span evaluation).
 
 ## Evaluators Comparison
 
@@ -237,19 +255,21 @@ accuracy:  75.00%; precision:   0.00%; recall:   0.00%; FB1:   0.00
 Using Presidio's token evaluator without skip words configuration:
 
 ```python
-from presidio_evaluator.evaluation import EvaluationResult, TokenEvaluator
+import pandas as pd
+from presidio_evaluator.evaluation import TokenEvaluator
 
-# Create a sample
-evaluation_result = EvaluationResult(
-    tokens=["United", "States", "of", "America"],
-    actual_tags=["B-LOC", "I-LOC", "O", "B-LOC"],
-    predicted_tags=["I-LOC", "I-LOC", "I-LOC", "I-LOC"],
-    start_indices=[0, 7, 14, 17]
-)
+# Build the 5-column results DataFrame directly
+results_df = pd.DataFrame({
+    "sentence_id": [0, 0, 0, 0],
+    "token": ["United", "States", "of", "America"],
+    "annotation": ["LOC", "LOC", "O", "LOC"],
+    "prediction": ["LOC", "LOC", "LOC", "LOC"],
+    "start_indices": [0, 7, 14, 17],
+})
 
 # Initialize evaluator and evaluate
-evaluator = TokenEvaluator(model=None, skip_words=[])
-final_result = evaluator.calculate_score([evaluation_result])
+evaluator = TokenEvaluator(skip_words=[])
+final_result = evaluator.calculate_score_on_df(results_df)
 
 print(f"Precision: {final_result.pii_precision:.4f}")
 print(f"Recall: {final_result.pii_recall:.4f}")
@@ -266,23 +286,24 @@ F1: 0.8571
 
 ### Presidio Token Evaluator (with skip words)
 
-Using Presidio's token evaluator with "of" configured as a skip word:
+Using Presidio's token evaluator with the default skip words (which include "of"):
 
 ```python
-# Initialize token evaluator with "of" as a skip word
-from presidio_evaluator.evaluation import EvaluationResult, TokenEvaluator
+import pandas as pd
+from presidio_evaluator.evaluation import TokenEvaluator
 
-# Create a sample
-evaluation_result = EvaluationResult(
-    tokens=["United", "States", "of", "America"],
-    actual_tags=["B-LOC", "I-LOC", "O", "B-LOC"],
-    predicted_tags=["I-LOC", "I-LOC", "I-LOC", "I-LOC"],
-    start_indices=[0, 7, 14, 17]
-)
+# Build the 5-column results DataFrame directly
+results_df = pd.DataFrame({
+    "sentence_id": [0, 0, 0, 0],
+    "token": ["United", "States", "of", "America"],
+    "annotation": ["LOC", "LOC", "O", "LOC"],
+    "prediction": ["LOC", "LOC", "LOC", "LOC"],
+    "start_indices": [0, 7, 14, 17],
+})
 
-# Initialize evaluator and evaluate
-evaluator = TokenEvaluator()
-final_result = evaluator.calculate_score([evaluation_result])
+# Initialize evaluator with default skip words (includes "of")
+evaluator = TokenEvaluator()  # skip_words=None uses the built-in default list
+final_result = evaluator.calculate_score_on_df(results_df)
 
 print(f"Precision: {final_result.pii_precision:.4f}")
 print(f"Recall: {final_result.pii_recall:.4f}")
@@ -305,19 +326,21 @@ recall.
 Using Presidio's span evaluator with no skip words:
 
 ```python
-from presidio_evaluator.evaluation import SpanEvaluator, EvaluationResult
+import pandas as pd
+from presidio_evaluator.evaluation import SpanEvaluator
 
-# Same setup as before
-evaluation_result = EvaluationResult(
-    tokens=["United", "States", "of", "America"],
-    actual_tags=["B-LOC", "I-LOC", "O", "B-LOC"],
-    predicted_tags=["I-LOC", "I-LOC", "I-LOC", "I-LOC"],
-    start_indices=[0, 7, 14, 17]
-)
+# Build the 5-column results DataFrame directly
+results_df = pd.DataFrame({
+    "sentence_id": [0, 0, 0, 0],
+    "token": ["United", "States", "of", "America"],
+    "annotation": ["LOC", "LOC", "O", "LOC"],
+    "prediction": ["LOC", "LOC", "LOC", "LOC"],
+    "start_indices": [0, 7, 14, 17],
+})
 
 # Initialize span evaluator with no skip words
-evaluator = SpanEvaluator(iou_threshold=0.5, , skip_words=[])
-scores = evaluator.calculate_score([evaluation_result])
+evaluator = SpanEvaluator(iou_threshold=0.9, skip_words=[])
+scores = evaluator.calculate_score_on_df(results_df)
 
 print(f"Precision: {scores.pii_precision:.4f}")
 print(f"Recall: {scores.pii_recall:.4f}")
@@ -337,22 +360,24 @@ the separate "United States" and "America" entities.
 
 ### Presidio Span Evaluator (with skip words)
 
-Now with "of" as a skip word:
+Now with the default skip words (which include "of"):
 
 ```python
-from presidio_evaluator.evaluation import SpanEvaluator, EvaluationResult
+import pandas as pd
+from presidio_evaluator.evaluation import SpanEvaluator
 
-# Same setup as before
-evaluation_result = EvaluationResult(
-    tokens=["United", "States", "of", "America"],
-    actual_tags=["B-LOC", "I-LOC", "O", "B-LOC"],
-    predicted_tags=["I-LOC", "I-LOC", "I-LOC", "I-LOC"],
-    start_indices=[0, 7, 14, 17]
-)
+# Build the 5-column results DataFrame directly
+results_df = pd.DataFrame({
+    "sentence_id": [0, 0, 0, 0],
+    "token": ["United", "States", "of", "America"],
+    "annotation": ["LOC", "LOC", "O", "LOC"],
+    "prediction": ["LOC", "LOC", "LOC", "LOC"],
+    "start_indices": [0, 7, 14, 17],
+})
 
-# Initialize span evaluator with no skip words
-evaluator = SpanEvaluator(iou_threshold=0.5, )
-scores = evaluator.calculate_score([evaluation_result])
+# Initialize span evaluator with default skip words (includes "of")
+evaluator = SpanEvaluator(iou_threshold=0.9)  # skip_words=None uses the built-in default list
+scores = evaluator.calculate_score_on_df(results_df)
 
 print(f"Precision: {scores.pii_precision:.4f}")
 print(f"Recall: {scores.pii_recall:.4f}")

@@ -1,5 +1,6 @@
 from collections import Counter
 
+import pandas as pd
 import pytest
 
 from presidio_evaluator.evaluation import EvaluationResult, Evaluator, ModelError
@@ -48,7 +49,21 @@ def evaluator():
 
 @pytest.fixture(scope="session")
 def scores(evaluation_result, evaluator):
-    return evaluator.calculate_score([evaluation_result])
+    rows = []
+    i = 0
+    for (ann, pred), count in evaluation_result.results.items():
+        for _ in range(count):
+            rows.append(
+                {
+                    "sentence_id": i,
+                    "token": f"tok{i}",
+                    "annotation": ann,
+                    "prediction": pred,
+                    "start_indices": 0,
+                }
+            )
+            i += 1
+    return evaluator.calculate_score_on_df(pd.DataFrame(rows))
 
 
 def test_to_confusion_matrix(scores):

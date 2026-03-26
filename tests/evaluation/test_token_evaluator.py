@@ -1,6 +1,7 @@
 from collections import Counter
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from presidio_evaluator import InputSample
@@ -17,65 +18,68 @@ from tests.mocks import (
 
 
 def test_evaluator_simple():
-    prediction = ["O", "O", "O", "ANIMAL"]
-
-    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"])
-    sample = InputSample(
-        full_text="I am the walrus", masked="I am the [ANIMAL]", spans=None
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"], skip_words=[])
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0, 0, 0],
+            "token": ["I", "am", "the", "walrus"],
+            "annotation": ["O", "O", "O", "ANIMAL"],
+            "prediction": ["O", "O", "O", "ANIMAL"],
+            "start_indices": [0, 2, 5, 9],
+        }
     )
-    sample.tokens = ["I", "am", "the", "walrus"]
-    sample.tags = ["O", "O", "O", "ANIMAL"]
-
-    evaluated = evaluator.evaluate_sample(sample, prediction)
-    final_evaluation = evaluator.calculate_score([evaluated])
+    final_evaluation = evaluator.calculate_score_on_df(df)
 
     assert final_evaluation.pii_precision == 1
     assert final_evaluation.pii_recall == 1
 
 
 def test_evaluate_multiple_tokens_correct_statistics():
-    prediction = ["O", "O", "O", "ANIMAL", "ANIMAL", "ANIMAL"]
-    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"])
-    sample = InputSample(
-        "I am the walrus amaericanus magnifico", masked=None, spans=None
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"], skip_words=[])
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * 6,
+            "token": ["I", "am", "the", "walrus", "americanus", "magnifico"],
+            "annotation": ["O", "O", "O", "ANIMAL", "ANIMAL", "ANIMAL"],
+            "prediction": ["O", "O", "O", "ANIMAL", "ANIMAL", "ANIMAL"],
+            "start_indices": list(range(6)),
+        }
     )
-    sample.tokens = ["I", "am", "the", "walrus", "americanus", "magnifico"]
-    sample.tags = ["O", "O", "O", "ANIMAL", "ANIMAL", "ANIMAL"]
-
-    evaluated = evaluator.evaluate_sample(sample, prediction)
-    evaluation = evaluator.calculate_score([evaluated])
+    evaluation = evaluator.calculate_score_on_df(df)
 
     assert evaluation.pii_precision == 1
     assert evaluation.pii_recall == 1
 
 
 def test_evaluate_multiple_tokens_partial_match_correct_statistics():
-    prediction = ["O", "O", "O", "ANIMAL", "ANIMAL", "O"]
-    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"])
-    sample = InputSample(
-        "I am the walrus amaericanus magnifico", masked=None, spans=None
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"], skip_words=[])
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * 6,
+            "token": ["I", "am", "the", "walrus", "americanus", "magnifico"],
+            "annotation": ["O", "O", "O", "ANIMAL", "ANIMAL", "ANIMAL"],
+            "prediction": ["O", "O", "O", "ANIMAL", "ANIMAL", "O"],
+            "start_indices": list(range(6)),
+        }
     )
-    sample.tokens = ["I", "am", "the", "walrus", "americanus", "magnifico"]
-    sample.tags = ["O", "O", "O", "ANIMAL", "ANIMAL", "ANIMAL"]
-
-    evaluated = evaluator.evaluate_sample(sample, prediction)
-    evaluation = evaluator.calculate_score([evaluated])
+    evaluation = evaluator.calculate_score_on_df(df)
 
     assert evaluation.pii_precision == 1
     assert evaluation.pii_recall == 4 / 6
 
 
 def test_evaluate_multiple_tokens_no_match_match_correct_statistics():
-    prediction = ["O", "O", "O", "B-SPACESHIP", "L-SPACESHIP", "O"]
-    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"])
-    sample = InputSample(
-        "I am the walrus amaericanus magnifico", masked=None, spans=None
+    evaluator = TokenEvaluator(model=None, entities_to_keep=["ANIMAL"], skip_words=[])
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * 6,
+            "token": ["I", "am", "the", "walrus", "americanus", "magnifico"],
+            "annotation": ["O", "O", "O", "ANIMAL", "ANIMAL", "ANIMAL"],
+            "prediction": ["O", "O", "O", "B-SPACESHIP", "L-SPACESHIP", "O"],
+            "start_indices": list(range(6)),
+        }
     )
-    sample.tokens = ["I", "am", "the", "walrus", "americanus", "magnifico"]
-    sample.tags = ["O", "O", "O", "ANIMAL", "ANIMAL", "ANIMAL"]
-
-    evaluated = evaluator.evaluate_sample(sample, prediction)
-    evaluation = evaluator.calculate_score([evaluated])
+    evaluation = evaluator.calculate_score_on_df(df)
 
     assert np.isnan(evaluation.pii_precision)
     assert evaluation.pii_recall == 0
@@ -117,30 +121,35 @@ def test_evaluate_multiple_examples_ignore_entity_correct_statistics():
 
 
 def test_confusion_matrix_correct_metrics():
-    from collections import Counter
-
-    evaluated = [
-        EvaluationResult(
-            results=Counter(
-                {
-                    ("O", "O"): 150,
-                    ("O", "PERSON"): 30,
-                    ("O", "COMPANY"): 30,
-                    ("PERSON", "PERSON"): 40,
-                    ("COMPANY", "COMPANY"): 40,
-                    ("PERSON", "COMPANY"): 10,
-                    ("COMPANY", "PERSON"): 10,
-                    ("PERSON", "O"): 30,
-                    ("COMPANY", "O"): 30,
-                }
-            ),
-            model_errors=None,
-            text=None,
-        )
-    ]
-
+    counter = Counter(
+        {
+            ("O", "O"): 150,
+            ("O", "PERSON"): 30,
+            ("O", "COMPANY"): 30,
+            ("PERSON", "PERSON"): 40,
+            ("COMPANY", "COMPANY"): 40,
+            ("PERSON", "COMPANY"): 10,
+            ("COMPANY", "PERSON"): 10,
+            ("PERSON", "O"): 30,
+            ("COMPANY", "O"): 30,
+        }
+    )
     evaluator = TokenEvaluator(model=None, entities_to_keep=["PERSON", "COMPANY"])
-    scores = evaluator.calculate_score(evaluated, beta=2.5)
+    rows = []
+    i = 0
+    for (ann, pred), count in counter.items():
+        for _ in range(count):
+            rows.append(
+                {
+                    "sentence_id": i,
+                    "token": f"tok{i}",
+                    "annotation": ann,
+                    "prediction": pred,
+                    "start_indices": 0,
+                }
+            )
+            i += 1
+    scores = evaluator.calculate_score_on_df(pd.DataFrame(rows), beta=2.5)
 
     assert scores.pii_precision == 0.625
     assert scores.pii_recall == 0.625
@@ -151,60 +160,55 @@ def test_confusion_matrix_correct_metrics():
 
 
 def test_confusion_matrix_2_correct_metrics():
-    from collections import Counter
-
-    evaluated = [
-        EvaluationResult(
-            results=Counter(
+    counter = Counter(
+        {
+            ("O", "O"): 65467,
+            ("O", "ORG"): 4189,
+            ("GPE", "O"): 3370,
+            ("PERSON", "PERSON"): 2024,
+            ("GPE", "PERSON"): 1488,
+            ("GPE", "GPE"): 1033,
+            ("O", "GPE"): 964,
+            ("ORG", "ORG"): 914,
+            ("O", "PERSON"): 834,
+            ("GPE", "ORG"): 401,
+            ("PERSON", "ORG"): 35,
+            ("PERSON", "O"): 33,
+            ("ORG", "O"): 8,
+            ("PERSON", "GPE"): 5,
+            ("ORG", "PERSON"): 1,
+        }
+    )
+    rows = []
+    i = 0
+    for (ann, pred), count in counter.items():
+        for _ in range(count):
+            rows.append(
                 {
-                    ("O", "O"): 65467,
-                    ("O", "ORG"): 4189,
-                    ("GPE", "O"): 3370,
-                    ("PERSON", "PERSON"): 2024,
-                    ("GPE", "PERSON"): 1488,
-                    ("GPE", "GPE"): 1033,
-                    ("O", "GPE"): 964,
-                    ("ORG", "ORG"): 914,
-                    ("O", "PERSON"): 834,
-                    ("GPE", "ORG"): 401,
-                    ("PERSON", "ORG"): 35,
-                    ("PERSON", "O"): 33,
-                    ("ORG", "O"): 8,
-                    ("PERSON", "GPE"): 5,
-                    ("ORG", "PERSON"): 1,
+                    "sentence_id": i,
+                    "token": f"tok{i}",
+                    "annotation": ann,
+                    "prediction": pred,
+                    "start_indices": 0,
                 }
-            ),
-            model_errors=None,
-            text=None,
-        )
-    ]
-
+            )
+            i += 1
     evaluator = TokenEvaluator()
-    scores = evaluator.calculate_score(evaluated, beta=2.5)
+    scores = evaluator.calculate_score_on_df(pd.DataFrame(rows), beta=2.5)
 
     pii_tp = (
-        evaluated[0].results[("PERSON", "PERSON")]
-        + evaluated[0].results[("ORG", "ORG")]
-        + evaluated[0].results[("GPE", "GPE")]
-        + evaluated[0].results[("ORG", "GPE")]
-        + evaluated[0].results[("ORG", "PERSON")]
-        + evaluated[0].results[("GPE", "ORG")]
-        + evaluated[0].results[("GPE", "PERSON")]
-        + evaluated[0].results[("PERSON", "GPE")]
-        + evaluated[0].results[("PERSON", "ORG")]
+        counter[("PERSON", "PERSON")]
+        + counter[("ORG", "ORG")]
+        + counter[("GPE", "GPE")]
+        + counter[("ORG", "GPE")]
+        + counter[("ORG", "PERSON")]
+        + counter[("GPE", "ORG")]
+        + counter[("GPE", "PERSON")]
+        + counter[("PERSON", "GPE")]
+        + counter[("PERSON", "ORG")]
     )
-
-    pii_fp = (
-        evaluated[0].results[("O", "PERSON")]
-        + evaluated[0].results[("O", "GPE")]
-        + evaluated[0].results[("O", "ORG")]
-    )
-
-    pii_fn = (
-        evaluated[0].results[("PERSON", "O")]
-        + evaluated[0].results[("GPE", "O")]
-        + evaluated[0].results[("ORG", "O")]
-    )
+    pii_fp = counter[("O", "PERSON")] + counter[("O", "GPE")] + counter[("O", "ORG")]
+    pii_fn = counter[("PERSON", "O")] + counter[("GPE", "O")] + counter[("ORG", "O")]
 
     assert scores.pii_precision == pii_tp / (pii_tp + pii_fp)
     assert scores.pii_recall == pii_tp / (pii_tp + pii_fn)
@@ -283,12 +287,16 @@ def test_skip_words_are_not_counted_as_errors(
     tokens, tags, predicted_tags, precision, recall
 ):
     evaluator = TokenEvaluator(model=None, entities_to_keep=["LOCATION", "PERSON"])
-    sample = InputSample(full_text=" ".join(tokens), spans=None)
-    sample.tokens = tokens
-    sample.tags = tags
-
-    evaluated = evaluator.evaluate_sample(sample, predicted_tags)
-    final_evaluation = evaluator.calculate_score([evaluated])
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * len(tokens),
+            "token": tokens,
+            "annotation": tags,
+            "prediction": predicted_tags,
+            "start_indices": list(range(len(tokens))),
+        }
+    )
+    final_evaluation = evaluator.calculate_score_on_df(df)
 
     if np.isnan(precision):
         assert np.isnan(final_evaluation.pii_precision)
@@ -302,40 +310,10 @@ def test_skip_words_are_not_counted_as_errors(
 
 
 def test_results_to_dataframe():
-    prediction = ["O", "EMAIL", "PHONE", "LOCATION", "PERSON"]
-    tokens = ["John", "details", "john@mail.com", "123-456-7890", "today"]
-    tags = ["PERSON", "O", "EMAIL", "PHONE", "O"]
-    start_indices = [0, 5, 13, 27, 40]
+    """get_results_dataframe() has been removed and raises DeprecationError."""
     evaluator = TokenEvaluator()
-
-    sample = InputSample(
-        full_text="John details john@mail.com 123-456-7890 today",
-        tokens=tokens,
-        start_indices=start_indices,
-        tags=tags,
-    )
-
-    results = [
-        evaluator.evaluate_sample(sample, prediction),
-        evaluator.evaluate_sample(sample, prediction),
-    ]
-
-    df = evaluator.get_results_dataframe(results)
-    expected_columns = [
-        "sentence_id",
-        "token",
-        "annotation",
-        "prediction",
-        "start_indices",
-    ]
-    for col in expected_columns:
-        assert col in df.columns
-
-    assert df["annotation"].to_list() == tags + tags
-    assert df["prediction"].to_list() == prediction + prediction
-    assert df["token"].to_list() == tokens + tokens
-    assert df["sentence_id"].to_list() == [0] * len(tokens) + [1] * len(tokens)
-    assert df["start_indices"].to_list() == start_indices + start_indices
+    with pytest.raises(DeprecationError):
+        evaluator.get_results_dataframe([])
 
 
 def test_score_calculation():
@@ -344,20 +322,17 @@ def test_score_calculation():
     - FP and WrongEntity both hurt precision
     - Only FN hurts recall
     """
-    prediction = ["PERSON", "PHONE", "O", "ORGANIZATION"]
-
     evaluator = TokenEvaluator()
-
-    # Ground truth: [PERSON, O, EMAIL]
-    # Prediction:   [PERSON, PHONE, LOCATION]
-    sample = InputSample(
-        full_text="John visited Paris France",
-        tokens=["John", "visited", "Paris", "France"],
-        tags=["PERSON", "O", "LOCATION", "LOCATION"],
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0, 0, 0],
+            "token": ["John", "visited", "Paris", "France"],
+            "annotation": ["PERSON", "O", "LOCATION", "LOCATION"],
+            "prediction": ["PERSON", "PHONE", "O", "ORGANIZATION"],
+            "start_indices": [0, 5, 12, 18],
+        }
     )
-
-    result = evaluator.evaluate_sample(sample, prediction)
-    score = evaluator.calculate_score([result])
+    score = evaluator.calculate_score_on_df(df)
 
     # Expected results:
     # TP: PERSON->PERSON
@@ -425,10 +400,22 @@ def test_calculate_score_existing_results_counter_individual_entities():
     expected_z_precision = z_tp / z_fp_tp if z_fp_tp != 0 else np.nan
     expected_z_recall = z_tp / z_fn_tp if z_fn_tp != 0 else np.nan
 
+    rows = []
+    i = 0
+    for (ann, pred), count in results.items():
+        for _ in range(count):
+            rows.append(
+                {
+                    "sentence_id": i,
+                    "token": f"tok{i}",
+                    "annotation": ann,
+                    "prediction": pred,
+                    "start_indices": 0,
+                }
+            )
+            i += 1
     evaluator = TokenEvaluator()
-    evaluation_score = evaluator.calculate_score(
-        evaluation_results=[EvaluationResult(results)]
-    )
+    evaluation_score = evaluator.calculate_score_on_df(pd.DataFrame(rows))
 
     assert evaluation_score.entity_precision_dict["X"] == expected_x_precision
     assert evaluation_score.entity_recall_dict["X"] == expected_x_recall

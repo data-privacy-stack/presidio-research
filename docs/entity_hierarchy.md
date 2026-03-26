@@ -13,9 +13,8 @@ can be normalized to.
 `presidio_evaluator.entity_mapping` provides:
 
 - **`HIERARCHY`** — a single nested Python dict that is the authoritative taxonomy.
-- **`EntityHierarchy`** — a class that wraps the taxonomy and exposes canonicalization, branch lookup, and a mutation API.
-- **Module-level shortcuts** — `canonicalize()`, `get_branch()`, and `print_hierarchy()` delegate to a shared default
-  instance so most callers never need to instantiate the class directly.
+- **`EntityHierarchy`** — a class that wraps the taxonomy and exposes canonicalization, branch lookup, BIO prefix stripping, and alias extension.
+- **`CanonicalMapper`** — a workflow class that resolves a full set of raw model/dataset labels through auto-resolution, fuzzy matching, and manual override.
 
 ---
 
@@ -32,8 +31,8 @@ The default canonical depth is **3** (passed as `canonical_depth=3` to `EntityHi
 
 | Depth | Role | Behaviour |
 |-------|------|-----------|
-| 1 | Root (`PII`) | Self-maps — `canonicalize("PII")` → `"PII"` |
-| 2 | Domain branch (e.g. `GOVERNMENT_ID`, `CONTACT`) | Self-maps — `canonicalize("CONTACT")` → `"CONTACT"` |
+| 1 | Root (`PII`) | Self-maps — `h.canonicalize("PII")` → `"PII"` |
+| 2 | Domain branch (e.g. `GOVERNMENT_ID`, `CONTACT`) | Self-maps — `h.canonicalize("CONTACT")` → `"CONTACT"` |
 | 3 | **Canonical entity** (e.g. `EMAIL_ADDRESS`, `PASSPORT`) | The resolution target |
 | 4+ | Fine-grained sub-type (e.g. `CARD_NUMBER` under `CREDIT_CARD` under `FINANCIAL`) | Rolls up to its depth-3 ancestor |
 
@@ -79,26 +78,28 @@ FINANCIAL_PII (depth 2, self-maps)
 ```
 
 ```python
-canonicalize("CREDIT_CARD")   # → "FINANCIAL"
-canonicalize("IBAN")          # → "FINANCIAL"
-canonicalize("FINANCIAL_PII") # → "FINANCIAL_PII"  (depth-2 self-map)
+h = EntityHierarchy()
+h.canonicalize("CREDIT_CARD")   # → "FINANCIAL"
+h.canonicalize("IBAN")          # → "FINANCIAL"
+h.canonicalize("FINANCIAL_PII") # → "FINANCIAL_PII"  (depth-2 self-map)
 ```
 
 ### Country-prefix auto-mapping
 
 Rather than listing every `URUGUAY_TAX_ID`, `AUSTRALIA_DRIVERS_LICENSE`, etc. explicitly, the module keeps two tables:
 
-- **`COUNTRIES`** — all 249 ISO 3166-1 alpha-2 codes plus full English country name tokens (e.g. `AUSTRALIA`, `GERMANY`).
-- **`country_prefixed_doc_types`** — an instance attribute on `EntityHierarchy`; a suffix keyword → canonical entity mapping (e.g. `"DRIVER"` → `"DRIVER_LICENSE"`). Add entries via `h.add_country_doc_type()`.
+- **`COUNTRIES`** — all 249 ISO 3166-1 alpha-2 codes plus full English country name tokens, demonyms, and adjectival forms (e.g. `AUSTRALIA`, `GERMANY`, `BRITISH`, `FRENCH`).
+- **`country_prefixed_doc_types`** — an instance attribute on `EntityHierarchy`; a suffix keyword → canonical entity mapping (e.g. `"DRIVER"` → `"DRIVER_LICENSE"`). Mutate directly: `h.country_prefixed_doc_types["MY_SUFFIX"] = "MY_CANONICAL"`.
 
 Any `<COUNTRY>_<SUFFIX>` label is resolved automatically. An unrecognized suffix with a known country prefix defaults
 to `"NATIONAL_ID"`.
 
 ```python
-canonicalize("URUGUAY_TAX_ID")           # → "TAX_ID"
-canonicalize("AUSTRALIA_DRIVERS_LICENSE") # → "DRIVER_LICENSE"
-canonicalize("GERMANY_PASSPORT_NUMBER")   # → "PASSPORT"
-canonicalize("BRAZIL_UNKNOWN_DOC")        # → "NATIONAL_ID"  (fallback)
+h = EntityHierarchy()
+h.canonicalize("URUGUAY_TAX_ID")           # → "TAX_ID"
+h.canonicalize("AUSTRALIA_DRIVERS_LICENSE") # → "DRIVER_LICENSE"
+h.canonicalize("GERMANY_PASSPORT_NUMBER")   # → "PASSPORT"
+h.canonicalize("BRAZIL_UNKNOWN_DOC")        # → "NATIONAL_ID"  (fallback)
 ```
 
 ---
@@ -175,25 +176,21 @@ clinical data governed by health-data regulations (HIPAA, GDPR Article 9) rather
 
 ## Usage
 
-### Quick lookup — module-level shortcuts
-
-For most use cases, import the three module-level functions directly:
+### Basic lookup — `EntityHierarchy`
 
 ```python
-from presidio_evaluator.entity_mapping import (
-    canonicalize,
-    get_branch,
-    EntityNotMappedError,
-)
+from presidio_evaluator.entity_mapping import EntityHierarchy, EntityNotMappedError
 
-canonicalize("EMAIL")           # → "EMAIL_ADDRESS"
-canonicalize("date_of_birth")   # → "BIRTH_DATE"
-canonicalize("CREDITCARD")      # → "FINANCIAL"
+h = EntityHierarchy()   # uses the built-in HIERARCHY at canonical_depth=3
 
-get_branch("PASSPORT")
+h.canonicalize("EMAIL")           # → "EMAIL_ADDRESS"
+h.canonicalize("date_of_birth")   # → "BIRTH_DATE"
+h.canonicalize("CREDITCARD")      # → "FINANCIAL"
+
+h.get_branch("PASSPORT")
 # → ["PII", "GOVERNMENT_ID", "PASSPORT"]
 
-get_branch("GERMANY_PASSPORT_NUMBER")
+h.get_branch("GERMANY_PASSPORT_NUMBER")
 # → ["PII", "GOVERNMENT_ID", "PASSPORT"]
 ```
 
@@ -201,66 +198,75 @@ get_branch("GERMANY_PASSPORT_NUMBER")
 
 ```python
 try:
-    canonicalize("TOTALLY_UNKNOWN")
+    h.canonicalize("TOTALLY_UNKNOWN")
 except EntityNotMappedError as e:
     print(e)  # Unknown entity label: 'TOTALLY_UNKNOWN'
 ```
 
-### Accessing the pre-built lookup tables
+#### Fuzzy resolution
 
-The module exposes read-only snapshots of the default instance's lookup tables — useful for bulk operations:
+`canonicalize()` accepts an optional `threshold` (default `0.80`). Set `threshold=1.0` to force exact matching only:
 
 ```python
-from presidio_evaluator.entity_mapping import (
-    RAW_TO_CANONICAL,       # dict[str, str]  — normalized raw → canonical
-    ALL_CANONICAL_ENTITIES, # list[str]       — every depth-3 (or shallower-leaf) node
-    CANONICAL_TO_BRANCH,    # dict[str, list] — canonical → ancestor path
-)
-
-# Map a list of model outputs in one comprehension
-raw_labels = ["CREDITCARD", "EMAIL", "DATE_OF_BIRTH"]
-canonical  = [RAW_TO_CANONICAL.get(lbl.upper().replace("_",""), lbl) for lbl in raw_labels]
+h.canonicalize("EMAIL_ADRES")               # → "EMAIL_ADDRESS"  (fuzzy match)
+h.canonicalize("EMAIL_ADRES", threshold=1.0) # → EntityNotMappedError
 ```
 
-### Custom hierarchy — mutation API
+#### BIO prefix stripping
 
-When you need to extend or restrict the default taxonomy for a specific project, create an independent copy and mutate
-it. The original default instance is never modified.
+Labels with BIO/BIOES/BILOU/BILUO prefixes or suffixes are automatically stripped before lookup:
 
 ```python
-from presidio_evaluator.entity_mapping import EntityHierarchy
+h.canonicalize("B-PERSON")   # → "NAME"
+h.canonicalize("PERSON-I")   # → "NAME"
+```
 
-h = EntityHierarchy.default().copy()
+### Accessing instance lookup tables
 
-# Add a new alias for an existing entity
+The lookup tables built from the hierarchy are exposed as instance attributes:
+
+```python
+h = EntityHierarchy()
+
+# dict[str, str] — normalized raw → canonical
+h.raw_to_canonical["CREDITCARD"]   # → "FINANCIAL"
+
+# list[str] — every canonical-depth node name
+h.all_canonical_entities           # ["NAME", "EMAIL_ADDRESS", ...]
+
+# dict[str, list[str]] — canonical → full ancestor path
+h.canonical_to_branch["PASSPORT"]  # → ["PII", "GOVERNMENT_ID", "PASSPORT"]
+```
+
+### Normalizing a label
+
+`EntityHierarchy.normalize()` is a static method that strips BIO prefixes/suffixes, uppercases, and removes `_` and `-`. It is the first step of every canonicalization:
+
+```python
+EntityHierarchy.normalize("b-email_address")  # → "EMAILADDRESS"
+EntityHierarchy.normalize("PERSON-I")         # → "PERSON"
+```
+
+### Adding aliases
+
+```python
+h = EntityHierarchy()
 h.add_alias("EMAIL_ADDRESS", "ELECTRONIC_MAIL")
 h.canonicalize("ELECTRONIC_MAIL")  # → "EMAIL_ADDRESS"
-
-# Add a new canonical entity under an existing branch
-h.add_entity(["PII", "CONTACT"], "MESSAGING_APP", aliases=["WHATSAPP", "SIGNAL"])
-h.canonicalize("WHATSAPP")  # → "MESSAGING_APP"
-
-# Rename a node
-h.rename_entity("MESSAGING_APP", "INSTANT_MESSAGE")
-h.canonicalize("WHATSAPP")  # → "INSTANT_MESSAGE"
-
-# Remove an entity (and all its children/aliases)
-h.remove_entity("INSTANT_MESSAGE")
-
-# Remove a single alias
-h.remove_alias("EMAIL_ADDRESS", "ELECTRONIC_MAIL")
 ```
 
-### Country-prefix Customization
+`add_alias()` raises `KeyError` if `entity_name` is not found in the hierarchy. Each `add_alias()` call triggers a full rebuild of the internal lookup tables.
+
+### Country-prefix customization
+
+Add entries to `country_prefixed_doc_types` to teach the engine new suffix → canonical mappings:
 
 ```python
-h = EntityHierarchy.default().copy()
-
-# Teach the engine that a new suffix maps to an existing canonical
-h.add_country_doc_type("HEALTH_CARD", "HEALTH_INSURANCE_ID")
+h = EntityHierarchy()
+h.country_prefixed_doc_types["HEALTH_CARD"] = "HEALTH_INSURANCE_ID"
 h.canonicalize("CANADA_HEALTH_CARD")  # → "HEALTH_INSURANCE_ID"
 
-h.remove_country_doc_type("HEALTH_CARD")
+del h.country_prefixed_doc_types["HEALTH_CARD"]
 ```
 
 ### Custom taxonomy from scratch
@@ -268,6 +274,8 @@ h.remove_country_doc_type("HEALTH_CARD")
 Pass your own hierarchy dict to the constructor:
 
 ```python
+from presidio_evaluator.entity_mapping import EntityHierarchy
+
 custom = EntityHierarchy(
     hierarchy={"MY_ROOT": {"MY_BRANCH": {"MY_ENTITY": ["alias1", "alias2"]}}},
     canonical_depth=3,
@@ -278,28 +286,101 @@ custom.canonicalize("alias1")  # → "MY_ENTITY"
 ### Inspecting the tree
 
 ```python
-h = EntityHierarchy.default()
-h.print_hierarchy()
+h = EntityHierarchy()
 
-print(h.all_canonical_entities)   # list of all canonical names
-print(h.canonical_to_branch["PASSPORT"])  # ["PII", "GOVERNMENT_ID", "PASSPORT"]
+print(h.all_canonical_entities)            # list of all canonical names
+print(h.canonical_to_branch["PASSPORT"])   # ["PII", "GOVERNMENT_ID", "PASSPORT"]
 ```
+
+### Mapping model output with `CanonicalMapper`
+
+`CanonicalMapper` resolves a full set of raw entity labels — as used by models or evaluation datasets — to canonical entities. Auto-resolution runs at construction time (exact alias → country-prefix → fuzzy); unresolvable labels land in `pending` and must be handled manually before `get_mapping()` will succeed.
+
+```python
+from presidio_evaluator.entity_mapping import CanonicalMapper, IncompleteMapping
+
+mapper = CanonicalMapper(["EMAIL_ADDRESS", "EMAILADRES", "MY_CUSTOM_LABEL"])
+# repr: "CanonicalMapper(2 resolved, 1 pending)"
+
+mapper.render_html()   # inspect in Jupyter; plain-text fallback in terminals
+```
+
+#### Handling pending labels
+
+```python
+# Option A: manually assign a canonical (or None to suppress from evaluation)
+mapper.map({"MY_CUSTOM_LABEL": "EMAIL_ADDRESS"})
+
+# Option B: resolve interactively in the terminal (shows ranked fuzzy suggestions)
+mapper.resolve_interactively()
+
+# Retrieve the final mapping dict
+mapping = mapper.get_mapping()
+# → {"EMAIL_ADDRESS": "EMAIL_ADDRESS", "EMAILADRES": "EMAIL_ADDRESS", "MY_CUSTOM_LABEL": "EMAIL_ADDRESS"}
+```
+
+`get_mapping()` raises `IncompleteMapping` (a `RuntimeError` subclass) if any labels remain pending.
+`map()` is atomic — if any entry is invalid, no changes are applied.
+
+#### Rendering the mapping for review
+
+```python
+# Return an HTML string for saving or embedding; pending labels shown, no exception raised
+html = mapper.get_mapping(mode="html")
+
+# Return a plain-text table string
+text = mapper.get_mapping(mode="text")
+```
+
+#### Applying the mapping to evaluation results
+
+```python
+# results_df is the 5-column DataFrame returned by model.predict_dataset()
+mapped_df = mapper.get_mapped_results_dataframe(results_df)
+
+# Switch to a coarser hierarchy level
+mapped_df = mapper.get_mapped_results_dataframe(results_df, hierarchy=2)
+```
+
+When annotation and prediction labels are related but resolve to different canonical entities at the current depth, a `UserWarning` is emitted. Passing `hierarchy=2` (or another depth) rebuilds the underlying `EntityHierarchy` and re-resolves all previously seen labels.
 
 ---
 
 ## Quick reference
 
-| Import | Type | Description |
+### `EntityHierarchy`
+
+| Symbol | Type | Description |
 |--------|------|-------------|
-| `canonicalize(raw)` | `str` | Resolve a raw label to its canonical form |
-| `get_branch(raw)` | `list[str]` | Full ancestor path for a raw label |
-| `RAW_TO_CANONICAL` | `dict[str, str]` | Pre-built normalized-raw → canonical map |
-| `ALL_CANONICAL_ENTITIES` | `list[str]` | Every canonical entity name |
-| `CANONICAL_TO_BRANCH` | `dict[str, list[str]]` | Canonical → ancestor path map |
-| `EntityHierarchy.default()` | `EntityHierarchy` | Shared read-only default instance |
-| `EntityHierarchy.default().copy()` | `EntityHierarchy` | Mutable independent copy |
-| `EntityNotMappedError` | `ValueError` subclass | Raised for unresolvable labels |
-| `IncompleteMapping` | `RuntimeError` subclass | Raised by `get_mapping()` when labels are still pending |
+| `EntityHierarchy()` | `EntityHierarchy` | Default instance at `canonical_depth=3` |
+| `h.canonicalize(raw, threshold=0.80)` | `str` | Resolve raw label → canonical; fuzzy-enabled by default |
+| `h.get_branch(raw)` | `list[str]` | Full ancestor path for a raw label |
+| `EntityHierarchy.normalize(label)` | `str` (static) | Strip BIO prefix/suffix, uppercase, remove `_`/`-` |
+| `h.add_alias(entity, alias)` | `None` | Add a raw alias to an existing entity |
+| `h.raw_to_canonical` | `dict[str, str]` | Normalized raw → canonical |
+| `h.all_canonical_entities` | `list[str]` | Every canonical-depth entity name |
+| `h.canonical_to_branch` | `dict[str, list[str]]` | Canonical → full ancestor path |
+| `h.country_prefixed_doc_types` | `dict[str, str]` | Suffix → canonical overrides for the country-prefix engine |
+
+### `CanonicalMapper`
+
+| Symbol | Type | Description |
+|--------|------|-------------|
+| `CanonicalMapper(labels)` | `CanonicalMapper` | Resolve a set of raw labels with auto + manual fallback |
+| `mapper.pending` | `list[str]` | Unresolved labels, alphabetically sorted |
+| `mapper.map(dict)` | `CanonicalMapper` | Manually assign canonicals (atomic, returns `self`) |
+| `mapper.resolve_interactively()` | `CanonicalMapper` | Terminal prompt loop for pending labels |
+| `mapper.get_mapping()` | `dict[str, str\|None]` | Final mapping (raises `IncompleteMapping` if pending) |
+| `mapper.get_mapping(mode="html")` | `str` | HTML audit table (no exception on pending) |
+| `mapper.get_mapping(mode="text")` | `str` | Plain-text audit table (no exception on pending) |
+| `mapper.render_html()` | `None` | Display in Jupyter / print plain-text fallback |
+| `mapper.get_mapped_results_dataframe(df)` | `pd.DataFrame` | Remap annotation/prediction columns |
+
+### Module-level constants
+
+| Symbol | Type | Description |
+|--------|------|-------------|
 | `HIERARCHY` | `dict` | The raw taxonomy dict |
 | `COUNTRIES` | `set[str]` | All recognized country tokens |
-| `h.country_prefixed_doc_types` | `dict[str, str]` | Instance attr: suffix → canonical mapping (mutate via `add_country_doc_type()`) |
+| `EntityNotMappedError` | `ValueError` subclass | Raised for unresolvable labels |
+| `IncompleteMapping` | `RuntimeError` subclass | Raised by `get_mapping()` when labels are still pending |

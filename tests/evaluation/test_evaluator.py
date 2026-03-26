@@ -1,8 +1,7 @@
-import pandas as pd
 import pytest
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.evaluation import ErrorType, EvaluationResult
+from presidio_evaluator.evaluation import DeprecationError, ErrorType, EvaluationResult
 from presidio_evaluator.evaluation.token_evaluator import TokenEvaluator
 from tests.mocks import MockTokensModel
 
@@ -157,378 +156,66 @@ def test_error_type_classification():
 
 
 def test_get_results_dataframe_basic():
-    """Test the basic functionality of get_results_dataframe without entity filtering."""
-    evaluation_results = [
-        EvaluationResult(
-            tokens=["I", "am", "John", "Smith", "from", "New", "York"],
-            actual_tags=["O", "O", "PERSON", "PERSON", "O", "LOCATION", "LOCATION"],
-            predicted_tags=["O", "O", "PERSON", "PERSON", "O", "LOCATION", "LOCATION"],
-            start_indices=[0, 1, 2, 3, 4, 5, 6],
-            results={},  # Not needed for these tests
-        )
-    ]
-
+    """get_results_dataframe() has been removed and raises DeprecationError."""
     evaluator = MockEvaluator()
-    df = evaluator.get_results_dataframe(evaluation_results)
-
-    # Verify the dataframe has the correct shape and columns
-    assert isinstance(df, pd.DataFrame)
-    assert df.shape == (7, 5)
-    assert list(df.columns) == [
-        "sentence_id",
-        "token",
-        "annotation",
-        "prediction",
-        "start_indices",
-    ]
-
-    # Verify the data is correct
-    assert list(df["token"]) == ["I", "am", "John", "Smith", "from", "New", "York"]
-    assert list(df["annotation"]) == [
-        "O",
-        "O",
-        "PERSON",
-        "PERSON",
-        "O",
-        "LOCATION",
-        "LOCATION",
-    ]
-    assert list(df["prediction"]) == [
-        "O",
-        "O",
-        "PERSON",
-        "PERSON",
-        "O",
-        "LOCATION",
-        "LOCATION",
-    ]
-    assert list(df["start_indices"]) == [0, 1, 2, 3, 4, 5, 6]
+    with pytest.raises(DeprecationError):
+        evaluator.get_results_dataframe([])
 
 
 def test_get_results_dataframe_with_entity_filtering():
-    """Test that get_results_dataframe filters entities correctly when provided with a list."""
-    evaluation_results = [
-        EvaluationResult(
-            tokens=["I", "am", "John", "Smith", "from", "New", "York"],
-            actual_tags=["O", "O", "PERSON", "PERSON", "O", "LOCATION", "LOCATION"],
-            predicted_tags=["O", "O", "PERSON", "PERSON", "O", "LOCATION", "LOCATION"],
-            start_indices=[0, 1, 2, 3, 4, 5, 6],
-            results={},
-        )
-    ]
-
+    """get_results_dataframe() has been removed and raises DeprecationError."""
     evaluator = MockEvaluator()
-    # Filter to only include PERSON entities
-    df = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
-
-    # Verify that LOCATION tags are filtered out (replaced with "O")
-    assert list(df["annotation"]) == ["O", "O", "PERSON", "PERSON", "O", "O", "O"]
-    assert list(df["prediction"]) == ["O", "O", "PERSON", "PERSON", "O", "O", "O"]
+    with pytest.raises(DeprecationError):
+        evaluator.get_results_dataframe([])
 
 
 def test_get_results_dataframe_with_multiple_entities():
-    """Test filtering with multiple entities."""
-    evaluation_results = [
-        EvaluationResult(
-            tokens=[
-                "My",
-                "name",
-                "is",
-                "John",
-                "Smith",
-                "and",
-                "my",
-                "email",
-                "is",
-                "john@example.com",
-            ],
-            actual_tags=[
-                "O",
-                "O",
-                "O",
-                "PERSON",
-                "PERSON",
-                "O",
-                "O",
-                "O",
-                "O",
-                "EMAIL",
-            ],
-            predicted_tags=[
-                "O",
-                "O",
-                "O",
-                "PERSON",
-                "PERSON",
-                "O",
-                "O",
-                "O",
-                "O",
-                "EMAIL",
-            ],
-            start_indices=list(range(10)),
-            results={},
-        )
-    ]
-
+    """get_results_dataframe() has been removed and raises DeprecationError."""
     evaluator = MockEvaluator()
-    # Filter to only include PERSON entities
-    df_person = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
-    assert list(df_person["annotation"]) == [
-        "O",
-        "O",
-        "O",
-        "PERSON",
-        "PERSON",
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-    ]
-
-    # Filter to only include EMAIL entities
-    df_email = evaluator.get_results_dataframe(evaluation_results, entities=["EMAIL"])
-    assert list(df_email["annotation"]) == [
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-        "EMAIL",
-    ]
-
-    # Include both PERSON and EMAIL entities
-    df_both = evaluator.get_results_dataframe(
-        evaluation_results, entities=["PERSON", "EMAIL"]
-    )
-    assert list(df_both["annotation"]) == [
-        "O",
-        "O",
-        "O",
-        "PERSON",
-        "PERSON",
-        "O",
-        "O",
-        "O",
-        "O",
-        "EMAIL",
-    ]
+    with pytest.raises(DeprecationError):
+        evaluator.get_results_dataframe([])
 
 
 def test_get_results_dataframe_with_mismatched_predictions():
-    """Test that filtering works correctly when annotations and predictions have different entity types."""
-    evaluation_results = [
-        EvaluationResult(
-            tokens=["John", "Smith", "lives", "in", "New", "York"],
-            actual_tags=["PERSON", "PERSON", "O", "O", "LOCATION", "LOCATION"],
-            predicted_tags=[
-                "PERSON",
-                "PERSON",
-                "O",
-                "O",
-                "CITY",
-                "CITY",
-            ],  # Predicted CITY instead of LOCATION
-            start_indices=list(range(6)),
-            results={},
-        )
-    ]
-
+    """get_results_dataframe() has been removed and raises DeprecationError."""
     evaluator = MockEvaluator()
-    # Filter to only include PERSON entities
-    df_person = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
-    assert list(df_person["annotation"]) == ["PERSON", "PERSON", "O", "O", "O", "O"]
-    assert list(df_person["prediction"]) == ["PERSON", "PERSON", "O", "O", "O", "O"]
-
-    # Filter to only include LOCATION entities
-    df_location = evaluator.get_results_dataframe(
-        evaluation_results, entities=["LOCATION"]
-    )
-    assert list(df_location["annotation"]) == [
-        "O",
-        "O",
-        "O",
-        "O",
-        "LOCATION",
-        "LOCATION",
-    ]
-    assert list(df_location["prediction"]) == [
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-    ]  # CITY is filtered out
-
-    # Filter to only include CITY entities
-    df_city = evaluator.get_results_dataframe(evaluation_results, entities=["CITY"])
-    assert list(df_city["annotation"]) == [
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-    ]  # LOCATION is filtered out
-    assert list(df_city["prediction"]) == ["O", "O", "O", "O", "CITY", "CITY"]
+    with pytest.raises(DeprecationError):
+        evaluator.get_results_dataframe([])
 
 
 def test_get_results_dataframe_with_multiple_sentences():
-    """Test filtering with multiple evaluation results (sentences)."""
-    evaluation_results = [
-        EvaluationResult(
-            tokens=["John", "Smith", "lives", "in", "New", "York"],
-            actual_tags=["PERSON", "PERSON", "O", "O", "LOCATION", "LOCATION"],
-            predicted_tags=["PERSON", "PERSON", "O", "O", "LOCATION", "LOCATION"],
-            start_indices=list(range(6)),
-            results={},
-        ),
-        EvaluationResult(
-            tokens=["Jane", "Doe", "works", "at", "Microsoft"],
-            actual_tags=["PERSON", "PERSON", "O", "O", "ORG"],
-            predicted_tags=["PERSON", "PERSON", "O", "O", "ORG"],
-            start_indices=list(range(5)),
-            results={},
-        ),
-    ]
-
+    """get_results_dataframe() has been removed and raises DeprecationError."""
     evaluator = MockEvaluator()
-    # Filter to only include PERSON entities
-    df = evaluator.get_results_dataframe(evaluation_results, entities=["PERSON"])
-
-    # Verify that the dataframe has the correct shape and columns
-    assert df.shape == (
-        11,
-        5,
-    )  # 6 tokens in first sentence + 5 tokens in second sentence
-
-    # Check that only PERSON entities are included and others are filtered out
-    assert list(df[df["sentence_id"] == 0]["annotation"]) == [
-        "PERSON",
-        "PERSON",
-        "O",
-        "O",
-        "O",
-        "O",
-    ]
-    assert list(df[df["sentence_id"] == 1]["annotation"]) == [
-        "PERSON",
-        "PERSON",
-        "O",
-        "O",
-        "O",
-    ]
+    with pytest.raises(DeprecationError):
+        evaluator.get_results_dataframe([])
 
 
 def test_empty_evaluation_results():
-    """Test that an error is raised when evaluation results are empty."""
+    """get_results_dataframe() raises DeprecationError regardless of input."""
     evaluator = MockEvaluator()
-    with pytest.raises(ValueError):
+    with pytest.raises(DeprecationError):
         evaluator.get_results_dataframe([])
 
 
 def test_evaluation_results_without_tokens():
-    """Test that an error is raised when evaluation results don't have tokens."""
-    # Create an EvaluationResult with empty tokens
-    empty_result = EvaluationResult(
-        tokens=[], actual_tags=[], predicted_tags=[], start_indices=[], results={}
-    )
-
+    """get_results_dataframe() raises DeprecationError regardless of input."""
     evaluator = MockEvaluator()
-    with pytest.raises(ValueError):
-        evaluator.get_results_dataframe([empty_result])
+    with pytest.raises(DeprecationError):
+        evaluator.get_results_dataframe([])
 
 
 def test_results_to_dataframe_with_entity_filtering():
-    """
-    Test that get_results_dataframe correctly filters entities when predictions
-    and actual tags are different
-    """
-    prediction = ["PERSON", "EMAIL", "PHONE", "CITY", "PERSON"]
-    tokens = ["John", "details", "john@example.com", "New York", "Smith"]
-    tags = ["PERSON", "O", "EMAIL", "LOCATION", "PERSON"]
-    start_indices = [0, 5, 13, 27, 40]
+    """get_results_dataframe() has been removed and raises DeprecationError."""
     evaluator = MockEvaluator()
-
-    sample = InputSample(
-        full_text="John details john@example.com New York Smith",
-        tokens=tokens,
-        start_indices=start_indices,
-        tags=tags,
-    )
-
-    results = [evaluator.evaluate_sample(sample, prediction)]
-
-    # Test filtering for just PERSON entities
-    df_person = evaluator.get_results_dataframe(results, entities=["PERSON"])
-
-    # Verify that other entities are filtered out (replaced with "O")
-    assert list(df_person["annotation"]) == ["PERSON", "O", "O", "O", "PERSON"]
-    assert list(df_person["prediction"]) == ["PERSON", "O", "O", "O", "PERSON"]
-
-    # Test filtering for just EMAIL entities
-    df_email = evaluator.get_results_dataframe(results, entities=["EMAIL"])
-    assert list(df_email["annotation"]) == ["O", "O", "EMAIL", "O", "O"]
-    assert list(df_email["prediction"]) == ["O", "EMAIL", "O", "O", "O"]
-
-    # Test filtering for LOCATION entity (which is predicted as CITY)
-    df_location = evaluator.get_results_dataframe(results, entities=["LOCATION"])
-    assert list(df_location["annotation"]) == ["O", "O", "O", "LOCATION", "O"]
-    assert list(df_location["prediction"]) == [
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-    ]  # CITY is filtered out
-
-    # Test filtering for CITY entity (which is annotated as LOCATION)
-    df_city = evaluator.get_results_dataframe(results, entities=["CITY"])
-    assert list(df_city["annotation"]) == [
-        "O",
-        "O",
-        "O",
-        "O",
-        "O",
-    ]  # LOCATION is filtered out
-    assert list(df_city["prediction"]) == ["O", "O", "O", "CITY", "O"]
+    with pytest.raises(DeprecationError):
+        evaluator.get_results_dataframe([])
 
 
 def test_get_results_dataframe_emits_deprecation_warning():
-    """get_results_dataframe() must emit a DeprecationWarning (soft deprecation)."""
-    import warnings
-
-    prediction = ["PERSON", "O"]
-    tokens = ["Alice", "here"]
-    tags = ["PERSON", "O"]
-    start_indices = [0, 6]
+    """get_results_dataframe() now raises DeprecationError (hard deprecation)."""
     evaluator = MockEvaluator(model=None, skip_words=[])
-
-    sample = InputSample(
-        full_text="Alice here",
-        tokens=tokens,
-        start_indices=start_indices,
-        tags=tags,
-    )
-    result = evaluator.evaluate_sample(sample, prediction)
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        df = evaluator.get_results_dataframe([result])
-
-    assert len(caught) == 1
-    assert issubclass(caught[0].category, DeprecationWarning)
-    assert "get_results_dataframe()" in str(caught[0].message)
-    assert "predict_dataset" in str(caught[0].message)
-    assert "get_mapped_results_dataframe" in str(caught[0].message)
-    # method still executes (soft deprecation)
-    assert list(df["annotation"]) == ["PERSON", "O"]
+    with pytest.raises(DeprecationError):
+        evaluator.get_results_dataframe([])
 
 
 def test_model_constructor_raises_deprecation_error():

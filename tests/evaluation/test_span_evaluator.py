@@ -1460,3 +1460,78 @@ def test_span_creation_with_skip_words(
 
 
 # ── End of test_span_evaluator.py ─────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "scenario, annotation, prediction, tokens, start_indices, expected_errors",
+    [
+        (
+            "FP: prediction with no annotation",
+            ["O", "O", "O", "O"],
+            ["O", "PERSON", "PERSON", "O"],
+            ["The", "John", "Smith", "visited"],
+            [0, 4, 9, 15],
+            [{"error_type": ErrorType.FP, "start": 4, "end": 14}],
+        ),
+        (
+            "FN: annotation with no prediction",
+            ["O", "PERSON", "PERSON", "O"],
+            ["O", "O", "O", "O"],
+            ["The", "John", "Smith", "visited"],
+            [0, 4, 9, 15],
+            [{"error_type": ErrorType.FN, "start": 4, "end": 14}],
+        ),
+        (
+            "WrongEntity: different type with sufficient overlap",
+            ["O", "LOCATION", "LOCATION", "O"],
+            ["O", "PERSON", "PERSON", "O"],
+            ["The", "New", "York", "visited"],
+            [0, 4, 8, 13],
+            [
+                {"error_type": ErrorType.WrongEntity, "start": 4, "end": 12},
+                {"error_type": ErrorType.FN, "start": 4, "end": 12},
+                {"error_type": ErrorType.FP, "start": 4, "end": 12},
+            ],
+        ),
+    ],
+)
+def test_model_error_start_end_positions(
+    span_evaluator,
+    scenario,
+    annotation,
+    prediction,
+    tokens,
+    start_indices,
+    expected_errors,
+):
+    """Test that ModelErrors produced by SpanEvaluator carry correct start/end positions."""
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * len(tokens),
+            "token": tokens,
+            "annotation": annotation,
+            "prediction": prediction,
+            "start_indices": start_indices,
+        }
+    )
+
+    result = span_evaluator.calculate_score_on_df(results_df=df, level="entity")
+
+    assert len(result.model_errors) == len(expected_errors), (
+        f"In {scenario}, expected {len(expected_errors)} errors, got {len(result.model_errors)}"
+    )
+
+    for expected in expected_errors:
+        matching = [
+            e for e in result.model_errors if e.error_type == expected["error_type"]
+        ]
+        assert matching, (
+            f"In {scenario}, no error of type {expected['error_type']} found"
+        )
+        error = matching[0]
+        assert error.start == expected["start"], (
+            f"In {scenario}, {expected['error_type']} start expected {expected['start']}, got {error.start}"
+        )
+        assert error.end == expected["end"], (
+            f"In {scenario}, {expected['error_type']} end expected {expected['end']}, got {error.end}"
+        )

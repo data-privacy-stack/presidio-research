@@ -9,10 +9,12 @@ from spacy.tokens import Token
 from presidio_evaluator import InputSample
 from presidio_evaluator.evaluation import (
     BaseEvaluator,
+    DeprecationError,
     ErrorType,
     EvaluationResult,
     ModelError,
 )
+from presidio_evaluator.evaluation.evaluation_result import PIIEvaluationMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +76,17 @@ class TokenEvaluator(BaseEvaluator):
                 if reverted:
                     continue
 
+                token_start = (
+                    input_sample.start_indices[i]
+                    if input_sample.start_indices
+                    else None
+                )
+                token_end = (
+                    token_start + len(str(cur_token))
+                    if token_start is not None
+                    else None
+                )
+
                 if prediction[i] == "O":
                     mistakes.append(
                         ModelError(
@@ -83,6 +96,8 @@ class TokenEvaluator(BaseEvaluator):
                             token=cur_token,
                             full_text=input_sample.full_text,
                             metadata=input_sample.metadata,
+                            start=token_start,
+                            end=token_end,
                         ),
                     )
                 elif annotation[i] == "O":
@@ -94,6 +109,8 @@ class TokenEvaluator(BaseEvaluator):
                             token=cur_token,
                             full_text=input_sample.full_text,
                             metadata=input_sample.metadata,
+                            start=token_start,
+                            end=token_end,
                         ),
                     )
                 else:
@@ -105,6 +122,8 @@ class TokenEvaluator(BaseEvaluator):
                             token=cur_token,
                             full_text=input_sample.full_text,
                             metadata=input_sample.metadata,
+                            start=token_start,
+                            end=token_end,
                         ),
                     )
 
@@ -231,7 +250,7 @@ class TokenEvaluator(BaseEvaluator):
                 ),
             )
 
-        return self.calculate_score(evaluation_results, beta=beta, level=level)
+        return self._calculate_score(evaluation_results, beta=beta, level=level)
 
     def calculate_score(
         self,
@@ -240,25 +259,20 @@ class TokenEvaluator(BaseEvaluator):
         beta: float = 2.0,
         level: Literal["entity", "pii", "both"] = "both",
     ) -> EvaluationResult:
-        """
-        Calculates the evaluation score based on the provided evaluation results.
+        raise DeprecationError(
+            "calculate_score() has been removed. Use calculate_score_on_df() instead:\n"
+            "  result = evaluator.calculate_score_on_df(results_df=mapped_df)\n"
+            "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
+        )
 
-        :param evaluation_results: List of EvaluationResult objects containing the results of the evaluation.
-        :param entities: Optional list of entities to filter the evaluation results.
-        If None, defaults to the evaluator's entities_to_keep (set in constructor).
-        :return: An EvaluationResult object containing the aggregated results.
-
-        Returns the pii_precision, pii_recall, f_measure either and number of records for each entity
-        or for all entities (ignore_entity_type = True)
-        :param evaluation_results: List of EvaluationResult
-        :param entities: List of entities to calculate score to. Default is None: all entities
-        :param beta: DEPRECATED. F measure beta value between different entity types,
-        or to treat these as misclassifications
-        Please use the beta value defined in the constructor of the Evaluator class.
-
-        :return: EvaluationResult with precision, recall and f measures
-        """
-
+    def _calculate_score(
+        self,
+        evaluation_results: list[EvaluationResult],
+        entities: list[str] | None = None,
+        beta: float = 2.0,
+        level: Literal["entity", "pii", "both"] = "both",
+    ) -> EvaluationResult:
+        """Aggregate evaluation results into an EvaluationResult."""
         # Default to entities_to_keep if no explicit entities provided
         if entities is None:
             entities = self.entities_to_keep
@@ -282,9 +296,7 @@ class TokenEvaluator(BaseEvaluator):
         all_results = sum([er.results for er in evaluation_results], Counter())
 
         # per-entity metrics
-        entity_recall = {}
-        entity_precision = {}
-        n = {}
+        per_type: dict[str, PIIEvaluationMetrics] = {}
         if level in ("entity", "both"):
             if not entities:
                 entities1 = list({x[0] for x in all_results.keys() if x[0] != "O"})
@@ -294,25 +306,35 @@ class TokenEvaluator(BaseEvaluator):
             for entity in entities:
                 annotated = sum([all_results[x] for x in all_results if x[0] == entity])
                 predicted = sum([all_results[x] for x in all_results if x[1] == entity])
-                n[entity] = annotated
                 tp = all_results[(entity, entity)]
-                entity_recall[entity] = self.recall(tp=tp, num_annotated=annotated)
-                entity_precision[entity] = self.precision(
-                    tp=tp, num_predicted=predicted
+                recall = self.recall(tp=tp, num_annotated=annotated)
+                precision = self.precision(tp=tp, num_predicted=predicted)
+                per_type[entity] = PIIEvaluationMetrics(
+                    precision=precision,
+                    recall=recall,
+                    f_beta=self.f_beta(precision=precision, recall=recall, beta=beta),
+                    num_predicted=predicted,
+                    num_annotated=annotated,
+                    true_positives=tp,
+                    false_positives=predicted - tp,
+                    false_negatives=annotated - tp,
                 )
 
         # global PII metrics
         pii_recall = None
         pii_precision = None
         pii_f_beta = None
+        pii_tp = pii_predicted = pii_annotated = pii_fp = pii_fn = 0
         if level in ("pii", "both"):
-            annotated_all = sum([all_results[x] for x in all_results if x[0] != "O"])
-            predicted_all = sum([all_results[x] for x in all_results if x[1] != "O"])
-            tp = sum(
+            pii_annotated = sum([all_results[x] for x in all_results if x[0] != "O"])
+            pii_predicted = sum([all_results[x] for x in all_results if x[1] != "O"])
+            pii_tp = sum(
                 [all_results[x] for x in all_results if (x[0] != "O" and x[1] != "O")]
             )
-            pii_recall = self.recall(tp=tp, num_annotated=annotated_all)
-            pii_precision = self.precision(tp=tp, num_predicted=predicted_all)
+            pii_fp = pii_predicted - pii_tp
+            pii_fn = pii_annotated - pii_tp
+            pii_recall = self.recall(tp=pii_tp, num_annotated=pii_annotated)
+            pii_precision = self.precision(tp=pii_tp, num_predicted=pii_predicted)
             pii_f_beta = self.f_beta(pii_precision, pii_recall, beta)
 
         # aggregate errors
@@ -326,11 +348,14 @@ class TokenEvaluator(BaseEvaluator):
             model_errors=errors,
             pii_precision=pii_precision,
             pii_recall=pii_recall,
-            entity_recall_dict=entity_recall,
-            entity_precision_dict=entity_precision,
-            n_dict=n,
+            per_type=per_type if per_type else None,
             pii_f=pii_f_beta,
-            n=sum(n.values()),
+            n=sum(m.num_annotated for m in per_type.values()) if per_type else None,
+            pii_true_positives=pii_tp,
+            pii_false_positives=pii_fp,
+            pii_false_negatives=pii_fn,
+            pii_predicted=pii_predicted,
+            pii_annotated=pii_annotated,
         )
 
         return evaluation_result

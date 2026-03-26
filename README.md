@@ -1,6 +1,6 @@
 # Presidio-research
 
-This package provides evaluation and data-science capabilities for 
+This package provides evaluation and data-science capabilities for
 [Presidio](https://github.com/microsoft/presidio) and PII detection models in general.
 
 It also includes a fake data generator that creates synthetic sentences based on templates and fake PII.
@@ -20,16 +20,13 @@ The easiest way to get started is by reviewing the notebooks.
 - [Notebook 3](notebooks/3_Split_by_pattern_number.ipynb): Provides tools to split the dataset into train/test/validation sets while avoiding leakage due to the same pattern appearing in multiple folds (only applicable for synthetically generated data).
 - [Notebook 4](notebooks/4_Evaluate_Presidio_Analyzer.ipynb): Shows how to use the evaluation tools to evaluate how well Presidio detects PII. Note that this is using the vanilla Presidio, and the results aren't very accurate.
 - [Notebook 5](notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb): Shows how one can configure Presidio to detect PII much more accurately, and boost the f score in ~30%.
+- [Notebook 6](notebooks/6_Interactive_Entity_Mapping.ipynb): Explains the entity mapping process, which is crucial when evaluating multiple models each returning a different set of entities.
 
 ### Installation
-
->Note: Presidio evaluator requires Python version 3.11 or higher.
 
 #### From PyPI
 
 ``` sh
-conda create --name presidio python=3.12
-conda activate presidio
 pip install presidio-evaluator
 python -m spacy download en_core_web_sm # for tokenization
 python -m spacy download en_core_web_lg # for NER

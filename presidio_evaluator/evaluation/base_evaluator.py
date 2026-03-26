@@ -1,6 +1,6 @@
 import logging
-import warnings
 from abc import ABC, abstractmethod
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -62,10 +62,9 @@ class BaseEvaluator(ABC):
         )
 
         if skip_words is None:
-            warnings.warn(
+            logger.warning(
                 "skip words not provided, using default skip words. "
-                "If you want the evaluation to not use skip words, pass skip_words=[]",
-                stacklevel=2,
+                "If you want the evaluation to not use skip words, pass skip_words=[]"
             )
             self.skip_words = get_skip_words()
         else:
@@ -92,27 +91,49 @@ class BaseEvaluator(ABC):
                 # Step 3: evaluate
                 from presidio_evaluator.evaluation import SpanEvaluator
                 evaluator = SpanEvaluator()
-                result = evaluator.calculate_score_on_df(results_df=mapped_df)
+                result_per_type = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)
+                global_df = SpanEvaluator.create_global_entities_df(mapped_df)
+                result = evaluator.calculate_score_on_df(per_type=False, results_df=global_df, evaluation_result=result_per_type)
         """
         raise DeprecationError(
             "evaluate_all() has been removed. Use the new 3-step pipeline:\n"
             "  1. results_df = model.predict_dataset(dataset)\n"
             "  2. mapper = CanonicalMapper(); mapped_df = mapper.get_mapped_results_dataframe(results_df)\n"
-            "  3. result = evaluator.calculate_score_on_df(results_df=mapped_df)\n"
+            "  3. result = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)\n"
             "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
         )
 
-    @abstractmethod
     def calculate_score(
         self,
         evaluation_results: list[EvaluationResult],
         entities: list[str] | None = None,
         beta: float = 2.0,
     ) -> EvaluationResult:
-        """
-        Compares the evaluation results (predicted vs. actual) and calculates evaluation scores
-        """
+        raise DeprecationError(
+            "calculate_score() has been removed. Use calculate_score_on_df() instead:\n"
+            "  result = evaluator.calculate_score_on_df(results_df=mapped_df)\n"
+            "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
+        )
 
+    @abstractmethod
+    def calculate_score_on_df(
+        self,
+        results_df: pd.DataFrame,
+        beta: float = 2.0,
+        level: Literal["entity", "pii", "both"] = "both",
+        **kwargs,
+    ) -> EvaluationResult:
+        """
+        Primary entry point. Evaluate predictions against ground truth annotations.
+
+        :param results_df: DataFrame with columns sentence_id, token, annotation,
+            prediction, start_indices — as produced by model.predict_dataset() and
+            optionally processed by CanonicalMapper.get_mapped_results_dataframe().
+        :param beta: F-beta parameter for score calculation (default 2.0).
+        :param level: Which metrics to compute. One of ``"entity"``, ``"pii"``,
+            or ``"both"`` (default).
+        :return: EvaluationResult with the requested precision/recall/F metrics.
+        """
         pass
 
     def get_results_dataframe(
@@ -134,53 +155,13 @@ class BaseEvaluator(ABC):
             - start_indices
         """
 
-        if not evaluation_results or not evaluation_results[0].tokens:
-            raise ValueError(
-                "The evaluation results should not be empty and must contain tokens. "
-                "Ensure that the input samples have tokens.",
-            )
-
-        warnings.warn(
-            "get_results_dataframe() is deprecated and will be removed in a future version. "
-            "Use the new 3-step pipeline instead:\n"
+        raise DeprecationError(
+            "get_results_dataframe() has been removed. Use the new 3-step pipeline:\n"
             "  1. results_df = model.predict_dataset(dataset)\n"
             "  2. mapped_df = mapper.get_mapped_results_dataframe(results_df)\n"
             "  3. result = evaluator.calculate_score_on_df(results_df=mapped_df)\n"
             "The returned DataFrame from model.predict_dataset() is already in the same format.",
-            DeprecationWarning,
-            stacklevel=2,
         )
-
-        rows_list = []
-        for i, res in enumerate(evaluation_results):
-            tokens = res.tokens
-            annotations = list(res.actual_tags)
-            predictions = list(res.predicted_tags)
-            if self.entities_to_keep:
-                annotations = [
-                    tag if tag in self.entities_to_keep else "O" for tag in annotations
-                ]
-                predictions = [
-                    tag if tag in self.entities_to_keep else "O" for tag in predictions
-                ]
-
-            # Filter to the requested entity subset (e.g. for per-entity scoring)
-            annotations = self._filter_entities(annotations, entities)
-            predictions = self._filter_entities(predictions, entities)
-            start_indices = res.start_indices
-            for j in range(len(tokens)):
-                rows_list.append(
-                    {
-                        "sentence_id": i,
-                        "token": tokens[j],
-                        "annotation": annotations[j],
-                        "prediction": predictions[j],
-                        "start_indices": start_indices[j],
-                    },
-                )
-
-        results_df = pd.DataFrame(rows_list)
-        return results_df
 
     @staticmethod
     def _filter_entities(

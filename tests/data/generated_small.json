@@ -20,18 +20,18 @@
         "metadata": null
     },
     {
-        "full_text": "billing address: tracy sukhorukova\n    23 8 wressle road suite 771\n   polapit tamar\n    nan\n    77058",
+        "full_text": "billing address: tracy sukhorukova\n    23 8 wressle road suite 771\n   polapit tamar\n    TAM\n    77058",
         "masked": "Billing address: {{name}}\n    {{building_number}} {{street_name}} {{secondary_address}}\n   {{city}}\n    {{state_abbr}}\n    {{zipcode}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "77058",
                 "start_position": 96,
                 "end_position": 101
             },
             {
-                "entity_type": "ADDRESS",
-                "entity_value": "nan",
+                "entity_type": "LOCATION",
+                "entity_value": "TAM",
                 "start_position": 88,
                 "end_position": 91
             },
@@ -42,19 +42,19 @@
                 "end_position": 83
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "suite 771",
                 "start_position": 57,
                 "end_position": 66
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "8 wressle road",
                 "start_position": 42,
                 "end_position": 56
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "23",
                 "start_position": 39,
                 "end_position": 41
@@ -115,13 +115,13 @@
                 "end_position": 65
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "velký průhon 426",
                 "start_position": 39,
                 "end_position": 55
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "46",
                 "start_position": 36,
                 "end_position": 38
@@ -161,7 +161,7 @@
         "masked": "{{first_name}} lives on {{street_name}} street.",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "Nassaustraat 123",
                 "start_position": 15,
                 "end_position": 31
@@ -181,7 +181,7 @@
         "masked": "??? {{name}}\n??? {{organization}}\n??? {{building_number}} {{street_name}}\n??? {{secondary_address}}\n??? {{city}}\n??? {{country}} {{postcode}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "15838",
                 "start_position": 111,
                 "end_position": 116
@@ -199,19 +199,19 @@
                 "end_position": 98
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "Apt. 018",
                 "start_position": 76,
                 "end_position": 84
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "107 Rue Abdelaziz Thâalbi",
                 "start_position": 46,
                 "end_position": 71
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "48",
                 "start_position": 43,
                 "end_position": 45
@@ -305,7 +305,7 @@
         "masked": "ZIP: {{zipcode}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "11164",
                 "start_position": 5,
                 "end_position": 10
@@ -333,13 +333,13 @@
         "masked": "I need to add my addresses, here they are: {{address}}, and {{address}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "75 Auerstrasse 12 Apt. 974 Lyss SÃ£o TomÃ© and PrÃ­ncipe",
                 "start_position": 87,
                 "end_position": 143
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "63 30 N. Stadion\nULLINISH\n, nan\n 40839",
                 "start_position": 43,
                 "end_position": 81
@@ -427,13 +427,13 @@
                 "end_position": 42
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "Jakobi 69",
                 "start_position": 26,
                 "end_position": 35
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "87",
                 "start_position": 23,
                 "end_position": 25
@@ -522,7 +522,7 @@
                 "end_position": 118
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "52 Ibirapita 8057\nErwetegem\n, VOV\n Serbia 23823",
                 "start_position": 39,
                 "end_position": 86
@@ -536,7 +536,7 @@
         "masked": "{{person}}\n\n{{building_number}} {{street_name}}\n {{secondary_address}}\n {{city}}\n\n {{country}} {{postcode}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "13222",
                 "start_position": 70,
                 "end_position": 75
@@ -554,19 +554,19 @@
                 "end_position": 59
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "apt. 614",
                 "start_position": 44,
                 "end_position": 52
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "árpád fejedelem útja 45.",
                 "start_position": 18,
                 "end_position": 42
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "98",
                 "start_position": 15,
                 "end_position": 17
@@ -659,13 +659,13 @@
                 "end_position": 78
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "Πλατεία Μαβίλη 170",
                 "start_position": 38,
                 "end_position": 56
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "03",
                 "start_position": 35,
                 "end_position": 37
@@ -705,7 +705,7 @@
         "masked": "As promised, here's {{first_name}}'s address:\n\n{{address}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "06 Reyes Católicos 17\nSaarjärve, JN 91851",
                 "start_position": 37,
                 "end_position": 78
@@ -874,7 +874,7 @@
         "masked": "The bus station is on {{street_name}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "Ziegelgasse 26",
                 "start_position": 22,
                 "end_position": 36
@@ -936,7 +936,7 @@
         "masked": "Please return to {{address}} in case of an issue.",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "39 79 Argyll Road\nNoorderwijk\n, VAN\n Portugal 76970",
                 "start_position": 17,
                 "end_position": 68
@@ -1111,7 +1111,7 @@
                 "end_position": 97
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "27 2279 President St\nGleniti\n, nan\n Canada 32586",
                 "start_position": 29,
                 "end_position": 77
@@ -1157,13 +1157,13 @@
         "masked": "I once lived in {{address}}. I now live in {{address}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "the corner of Kapelaniestraat 88 and Whittaker Street",
                 "start_position": 80,
                 "end_position": 133
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "95 Bem rkp. 97. Suite 446, Poznań, Bolivia 28327",
                 "start_position": 16,
                 "end_position": 64
@@ -1191,7 +1191,7 @@
         "masked": "What is your address? it is {{address}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "05 Weblinger Gürtel 92 Apt. 584 HEILIGENBRUNN France",
                 "start_position": 28,
                 "end_position": 80
@@ -1233,13 +1233,13 @@
         "masked": "The restaurant is at {{building_number}} {{street_name}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "1755 Nelson Mandela Drive",
                 "start_position": 24,
                 "end_position": 49
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "19",
                 "start_position": 21,
                 "end_position": 23
@@ -1332,7 +1332,7 @@
         "masked": "ZIP: {{zipcode}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "43672",
                 "start_position": 5,
                 "end_position": 10
@@ -1401,7 +1401,7 @@
         "masked": "The restaurant is located at {{address}}. It serves great indian food.",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "01 Korte Noordsstraat 307\nÖVERTURINGEN, nan 80815",
                 "start_position": 29,
                 "end_position": 78
@@ -1415,7 +1415,7 @@
         "masked": "{{building_number}} {{street_name}}\n {{secondary_address}}\n {{city}}\n {{country}} {{postcode}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "02438",
                 "start_position": 44,
                 "end_position": 49
@@ -1433,19 +1433,19 @@
                 "end_position": 35
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "Suite 246",
                 "start_position": 15,
                 "end_position": 24
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "230 Wit Rd",
                 "start_position": 3,
                 "end_position": 13
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "95",
                 "start_position": 0,
                 "end_position": 2
@@ -1590,7 +1590,7 @@
         "masked": "How do I change my address to {{address}} for post mail?",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "16 48 rue Descartes, Monte Gil, Canada",
                 "start_position": 30,
                 "end_position": 68
@@ -1639,7 +1639,7 @@
         "masked": "Please return to {{address}} in case of an issue.",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "45 aðalgata 37\nkędzierzyn-koźle\n, nan\n 25033",
                 "start_position": 17,
                 "end_position": 61
@@ -1681,7 +1681,7 @@
         "masked": "{{person}}\n\n{{building_number}} {{street_name}}\n {{secondary_address}}\n {{city}}\n\n {{country}} {{postcode}}",
         "spans": [
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "80392",
                 "start_position": 60,
                 "end_position": 65
@@ -1699,19 +1699,19 @@
                 "end_position": 49
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "Apt. 827",
                 "start_position": 30,
                 "end_position": 38
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "Školní 939",
                 "start_position": 18,
                 "end_position": 28
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "11",
                 "start_position": 15,
                 "end_position": 17
@@ -1791,7 +1791,7 @@
                 "end_position": 101
             },
             {
-                "entity_type": "ADDRESS",
+                "entity_type": "LOCATION",
                 "entity_value": "74 106 Kate Edger Place, BINSTED, Vatican City",
                 "start_position": 42,
                 "end_position": 88

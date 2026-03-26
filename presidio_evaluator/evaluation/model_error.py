@@ -33,6 +33,8 @@ class ModelError:
         sample_id: int | None = None,
         metadata: dict | None = None,
         explanation: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
     ) -> None:
         """
         Holds information about an error a model made for analysis purposes
@@ -44,6 +46,8 @@ class ModelError:
         :param sample_id: Id of the sample this error belongs to
         :param metadata: metadata on text from InputSample
         :param explanation: Optional reasoning for the error, e.g. "Token was too short"
+        :param start: Start index of the token in the original text
+        :param end: End index of the token in the original text
         """
 
         self.error_type = error_type
@@ -54,6 +58,8 @@ class ModelError:
         self.sample_id = sample_id
         self.metadata = metadata
         self.explanation = explanation
+        self.start = start
+        self.end = end
 
     def __str__(self) -> str:
         return (
@@ -61,6 +67,8 @@ class ModelError:
             f"Annotation = {self.annotation}, "
             f"prediction = {self.prediction}, "
             f"Token = {self.token}, "
+            f"Start = {self.start}, "
+            f"End = {self.end}, "
             f"Full text = {self.full_text}, "
             f"Metadata = {self.metadata}"
         )

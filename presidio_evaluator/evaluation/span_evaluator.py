@@ -5,9 +5,12 @@ import pandas as pd
 from presidio_analyzer import AnalyzerEngine
 
 from presidio_evaluator.data_objects import Span
-from presidio_evaluator.evaluation import BaseEvaluator, ErrorType, ModelError
-from presidio_evaluator.evaluation.evaluation_result import (
+from presidio_evaluator.evaluation import (
+    BaseEvaluator,
+    DeprecationError,
+    ErrorType,
     EvaluationResult,
+    ModelError,
 )
 from presidio_evaluator.models import BaseModel
 
@@ -240,6 +243,8 @@ class SpanEvaluator(BaseEvaluator):
                     full_text=pred_span.entity_value,
                     token=" ".join(pred_span.normalized_tokens),
                     explanation=f"False positive for {pred_span}",
+                    start=pred_span.start_position,
+                    end=pred_span.end_position,
                 )
                 evaluation_result.model_errors.append(model_error)
 
@@ -385,37 +390,11 @@ class SpanEvaluator(BaseEvaluator):
         entities: list[str] | None = None,
         beta: float = 2.0,
     ) -> EvaluationResult:
-        """
-        Calculate the evaluation score based on the provided evaluation results (evaluation run).
-        :param evaluation_results: List of EvaluationResult objects containing the results of the evaluation run,
-        specifically `actual_tags` and `predicted_tags`.
-        :param entities: Optional list of entities to filter the evaluation results by.
-        If None, defaults to the evaluator's entities_to_keep (set in constructor).
-        :param beta: The beta parameter for F-beta score calculation. Default is 2.
-        """
-        # Default to entities_to_keep if no explicit entities provided
-        if entities is None:
-            entities = self.entities_to_keep
-
-        evaluation_result = EvaluationResult()
-        df = self.get_results_dataframe(
-            evaluation_results=evaluation_results,
-            entities=entities,
+        raise DeprecationError(
+            "calculate_score() has been removed. Use calculate_score_on_df() instead:\n"
+            "  result = evaluator.calculate_score_on_df(results_df=mapped_df)\n"
+            "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for a full example.",
         )
-        evaluation_result = self._run_score_pass(
-            per_type=True,
-            results_df=df,
-            beta=beta,
-            evaluation_result=evaluation_result,
-        )
-        global_pii_df = self.create_global_entities_df(results_df=df)
-        evaluation_result = self._run_score_pass(
-            per_type=False,
-            results_df=global_pii_df,
-            beta=beta,
-            evaluation_result=evaluation_result,
-        )
-        return evaluation_result
 
     def calculate_score_on_df(
         self,
@@ -492,6 +471,9 @@ class SpanEvaluator(BaseEvaluator):
         # Create and return the final evaluation result
         if per_type:
             self._update_per_type_metrics(evaluation_result, beta)
+            evaluation_result.n = sum(
+                m.num_annotated for m in evaluation_result.per_type.values()
+            )
         else:
             self._update_result_with_overall_metrics(
                 evaluation_result,
@@ -784,6 +766,8 @@ class SpanEvaluator(BaseEvaluator):
                         full_text=pred_span.entity_value,
                         token=" ".join(pred_span.normalized_tokens),
                         explanation=f"False prediction with no overlap: {pred_span.entity_type}",
+                        start=pred_span.start_position,
+                        end=pred_span.end_position,
                     ),
                 )
 
@@ -1144,19 +1128,16 @@ class SpanEvaluator(BaseEvaluator):
         annotation = "O" if error_type == ErrorType.FP else ann_span.entity_type
         explanation = get_explanation()
 
+        active_span = pred_span if error_type == ErrorType.FP else ann_span
         return ModelError(
             error_type=error_type,
             annotation=annotation,
             prediction=prediction,
-            full_text=pred_span.entity_value
-            if error_type == ErrorType.FP
-            else ann_span.entity_value,
-            token=" ".join(
-                pred_span.normalized_tokens
-                if error_type == ErrorType.FP
-                else ann_span.normalized_tokens,
-            ),
+            full_text=active_span.entity_value,
+            token=" ".join(active_span.normalized_tokens),
             explanation=explanation,
+            start=active_span.start_position,
+            end=active_span.end_position,
         )
 
     def _get_all_overlapping(

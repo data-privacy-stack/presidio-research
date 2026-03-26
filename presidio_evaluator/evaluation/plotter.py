@@ -33,6 +33,7 @@ class Plotter:
         display_mode (str): How to display plots. Options:
                            - "interactive" (default): Show interactive Plotly plots
                            - "static": Render as static images (suitable for GitHub)
+                           - "none": Skip display entirely (suitable for tests/CI)
 
     Notes:
         - When display_mode="static", plots render as static images in notebooks
@@ -56,8 +57,8 @@ class Plotter:
         self.beta = beta
         self.display_mode = display_mode
 
-        if display_mode not in ["interactive", "static"]:
-            raise ValueError("display_mode must be either 'interactive' or 'static'")
+        if display_mode not in ["interactive", "static", "none"]:
+            raise ValueError("display_mode must be 'interactive', 'static', or 'none'")
 
     def plot_scores(self, output_folder: Path | str | None = None) -> None:
         """
@@ -374,7 +375,9 @@ class Plotter:
         Display a figure according to the specified display_mode.
         :param fig: The figure to display.
         """
-        if self.display_mode == "static":
+        if self.display_mode == "none":
+            return
+        elif self.display_mode == "static":
             # Display as static image in notebook
             fig.show(renderer="png")
         else:

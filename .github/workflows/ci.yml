@@ -46,6 +46,7 @@ jobs:
     
     - name: Install dependencies
       run: |
+        uv venv --seed
         uv sync --extra dev
         uv run python -m spacy download en_core_web_sm
         uv run python -m spacy download en_core_web_lg
