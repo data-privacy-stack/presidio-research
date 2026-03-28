@@ -32,18 +32,23 @@ class PresidioAnalyzerWrapper(BaseModel):
         the prediction to a specific scheme (IO, BIO/IOB, BILUO)
         :param score_threshold: Minimum score for an entity to be considered
         :param language: Language of the text
-        :param entity_mapping: Dictionary for mapping this model's input and output with the expected.
-        Keys should be the input entity types (from the input dataset),
-        values should be the model's supported entity types.
+        :param entity_mapping: DEPRECATED. Entity mapping is now handled by
+        CanonicalMapper before evaluation.
         :param ad_hoc_recognizers: List of ad-hoc recognizers to be used in the analyze method
         :param context: List of context words to be passed to the analyze method
         :param allow_list: List of allowed values to be passed to the analyze method
         """
+        if entity_mapping is not None:
+            raise DeprecationWarning(
+                "The 'entity_mapping' parameter is deprecated and has been removed. "
+                "Entity mapping is now handled by CanonicalMapper before evaluation. "
+                "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for examples.",
+            )
+
         super().__init__(
             entities_to_keep=entities_to_keep,
             verbose=verbose,
             labeling_scheme=labeling_scheme,
-            entity_mapping=entity_mapping,
         )
         self.name = "Presidio Analyzer"
         self.score_threshold = score_threshold
@@ -116,70 +121,6 @@ class PresidioAnalyzerWrapper(BaseModel):
         kwargs["context"] = kwargs.get("context", self.context)
         kwargs["allow_list"] = kwargs.get("allow_list", self.allow_list)
         kwargs["entities"] = kwargs.get("entities", self.entities)
-
-    # Mapping between dataset entities and Presidio entities. Key: Dataset entity, Value: Presidio entity
-    presidio_entities_map = {
-        # Names
-        "PER": "PERSON",
-        "PERSON": "PERSON",
-        "FIRST_NAME": "PERSON",
-        "LAST_NAME": "PERSON",
-        "NAME": "PERSON",
-        "PATIENT": "PERSON",
-        "STAFF": "PERSON",
-        "HCW": "PERSON",
-        # Locations, GPE
-        "LOC": "LOCATION",
-        "LOCATION": "LOCATION",
-        "GPE": "LOCATION",
-        "FACILITY": "LOCATION",
-        "CITY": "LOCATION",
-        "ADDRESS": "LOCATION",
-        "STREET_ADDRESS": "LOCATION",
-        "ZIP": "ZIP_CODE",
-        "ZIP_CODE": "ZIP_CODE",
-        # Organizations, norps
-        "ORG": "ORGANIZATION",
-        "ORGANIZATION": "ORGANIZATION",
-        "VENDOR": "ORGANIZATION",
-        "NORP": "NRP",
-        "NRP": "NRP",
-        "NATIONALITY": "NRP",
-        "HOSP": "ORGANIZATION",
-        "PATORG": "ORGANIZATION",
-        "HOSPITAL": "ORGANIZATION",
-        # Generic
-        "AGE": "AGE",
-        "ID": "ID",
-        "TITLE": "TITLE",
-        "PREFIX": "TITLE",
-        # Financial
-        "CREDIT_CARD": "CREDIT_CARD",
-        "CREDIT_CARD_NUMBER": "CREDIT_CARD",
-        "IBAN_CODE": "IBAN_CODE",
-        "IBAN": "IBAN_CODE",
-        # Dates, times, birthdays
-        "DATE": "DATE_TIME",
-        "TIME": "DATE_TIME",
-        "DATE_TIME": "DATE_TIME",
-        "BIRTHDAY": "DATE_TIME",
-        "DATE_OF_BIRTH": "DATE_TIME",
-        "DOB": "DATE_TIME",
-        "PHONE": "PHONE_NUMBER",
-        "PHONE_NUMBER": "PHONE_NUMBER",
-        # Internet
-        "DOMAIN_NAME": "URL",
-        "URL": "URL",
-        "DOMAIN": "URL",
-        "EMAIL": "EMAIL_ADDRESS",
-        "EMAIL_ADDRESS": "EMAIL_ADDRESS",
-        "IP_ADDRESS": "IP_ADDRESS",
-        # US
-        "SSN": "US_SSN",
-        "US_SSN": "US_SSN",
-        "US_DRIVER_LICENSE": "US_DRIVER_LICENSE",
-        "O": "O",
-    }
 
     def print_discrepancies(self) -> None:
         supported_entities = self.analyzer_engine.get_supported_entities(

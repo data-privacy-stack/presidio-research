@@ -202,6 +202,7 @@ class TokenEvaluator(BaseEvaluator):
         results_df: pd.DataFrame,
         beta: float = 2.0,
         level: Literal["entity", "pii", "both"] = "both",
+        **kwargs,
     ) -> EvaluationResult:
         """
         Evaluate predictions against ground truth using a pre-mapped DataFrame.
@@ -281,16 +282,16 @@ class TokenEvaluator(BaseEvaluator):
             if not res.results:
                 # token evaluation works on the results object, so run the compare method if not done yet
                 input_sample = InputSample(
-                    full_text=res.text,
+                    full_text=res.text or "",
                     tokens=res.tokens,
                     tags=res.actual_tags,
                 )
                 results, errors = self.compare(
                     input_sample=input_sample,
-                    prediction=res.predicted_tags,
+                    prediction=res.predicted_tags or [],
                 )
                 res.results = results
-                res.errors = errors
+                res.model_errors = errors
 
         # aggregate results
         all_results = sum([er.results for er in evaluation_results], Counter())
@@ -362,15 +363,11 @@ class TokenEvaluator(BaseEvaluator):
 
 
 class Evaluator(TokenEvaluator):
-    """
-    Alias for TokenEvaluator to maintain backward compatibility.
-    """
+    """DEPRECATED: Use Token/Span Evaluator instead."""
 
-    def __init__(self, *args, **kwargs) -> None:
-        warnings.warn(
-            "Evaluator is deprecated and will be removed in a future version. "
-            "Use TokenEvaluator instead.",
-            DeprecationWarning,
-            stacklevel=2,
+    def __init__(self, *args, **kwargs):
+        raise DeprecationWarning(
+            "The 'Evaluator' class is deprecated. "
+            "Please update your code to use either "
+            "SpanEvaluator or TokenEvaluator instead.",
         )
-        super().__init__(*args, **kwargs)

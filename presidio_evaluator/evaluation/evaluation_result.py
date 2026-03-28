@@ -46,15 +46,15 @@ class EvaluationResult:
         entity_precision_dict: dict[str, float] | None = None,
         n_dict: dict[str, int] | None = None,
         per_type: dict[str, PIIEvaluationMetrics] | None = None,
-        pii_predicted: int | None = 0,
-        pii_annotated: int | None = 0,
-        pii_true_positives: int | None = 0,
-        pii_false_positives: int | None = 0,
-        pii_false_negatives: int | None = 0,
+        pii_predicted: int = 0,
+        pii_annotated: int = 0,
+        pii_true_positives: int = 0,
+        pii_false_positives: int = 0,
+        pii_false_negatives: int = 0,
         tokens: list[str] | None = None,
         actual_tags: list[str] | None = None,
         predicted_tags: list[str] | None = None,
-        start_indices: list[int] = None,
+        start_indices: list[int] | None = None,
     ) -> None:
         """
         Holds the output of a comparison between ground truth and predicted
@@ -83,7 +83,7 @@ class EvaluationResult:
         """
 
         self.results = results if results else Counter()
-        self.model_errors = model_errors
+        self.model_errors = model_errors if model_errors is not None else []
         self.text = text
 
         if per_type and entity_recall_dict:

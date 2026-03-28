@@ -2,7 +2,6 @@ from collections import defaultdict
 from typing import Literal
 
 import pandas as pd
-from presidio_analyzer import AnalyzerEngine
 
 from presidio_evaluator.data_objects import Span
 from presidio_evaluator.evaluation import (
@@ -23,7 +22,7 @@ class SpanEvaluator(BaseEvaluator):
     def __init__(
         self,
         verbose: bool = False,
-        model: BaseModel | AnalyzerEngine | None = None,
+        model: BaseModel | None = None,
         entities_to_keep: list[str] | None = None,
         generic_entities: list[str] | None = None,
         skip_words: list | None = None,
@@ -61,7 +60,7 @@ class SpanEvaluator(BaseEvaluator):
         self,
         tokens: list[str],
         start_indices: list[int] | None = None,
-    ) -> list[str] | tuple[list[str], list[int]]:
+    ) -> tuple[list[str], list[int]]:
         """
         Normalize tokens by:
         1. Converting to lowercase
@@ -70,11 +69,12 @@ class SpanEvaluator(BaseEvaluator):
         4. Removing skip words (common words that shouldn't affect entity matching)
 
         :param tokens: List of token strings to normalize
-        :return: List of normalized tokens
+        :param start_indices: List of start indices for each token
+        :return: Tuple of (normalized tokens, normalized start indices)
         """
 
         if not start_indices:
-            start_indices = [None] * len(tokens)  # placeholder
+            start_indices = [0] * len(tokens)
         normalized = []
         normalized_indices = []
         for token, start in zip(tokens, start_indices, strict=False):
@@ -84,9 +84,6 @@ class SpanEvaluator(BaseEvaluator):
                 continue
             normalized.append(token)
             normalized_indices.append(start)
-
-        if not start_indices:
-            return normalized
 
         return normalized, normalized_indices
 
@@ -110,8 +107,8 @@ class SpanEvaluator(BaseEvaluator):
                 and self._are_spans_adjacent(current, next_span, df)
             ):
                 merged_tokens = [current.entity_value, next_span.entity_value]
-                merged_normalized_text = (
-                    current.normalized_tokens + next_span.normalized_tokens
+                merged_normalized_text = (current.normalized_tokens or []) + (
+                    next_span.normalized_tokens or []
                 )
                 current = Span(
                     entity_type=current.entity_type,
@@ -119,12 +116,12 @@ class SpanEvaluator(BaseEvaluator):
                     start_position=current.start_position,
                     end_position=next_span.end_position,
                     normalized_start_index=min(
-                        current.normalized_start_index,
-                        next_span.normalized_start_index,
+                        current.normalized_start_index or 0,
+                        next_span.normalized_start_index or 0,
                     ),
                     normalized_end_index=max(
-                        current.normalized_end_index,
-                        next_span.normalized_end_index,
+                        current.normalized_end_index or 0,
+                        next_span.normalized_end_index or 0,
                     ),
                     normalized_tokens=merged_normalized_text,
                     token_start=current.token_start,
@@ -148,7 +145,7 @@ class SpanEvaluator(BaseEvaluator):
         """
         # Slice tokens between span1 and span2 using the row indices
         between_tokens = df.loc[
-            span1.token_end : span2.token_start - 1,
+            span1.token_end : (span2.token_start or 0) - 1,
             "token",
         ].tolist()
         non_skip_tokens = [
@@ -181,8 +178,8 @@ class SpanEvaluator(BaseEvaluator):
                 use_normalized_indices=use_normalized_indices,
             )
         else:
-            range1 = set(span1.normalized_tokens)
-            range2 = set(span2.normalized_tokens)
+            range1 = set(span1.normalized_tokens or [])
+            range2 = set(span2.normalized_tokens or [])
 
             intersection = len(range1.intersection(range2))
             union = len(range1.union(range2))
@@ -241,7 +238,7 @@ class SpanEvaluator(BaseEvaluator):
                     annotation="O",
                     prediction=pred_span.entity_type,
                     full_text=pred_span.entity_value,
-                    token=" ".join(pred_span.normalized_tokens),
+                    token=" ".join(pred_span.normalized_tokens or []),
                     explanation=f"False positive for {pred_span}",
                     start=pred_span.start_position,
                     end=pred_span.end_position,
@@ -332,9 +329,9 @@ class SpanEvaluator(BaseEvaluator):
         """
 
         precision, recall, f_beta = self._calculate_metrics(
-            evaluation_result.pii_true_positives,
-            evaluation_result.pii_predicted,
-            evaluation_result.pii_annotated,
+            evaluation_result.pii_true_positives or 0,
+            evaluation_result.pii_predicted or 0,
+            evaluation_result.pii_annotated or 0,
             beta,
         )
         evaluation_result.pii_recall = recall
@@ -399,9 +396,10 @@ class SpanEvaluator(BaseEvaluator):
     def calculate_score_on_df(
         self,
         results_df: pd.DataFrame,
-        level: Literal["entity", "pii", "both"] = "both",
         beta: float = 2,
+        level: Literal["entity", "pii", "both"] = "both",
         evaluation_result: EvaluationResult | None = None,
+        **kwargs,
     ) -> EvaluationResult:
         """
         Evaluate predictions against ground truth annotations.
@@ -435,6 +433,8 @@ class SpanEvaluator(BaseEvaluator):
                 beta=beta,
                 evaluation_result=evaluation_result,
             )
+        if not evaluation_result:
+            evaluation_result = EvaluationResult()
         return evaluation_result
 
     def _run_score_pass(
@@ -526,7 +526,7 @@ class SpanEvaluator(BaseEvaluator):
         current_entity_type = None
         current_tokens = []
         current_start_indices = []
-        current_token_start = None  # Add token position tracking
+        current_token_start: int = 0
         curr_char_position = 0
         token_position = 0  # Add token position counter
 
@@ -561,7 +561,7 @@ class SpanEvaluator(BaseEvaluator):
                     current_entity_type = None
                     current_tokens = []
                     current_start_indices = []
-                    current_token_start = None
+                    current_token_start = 0
 
                 curr_char_position = token_end
                 token_position += 1  # Increment token position
@@ -686,7 +686,7 @@ class SpanEvaluator(BaseEvaluator):
             evaluation_result.model_errors = []
 
         # Track which prediction spans have been processed
-        processed_predictions = set()
+        processed_predictions: set[tuple[str, int, int]] = set()
 
         for ann_span in annotation_spans:
             ann_type = ann_span.entity_type
@@ -764,7 +764,7 @@ class SpanEvaluator(BaseEvaluator):
                         annotation="O",
                         prediction=pred_span.entity_type,
                         full_text=pred_span.entity_value,
-                        token=" ".join(pred_span.normalized_tokens),
+                        token=" ".join(pred_span.normalized_tokens or []),
                         explanation=f"False prediction with no overlap: {pred_span.entity_type}",
                         start=pred_span.start_position,
                         end=pred_span.end_position,
@@ -1093,48 +1093,58 @@ class SpanEvaluator(BaseEvaluator):
         iou: float = 0.0,
     ):
         def get_explanation():
+            pred_type = pred_span.entity_type if pred_span else "O"
+            ann_type = ann_span.entity_type if ann_span else "O"
             match error_type:
                 case ErrorType.FP:
                     return (
-                        f"Entity {pred_span.entity_type} falsely detected, iou={iou:.2f} "
+                        f"Entity {pred_type} falsely detected, iou={iou:.2f} "
                         f"compared to threshold={self.iou_threshold}"
                     )
                 case ErrorType.FN:
                     if (
-                        pred_span and pred_span.entity_type == ann_span.entity_type
+                        pred_span and pred_span.entity_type == ann_type
                     ):  # FN due to low IoU
                         return (
-                            f"Entity {ann_span.entity_type} not detected due to low iou={iou:.2f} "
+                            f"Entity {ann_type} not detected due to low iou={iou:.2f} "
                             f"compared to threshold={self.iou_threshold}"
                         )
-                    elif pred_span and pred_span.entity_type != ann_span.entity_type:
+                    elif pred_span and pred_span.entity_type != ann_type:
                         return (
-                            f"Entity {ann_span.entity_type} not detected. "
+                            f"Entity {ann_type} not detected. "
                             f"iou with {pred_span.entity_type}={iou:.2f} "
                             f"compared to threshold={self.iou_threshold}"
                         )
                     else:
-                        return f"Entity {ann_span.entity_type} not detected."
+                        return f"Entity {ann_type} not detected."
                 case ErrorType.WrongEntity:
                     return (
-                        f"Wrong entity type: {ann_span.entity_type} detected as "
-                        f"{pred_span.entity_type}, iou={iou:.2f} "
+                        f"Wrong entity type: {ann_type} detected as "
+                        f"{pred_type}, iou={iou:.2f} "
                         f"compared to threshold={self.iou_threshold}"
                     )
 
             return ValueError(f"Unknown or missing error type: {error_type}")
 
-        prediction = "O" if error_type == ErrorType.FN else pred_span.entity_type
-        annotation = "O" if error_type == ErrorType.FP else ann_span.entity_type
+        prediction = (
+            "O"
+            if error_type == ErrorType.FN or not pred_span
+            else pred_span.entity_type
+        )
+        annotation = (
+            "O" if error_type == ErrorType.FP or not ann_span else ann_span.entity_type
+        )
         explanation = get_explanation()
 
         active_span = pred_span if error_type == ErrorType.FP else ann_span
+        if active_span is None:
+            raise ValueError(f"No active span for error type {error_type}")
         return ModelError(
             error_type=error_type,
             annotation=annotation,
             prediction=prediction,
             full_text=active_span.entity_value,
-            token=" ".join(active_span.normalized_tokens),
+            token=" ".join(active_span.normalized_tokens or []),
             explanation=explanation,
             start=active_span.start_position,
             end=active_span.end_position,
@@ -1228,34 +1238,34 @@ class SpanEvaluator(BaseEvaluator):
             # Character-based IoU
             ann_chars = set(
                 range(
-                    annotation_span.normalized_start_index,
-                    annotation_span.normalized_end_index + 1,
+                    annotation_span.normalized_start_index or 0,
+                    (annotation_span.normalized_end_index or 0) + 1,
                 ),
             )
-            pred_chars = set()
+            pred_chars: set[int] = set()
             for i, pred_span in enumerate(prediction_spans):
                 if i == 0:
                     pred_chars.update(
                         range(
-                            pred_span.normalized_start_index,
-                            pred_span.normalized_end_index + 1,
+                            pred_span.normalized_start_index or 0,
+                            (pred_span.normalized_end_index or 0) + 1,
                         ),
                     )
                 else:
                     pred_chars.update(
                         range(
-                            pred_span.normalized_start_index - 1,
-                            pred_span.normalized_end_index,
+                            (pred_span.normalized_start_index or 0) - 1,
+                            pred_span.normalized_end_index or 0,
                         ),
                     )
             intersection = len(ann_chars.intersection(pred_chars))
             union = len(ann_chars.union(pred_chars))
         else:
             # Token-based IoU
-            ann_tokens = set(annotation_span.normalized_tokens)
-            pred_tokens = set()
+            ann_tokens = set(annotation_span.normalized_tokens or [])
+            pred_tokens: set[str] = set()
             for pred_span in prediction_spans:
-                pred_tokens.update(pred_span.normalized_tokens)
+                pred_tokens.update(pred_span.normalized_tokens or [])
 
             intersection = len(ann_tokens.intersection(pred_tokens))
             union = len(ann_tokens.union(pred_tokens))

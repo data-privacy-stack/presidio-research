@@ -1,6 +1,6 @@
 [project]
 name = "presidio_evaluator"
-version = "0.2.5"
+version = "0.3"
 description = "A framework for evaluating Presidio's Named Entity Recognition performance"
 readme = "README.md"
 license = {text = "MIT"}

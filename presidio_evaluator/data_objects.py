@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 import spacy
-from spacy import Language
+from spacy.language import Language
 from spacy.tokens import Doc, DocBin
 from spacy.training import iob_to_biluo
 from tqdm import tqdm
@@ -92,10 +92,10 @@ class Span:
         """
 
         if use_normalized_indices:
-            first_start = self.normalized_start_index
-            first_end = self.normalized_end_index
-            second_start = other.normalized_start_index
-            second_end = other.normalized_end_index
+            first_start = self.normalized_start_index or 0
+            first_end = self.normalized_end_index or 0
+            second_start = other.normalized_start_index or 0
+            second_end = other.normalized_end_index or 0
         else:
             first_start = self.start_position
             first_end = self.end_position
@@ -128,10 +128,10 @@ class Span:
         """
 
         if use_normalized_indices:
-            first_start = self.normalized_start_index
-            first_end = self.normalized_end_index
-            second_start = other.normalized_start_index
-            second_end = other.normalized_end_index
+            first_start = self.normalized_start_index or 0
+            first_end = self.normalized_end_index or 0
+            second_start = other.normalized_start_index or 0
+            second_end = other.normalized_end_index or 0
         else:
             first_start = self.start_position
             first_end = self.end_position
@@ -206,14 +206,14 @@ class InputSample:
         full_text: str,
         spans: list[Span] | None = None,
         masked: str | None = None,
-        tokens: Doc | None = None,
+        tokens: Doc | list | None = None,
         tags: list[str] | None = None,
         create_tags_from_span=False,
         token_model_version="en_core_web_sm",  # noqa: S107
         scheme: str = "IO",
-        metadata: dict = None,
-        sample_id: int = None,
-        template_id: int = None,
+        metadata: dict | None = None,
+        sample_id: int | None = None,
+        template_id: int | None = None,
         start_indices: list[int] | None = None,
     ) -> None:
         """
@@ -325,7 +325,9 @@ class InputSample:
         conll = []
 
         if len(self.tokens) == 0:
-            self.tokens, self.tags = self.get_tags(model_version=tokenizer)
+            self.tokens, self.tags, self.start_indices = self.get_tags(
+                model_version=tokenizer
+            )
 
         for i, token in enumerate(self.tokens):
             if translate_tags:
@@ -349,7 +351,7 @@ class InputSample:
         return conll
 
     def get_template_id(self):
-        if not self.template_id:
+        if not self.template_id and self.metadata:
             return self.metadata.get("template_id")
 
     @staticmethod
@@ -480,7 +482,7 @@ class InputSample:
     def create_spacy_dataset(
         dataset: list["InputSample"],
         output_path: str | None = None,
-        entities: list[str] = None,
+        entities: list[str] | None = None,
         sort_by_template_id: bool = False,
         translate_tags: bool = True,
         spacy_pipeline: Language | None = None,
@@ -586,14 +588,14 @@ class InputSample:
                 for token in self.tokens
                 if token.idx + len(token.text) == span.end_position
             ][0] + 1
-            spacy_span = spacy.tokens.span.Span(
+            spacy_span = spacy.tokens.span.Span(  # type: ignore[attr-defined]
                 doc,
                 start=start_token,
                 end=end_token,
                 label=span.entity_type,
             )
             spacy_spans.append(spacy_span)
-        doc.ents = spacy_spans
+        doc.ents = spacy_spans  # type: ignore[assignment]
         return doc
 
     @staticmethod
@@ -642,6 +644,7 @@ class InputSample:
     def to_flair(self) -> str:
         for i, token in enumerate(self.tokens):
             return f"{token} {token.pos_} {self.tags[i]}"
+        return ""
 
     def translate_input_sample_tags(self, dictionary=None, ignore_unknown=True) -> None:
         if dictionary is None:
@@ -673,7 +676,7 @@ class InputSample:
 
     @staticmethod
     def read_dataset_json(
-        filepath: Path | str = None,
+        filepath: Path | str | None = None,
         length: int | None = None,
         **kwargs,
     ) -> list["InputSample"]:
@@ -683,6 +686,8 @@ class InputSample:
         :param length: Number of records to return (would return 0-length)
         :return: List[InputSample]
         """
+        if filepath is None:
+            raise ValueError("filepath must be provided")
         with open(filepath, encoding="utf-8") as f:
             dataset = json.load(f)
 

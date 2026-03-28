@@ -3,7 +3,7 @@ from collections import Counter
 import pandas as pd
 import pytest
 
-from presidio_evaluator.evaluation import EvaluationResult, Evaluator, ModelError
+from presidio_evaluator.evaluation import EvaluationResult, ModelError, TokenEvaluator
 
 
 @pytest.fixture(scope="session")
@@ -43,7 +43,7 @@ def evaluation_result() -> EvaluationResult:
 
 @pytest.fixture(scope="session")
 def evaluator():
-    evaluator = Evaluator()
+    evaluator = TokenEvaluator()
     return evaluator
 
 
