@@ -1,4 +1,4 @@
-# ADR-002: Entity Mapping via CanonicalMapper
+# ADR-002: Dataset-Anchored Entity Mapping via CanonicalMapper
 
 ## Status
 
@@ -6,71 +6,172 @@ Proposed
 
 ## Date
 
-2026-03-21
+2026-03-21 (revised 2026-04-14)
 
 ## Context
 
 Users of Presidio Evaluator bring their own entity label vocabularies — from custom datasets,
 fine-tuned models, or third-party tools. Before evaluation can happen, every user-defined label
-must be resolved to a canonical entity so that dataset annotations and model predictions can be
+must be resolved to a common vocabulary so that dataset annotations and model predictions can be
 compared on equal footing.
 
-The current approach has two pain points:
+The core use case is **comparing multiple models against the same dataset**. The dataset defines
+the evaluation contract — its entity vocabulary is the ground truth. Models are the variable;
+the dataset is the constant.
 
-1. **Mapping is required for meaningful cross-model comparison, but the current approach is too simplistic** — comparing different models against a shared dataset requires that every model's predictions and the dataset's annotations use a common label vocabulary. Without reliable mapping, results are biased: labels that should be considered equivalent are treated as different, inflating false-negative counts and depressing recall. The existing mapping code handles only the simplest cases; real-world label vocabularies include tagging-scheme prefixes, country-prefixed document types, and near-synonyms that the current logic silently drops or fails on, requiring significant manual intervention to get trustworthy numbers.
+The previous mapping design has the following pain points:
 
-2. **No structured resolution pipeline** — the existing code does not distinguish between labels
+1. **Depth mismatch is the norm, not the exception.** A model predicting `PERSON` and a dataset
+   annotating `FIRST_NAME` both resolve to different depth-3 canonicals. They never meet, even
+   though the model found the right span. The user must manually collapse one side or switch the
+   global depth — which affects *all* entities, not just the mismatched pair.
+
+2. **The mapping target should come from the dataset, not from a parameter.** When comparing
+   multiple models against the same dataset, the dataset's entity vocabulary is the evaluation
+   contract. Models should be projected onto that vocabulary, not onto an abstract canonical depth.
+
+3. **No structured resolution pipeline** — the previous code does not distinguish between labels
    that are exact matches, fuzzy matches, or unknown. All unmapped labels are silently dropped or
    cause errors, giving users no visibility into what happened.
 
+4. **Issue triage lacks priority.** Issues surface in a flat list. Users with large label
+   vocabularies need to see the highest-impact problems first — the collisions that affect the
+   most tokens, not alphabetically sorted edge cases.
+
 ## Decision
 
+### Core principle: the dataset defines the evaluation surface
+
 Introduce a single, stateful class — `CanonicalMapper` — as the sole entry point for resolving
-user-defined labels to **canonical entities**. In this ADR, a canonical entity is a normalised,
-taxonomy-defined label corresponding to a 3rd-level (leaf) node in the `EntityHierarchy`
-vocabulary (e.g. `NAME`, `AGE`, `ADDRESS`). Mapping a raw label to a canonical entity means
-finding the single 3rd-level taxonomy entry that best represents the concept the raw label
-describes. Once every label on both sides of an evaluation — dataset annotations and model
-predictions — has been mapped to a canonical entity, scores can be computed fairly: identical
-canonical entities count as matches regardless of how the two sides originally spelled or tagged
-them.
+user-defined labels to evaluation entities. The mapper operates in two phases:
 
-The same class is used for both sides of an evaluation: the dataset's label vocabulary and the
-model's output label vocabulary. Both are resolved independently; evaluation then compares
-canonical-to-canonical.
+1. **Identify** — locate each raw label (annotation and prediction) in the `EntityHierarchy`
+   taxonomy. This uses resolution tiers (EXACT → COUNTRY → COUNTRY_FALLBACK → FUZZY → PENDING).
+2. **Project** — map each identified prediction label onto the **dataset's entity set**, using
+   the hierarchy to bridge granularity gaps. The dataset's annotation entities (after
+   identification) become the target set. Prediction entities are projected onto that target set.
 
-### Resolution tiers
+### Auto-discovered hierarchy depth (majority vote)
 
-`CanonicalMapper` attempts each tier in order, stopping at the first match:
+Instead of requiring the user to specify `canonical_depth` upfront, the mapper inspects the
+dataset's annotation labels after identification, determines their depth in the hierarchy, and
+uses a **majority vote** to select the dominant depth. This becomes the default evaluation depth.
+
+Labels at depth > 3 are **excluded from the vote** and are always treated as outliers,
+regardless of how prevalent they are. The vote is taken only over labels at depth ≤ 3.
+This prevents highly granular sub-labels (e.g. `FIRST_NAME`, `LAST_NAME`) from pulling the
+evaluation depth deeper than the standard hierarchy levels.
+
+Example:
+- Dataset labels: `FIRST_NAME` (depth 4), `LAST_NAME` (depth 4), `EMAIL_ADDRESS` (depth 3),
+  `PHONE_NUMBER` (depth 3), `STREET_ADDRESS` (depth 3), `SSN` (depth 3), `PERSON` (depth 2).
+- Depths eligible for vote (≤ 3): {3: 4, 2: 1} → majority depth = 3.
+- `FIRST_NAME`/`LAST_NAME` (depth 4) are always outliers; `PERSON` (depth 2) is an outlier
+  relative to the majority. Both are handled case-by-case by the projection step.
+
+The user can still override with an explicit `eval_entities` list or `canonical_depth` parameter,
+but the default is data-driven.
+
+### Identification tiers
+
+The identification step locates each raw label in the hierarchy. It attempts each tier in order,
+stopping at the first match:
 
 | Resolution Tier | Matching Condition | Output |
 |---|---|---|
-| **EXACT** | Label (after normalisation) matches a known alias | Canonical entity |
-| **COUNTRY** | Label begins with a recognised country prefix; remainder resolves to a known document type | Canonical entity |
-| **COUNTRY_FALLBACK** | Label begins with a recognised country prefix; remainder is not a known document type | `NATIONAL_ID` (with warning) |
-| **FUZZY** | Approximate string match against the alias vocabulary meets the confidence threshold | Canonical entity |
+| **EXACT** | Label (after normalisation) matches a known alias | Hierarchy node |
+| **COUNTRY** | Label begins with a recognized country prefix; remainder resolves to a known document type | Hierarchy node |
+| **COUNTRY_FALLBACK** | Label begins with a recognized country prefix; remainder is not a known document type | `NATIONAL_ID` (with warning) |
+| **FUZZY** | Approximate string match against the alias vocabulary meets the confidence threshold | Hierarchy node |
 | **PENDING** | None of the above | Requires user action |
-
-After the user resolves pending labels (via `map()` or `resolve_interactively()`), resolved labels
-are tagged **MANUAL** or **NONE** (suppressed from evaluation).
 
 Before any tier is attempted, BIO/BIOES/BILOU tagging scheme prefixes and suffixes are stripped
 transparently (e.g. `B-PERSON` is looked up as `PERSON`). The original label remains the key in
 all outputs.
 
+### Projection rules
+
+After identification, every annotation and prediction label has a position in the hierarchy.
+The projection step maps prediction entities onto the dataset's target set:
+
+| Situation | Action | Auto/Manual |
+|---|---|---|
+| **Exact match** — prediction entity already in the dataset target set | Keep as-is | Auto |
+| **Descendant** — prediction is a child of a dataset entity (e.g., model predicts `FIRST_NAME`, dataset has `NAME`) | Map prediction up to the ancestor dataset entity | Auto (flag to user) |
+| **Ancestor, unambiguous** — prediction is a parent of exactly one dataset entity | Map prediction down to that dataset entity | Auto (flag to user) |
+| **Ancestor, ambiguous** — prediction is a parent of multiple dataset entities | Flag as collision | Manual — user decides |
+| **Same branch, lateral** — prediction and dataset entity share an ancestor but are siblings/cousins | Flag as collision | Manual — user decides |
+| **Different branch** — no shared lineage below the root | Flag as unmappable | Manual — user decides |
+| **No hierarchy match** — label not in hierarchy at all | Flag as PENDING | Manual (same as identification phase) |
+
+### Collision detection with frequency-based priority
+
+When the mapper detects a conflict (ambiguous ancestor, cross-branch overlap, etc.), it counts
+the **number of affected tokens** in the results DataFrame and ranks issues by descending
+frequency. The most impactful problems surface first.
+
+### Issue types (after projection)
+
+| Issue Type | Description | Default Action |
+|---|---|---|
+| **COLLISION_TRIVIAL** | Prediction entity is an ancestor or descendant of a dataset entity on the same branch | Auto-fix (project to dataset entity); flag to user |
+| **COLLISION_AMBIGUOUS** | Prediction entity maps to multiple dataset entities | User decides |
+| **COLLISION_CROSS_BRANCH** | Prediction and dataset entity are on entirely different branches | User decides |
+| **DATASET_ONLY** | Entity exists in annotations but no prediction entity maps to it | Default: **keep** (FN shows model gaps). User can suppress. |
+| **PREDICTION_ONLY** | Entity exists in predictions but no dataset entity corresponds to it | Default: **remove** (suppress from evaluation). User can override. |
+| **UNRESOLVED** | Label could not be placed in the hierarchy at all | User decides |
+
+Issues are sorted by: severity (ERROR > WARNING > INFO), then by affected token count (descending).
+
 ### Workflow
 
+```python
+mapper = CanonicalMapper()
+mapper.analyze(results_df)          # Phase 1: identify + Phase 2: project
+
+# Trivial collisions are auto-fixed; the rest need attention
+mapper.render_html()                # Audit table — issues sorted by impact
+for issue in mapper.get_issues():
+    print(issue)                    # Most impactful first
+
+# Resolve remaining issues
+mapper.map({"AMBIGUOUS_LABEL": "TARGET_ENTITY"})
+
+# Get the mapped DataFrame
+mapped_df = mapper.get_mapped_results_dataframe()
 ```
-CanonicalMapper.from_results_data_frame(results_df)
-  → auto-resolve pass (EXACT → COUNTRY → COUNTRY_FALLBACK → FUZZY)
-  → mapper.get_mapping(mode='html')   # inspect gaps as an HTML table
-  → mapper.map({...})                 # programmatic assignment for pending labels
-  → mapper.get_mapping()              # returns dict[str, str | None]
+
+Comparing multiple models against the same dataset:
+
+```python
+mapper = CanonicalMapper()
+
+# Model A
+mapper.analyze(results_df_model_a)
+mapped_a = mapper.get_mapped_results_dataframe()
+
+# Model B — same dataset entities → same evaluation surface
+mapper.analyze(results_df_model_b)
+mapped_b = mapper.get_mapped_results_dataframe()
+
+# Both mapped DataFrames use the dataset's entity vocabulary
+# → scores are directly comparable
+```
+
+### User overrides
+
+```python
+# Explicit target entity set — replaces auto-discovery entirely
+mapper = CanonicalMapper(eval_entities=["PERSON", "LOCATION", "CONTACT"])
+
+# Explicit depth — overrides majority vote (legacy compatibility)
+mapper = CanonicalMapper(canonical_depth=2)
 ```
 
 ### Input
-The input is the per-token comparison of predictions and actuals. 
-A user can get this by running the typical flow in presidio-evaluator, 
+
+The input is the per-token comparison of predictions and actuals.
+A user can get this by running the typical flow in presidio-evaluator,
 or generate this in any other way.
 
 Format:
@@ -82,94 +183,94 @@ Format:
 | `annotation` | `str` | Ground-truth entity tag (from `InputSample.tags`) |
 | `prediction` | `str` | Model-predicted entity tag |
 
-For mapping, only the `annotation` and `prediction` are used. 
+For mapping, only the `annotation` and `prediction` are used.
 The mapper returns a new data frame with updated columns.
-
-### Typical usage
-
-```python
-# Construct the mapper from the model's output (results data frame)
-# and return a CanonicalMapper instance.
-mapper = CanonicalMapper.from_results_data_frame(results_df)
-# Inspect unmapped labels — renders an HTML table highlighting gaps
-mapper.get_mapping(mode='html')
-
-# Resolve pending labels manually
-mapper.map({"GGE": "ORG", "CustID": "CLIENT_ID", "MY_CUSTOM_LABEL": None})
-
-# Retrieve the final mapping dict once all labels are resolved
-mapping: Dict[str, str] = mapper.get_mapping()
-
-# Update data frame
-results_df_mapped: pd.DataFrame = mapper.get_mapped_results_dataframe()
-```
 
 ### Logging
 
 Every resolution decision is logged at `INFO` level, with country-prefix fallback at `WARNING`
-and unresolvable labels at `WARNING`. A summary line after the auto-resolve pass reports how many
-labels were resolved, how many were fuzzy, and how many are pending. This gives users a full audit
-trail without inspecting internal state.
+and unresolvable labels at `WARNING`. Trivial auto-fixes are logged at `INFO` with the fix
+applied. A summary line after analysis reports the auto-discovered depth, resolution counts, and
+number of issues requiring attention.
 
 ## Consequences
 
 ### Positive
 
-- **Single resolution entry point** — all mapping logic lives in one place; scattered
-  `align_entity_types` calls across `BaseModel` and `BaseEvaluator` are replaced.
-- **Transparency** — every resolution decision is logged and visible in the HTML audit table
-  (`render_html()`). Users always know how each label was handled.
-- **Guided manual resolution** — `resolve_interactively()` shows ranked fuzzy suggestions for
-  pending labels, making manual mapping fast even for large vocabularies.
+- **Dataset-anchored evaluation** — multiple models can be compared against the same dataset
+  without each needing its own mapping configuration. The dataset is the contract.
+- **Auto-discovered depth** — users no longer need to guess the right `canonical_depth`; the
+  mapper infers it from the data.
+- **Frequency-driven triage** — the most impactful mapping problems surface first, reducing time
+  to a working evaluation.
+- **Trivial auto-fix** — ancestor/descendant mismatches within the same branch are resolved
+  automatically, drastically reducing manual `map()` calls.
+- **Sensible defaults** — prediction-only entities are suppressed (avoid FP inflation); dataset-only
+  entities are kept (show model gaps). Both are overridable.
+- **Single resolution entry point** — all mapping logic lives in one place.
+- **Transparency** — every resolution decision is logged and visible in the HTML audit table.
 - **Composable** — `get_mapping()` returns a plain `dict[str, str | None]` that can be passed
-  to any downstream evaluation code, serialised, or version-controlled without additional tooling.
-- **Atomic batch updates** — `map()` validates all entries before applying any, preventing
-  partial state corruption.
+  to any downstream evaluation code, serialised, or version-controlled.
+- **Atomic batch updates** — `map()` validates all entries before applying any.
 
 ### Negative / Trade-offs
 
+- **Dataset must be present** — the mapper requires a results DataFrame with both annotations
+  and predictions to determine the evaluation surface. Label-only construction
+  (`CanonicalMapper(labels=[...])`) falls back to fixed-depth behavior (no projection).
+- **Context-dependent mapping** — the same prediction label may map to different targets depending
+  on the dataset. This is intentional (evaluation is relative to a dataset) but may surprise users
+  who expect a static label→canonical dict.
+- **Auto-fix may be wrong** — trivially collapsing `FIRST_NAME` → `NAME` is usually correct, but
+  in a dataset that intentionally distinguishes them, the auto-fix would be harmful. The flag +
+  audit table mitigate this.
 - **`IncompleteMapping` is a hard stop** — pipelines that previously silently dropped unknown
   labels will now fail explicitly until all labels are resolved or suppressed. This is intentional
   but requires pipeline changes for existing users.
 
 ## Alternatives Considered
 
-### 1. Score against own labels (no mapping)
+### 1. Symmetric mapping to fixed canonical depth (previous design)
+
+Both annotation and prediction labels are mapped independently to the same canonical depth
+(default 3). Rejected because real-world datasets use mixed granularity, and depth mismatch
+between models and datasets is the norm. A global depth parameter cannot represent a dataset that
+mixes `PERSON` (depth 2) with `STREET_ADDRESS` (depth 3).
+
+### 2. Meet-in-the-Middle (LCA-based per-pair convergence)
+
+For each (annotation, prediction) pair, find their Lowest Common Ancestor in the hierarchy and
+map both sides to that level. Rejected because different pairs converge at different depths,
+making results hard to interpret. It also modifies the dataset's annotations — undermining the
+principle that the dataset is ground truth.
+
+### 3. Evaluation-Goal-Driven (user specifies entity set upfront)
+
+The user declares `eval_entities=["PERSON", "LOCATION", ...]` and everything is projected onto
+that set. Supported as an override parameter but rejected as the default because it requires
+upfront knowledge of the right granularity, which most users don't have when starting an
+evaluation.
+
+### 4. Score against own labels (no mapping)
 
 Each model is evaluated only on the entity types it natively supports, with no mapping at all.
-This requires nothing from the user but makes cross-model comparison impossible — models are
-evaluated on different sets of entities, so their scores are not comparable. High customizability
-since each model is unconstrained, but that freedom undermines any meaningful benchmark.
+Makes cross-model comparison impossible.
 
-### 2. Manual mapping only
+### 5. Manual mapping only
 
-Require users to supply a complete `dict[str, str]` upfront and apply it verbatim, with no
-auto-resolution. This is simple to implement and fully predictable, but it is burdensome for
-large or evolving label vocabularies where most mappings are straightforward. Users must enumerate
-every label manually, including trivially resolvable ones, before evaluation can start.
+Require users to supply a complete `dict[str, str]` upfront. Too burdensome for large
+vocabularies where most mappings are straightforward.
 
-### 3. Semantic similarity (embedding-based matching)
+### 6. Semantic similarity (embedding-based matching)
 
-Use a sentence-transformer model to embed both the raw label and all canonical entity names, then
-pick the nearest neighbour as the resolved canonical. This can handle abbreviated or
-domain-specific labels that string matching misses. It was rejected because it adds a heavy ML
-dependency (PyTorch, transformers, tokenizers) for a task whose label vocabulary is finite and
-known; the quality gain over fuzzy string matching does not justify the install-time and runtime
-overhead. It also makes resolution non-deterministic across model versions.
+Use a sentence-transformer model to embed labels and pick nearest neighbours. Rejected due to
+heavy ML dependency for a finite label vocabulary, and non-deterministic results across model
+versions.
 
-### 4. A stateless mapping function
+### 7. Embed mapping inside the model prediction step
 
-A pure function `resolve_labels(labels, hierarchy) → dict` with no state or interactive
-capability was considered. This was rejected because it cannot handle the fallback path for labels
-that cannot be auto-resolved — callers would have to implement their own retry loops and conflict
-resolution, defeating the goal of a single reusable entry point.
-
-### 5. Embed mapping inside the model prediction step
-
-Passing an entity mapping directly to the model's `predict` call was considered. This was
-rejected because mapping is a property of the *evaluation goal* (which canonical entities to
-score), not of the model. Keeping mapping separate makes both components independently testable
-and allows the same model output to be evaluated under different mapping configurations.
+Rejected because mapping is a property of the evaluation goal, not the model. Keeping mapping
+separate allows the same model output to be evaluated under different configurations.
 
 ## Example mappings
 
