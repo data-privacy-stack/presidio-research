@@ -19,70 +19,51 @@ The core use case is **comparing multiple models against the same dataset**. The
 the evaluation contract — its entity vocabulary is the ground truth. Models are the variable;
 the dataset is the constant.
 
-The previous mapping design has the following pain points:
+The naive mapping design has the following pain points:
 
-1. **Depth mismatch is the norm, not the exception.** A model predicting `PERSON` and a dataset
-   annotating `FIRST_NAME` both resolve to different depth-3 canonicals. They never meet, even
-   though the model found the right span. The user must manually collapse one side or switch the
-   global depth — which affects *all* entities, not just the mismatched pair.
+1. **Depth mismatch is the norm, not the exception.** A model predicting `PERSON` and a dataset annotating `FIRST_NAME` both resolve to different hierarchy levels. They never align, even though the model found the right span.
 
-2. **The mapping target should come from the dataset, not from a parameter.** When comparing
-   multiple models against the same dataset, the dataset's entity vocabulary is the evaluation
-   contract. Models should be projected onto that vocabulary, not onto an abstract canonical depth.
+2. **The mapping target should come from the dataset, not from a parameter.** When comparing multiple models against the same dataset, the dataset's entity vocabulary is the evaluation contract. Models should be projected onto that vocabulary, not onto a dynamic mapping.
 
-3. **No structured resolution pipeline** — the previous code does not distinguish between labels
-   that are exact matches, fuzzy matches, or unknown. All unmapped labels are silently dropped or
-   cause errors, giving users no visibility into what happened.
+3. **No structured resolution pipeline** — the previous mapping does not allow for a simple and structured resolution flow that mitigates the mapping issues to the full extent.
 
-4. **Issue triage lacks priority.** Issues surface in a flat list. Users with large label
-   vocabularies need to see the highest-impact problems first — the collisions that affect the
-   most tokens, not alphabetically sorted edge cases.
+4. **Issue triage lacks priority.** Issues surface in a flat list. Users with large label vocabularies need to see the highest-impact problems first — the collisions that affect the most tokens, not alphabetically sorted edge cases.
 
 ## Decision
 
 ### Core principle: the dataset defines the evaluation surface
 
-Introduce a single, stateful class — `CanonicalMapper` — as the sole entry point for resolving
-user-defined labels to evaluation entities. The mapper operates in two phases:
+Introduce a single, stateful class — `CanonicalMapper` — as the sole entry point for resolving user-defined labels to evaluation entities. The mapper operates in two phases:
 
-1. **Identify** — locate each raw label (annotation and prediction) in the `EntityHierarchy`
-   taxonomy. This uses resolution tiers (EXACT → COUNTRY → COUNTRY_FALLBACK → FUZZY → PENDING).
-2. **Project** — map each identified prediction label onto the **dataset's entity set**, using
-   the hierarchy to bridge granularity gaps. The dataset's annotation entities (after
-   identification) become the target set. Prediction entities are projected onto that target set.
+1. **Identify** — locate each raw label (annotation and prediction) in the `EntityHierarchy` taxonomy. This uses resolution tiers (EXACT → COUNTRY → COUNTRY_FALLBACK → FUZZY → PENDING).
+2. **Project** — map each identified prediction label onto the **dataset's entity set**, using the most suitable hierarchy to bridge granularity gaps. The dataset's annotation entities (after mapping) become the target set. Prediction entities are projected onto that target set.
 
 ### Auto-discovered hierarchy depth (majority vote)
 
-Instead of requiring the user to specify `canonical_depth` upfront, the mapper inspects the
-dataset's annotation labels after identification, determines their depth in the hierarchy, and
-uses a **majority vote** to select the dominant depth. This becomes the default evaluation depth.
-
-Labels at depth > 3 are **excluded from the vote** and are always treated as outliers,
-regardless of how prevalent they are. The vote is taken only over labels at depth ≤ 3.
-This prevents highly granular sub-labels (e.g. `FIRST_NAME`, `LAST_NAME`) from pulling the
-evaluation depth deeper than the standard hierarchy levels.
+Instead of requiring the user to specify the granularity upfront, the mapper inspects the dataset's annotation labels after identification, determines their depth in the hierarchy, and uses a **majority vote** to select the dominant depth. This becomes the default evaluation depth.
+The calculation uses the depth of each entity on the tree, times the number of tokens with this label. In other words, it's a weighted average of the entities level on the hierarchy tree:
+`round(granularity) = Σ(depth × tokens) / Σ(tokens)`
+To avoid overly-specific entities, labels at depth > 3 are treated as level 3.
+This prevents highly granular sub-labels (e.g. `MAIDEN_NAME`) from pulling the evaluation depth deeper than the standard hierarchy levels.
 
 Example:
-- Dataset labels: `FIRST_NAME` (depth 4), `LAST_NAME` (depth 4), `EMAIL_ADDRESS` (depth 3),
-  `PHONE_NUMBER` (depth 3), `STREET_ADDRESS` (depth 3), `SSN` (depth 3), `PERSON` (depth 2).
-- Depths eligible for vote (≤ 3): {3: 4, 2: 1} → majority depth = 3.
-- `FIRST_NAME`/`LAST_NAME` (depth 4) are always outliers; `PERSON` (depth 2) is an outlier
-  relative to the majority. Both are handled case-by-case by the projection step.
+- Dataset labels: `FIRST_NAME` (depth 4, 200 tokens), `LAST_NAME` (depth 4, 200), `EMAIL_ADDRESS` (depth 3, 50),
+  `PHONE_NUMBER` (depth 3, 10), `STREET_ADDRESS` (depth 3, 50), `SSN` (depth 3, 10), `PERSON` (depth 2, 100).
+- With a cap of max 3: `depth ≈ 2.84 = 3`.
 
-The user can still override with an explicit `eval_entities` list or `canonical_depth` parameter,
-but the default is data-driven.
+The user can still override with an explicit list of entities or `canonical_depth` parameter, but the default is data-driven.
 
 ### Identification tiers
 
-The identification step locates each raw label in the hierarchy. It attempts each tier in order,
-stopping at the first match:
+The identification step locates each raw label in the hierarchy. It attempts each tier in order, stopping at the first match:
 
 | Resolution Tier | Matching Condition | Output |
 |---|---|---|
-| **EXACT** | Label (after normalisation) matches a known alias | Hierarchy node |
+| **EXACT** | Label (after normalization) matches a known alias | Hierarchy node |
 | **COUNTRY** | Label begins with a recognized country prefix; remainder resolves to a known document type | Hierarchy node |
 | **COUNTRY_FALLBACK** | Label begins with a recognized country prefix; remainder is not a known document type | `NATIONAL_ID` (with warning) |
 | **FUZZY** | Approximate string match against the alias vocabulary meets the confidence threshold | Hierarchy node |
+| **SEMANTICALLY SIMILAR** (**NOT IMPLEMENTED**) | Which known entity is semantically closest to the given entity name  | Hierarchy node |
 | **PENDING** | None of the above | Requires user action |
 
 Before any tier is attempted, BIO/BIOES/BILOU tagging scheme prefixes and suffixes are stripped
@@ -103,12 +84,17 @@ The projection step maps prediction entities onto the dataset's target set:
 | **Same branch, lateral** — prediction and dataset entity share an ancestor but are siblings/cousins | Flag as collision | Manual — user decides |
 | **Different branch** — no shared lineage below the root | Flag as unmappable | Manual — user decides |
 | **No hierarchy match** — label not in hierarchy at all | Flag as PENDING | Manual (same as identification phase) |
+ 
 
 ### Collision detection with frequency-based priority
 
 When the mapper detects a conflict (ambiguous ancestor, cross-branch overlap, etc.), it counts
 the **number of affected tokens** in the results DataFrame and ranks issues by descending
 frequency. The most impactful problems surface first.
+
+
+Note that due to prediction errors, we are expected to have wrong collisions: prediction entities colliding with multiple dataset entities or dataset entities colliding with multiple prediction entities. In such case, the tool will present the most common collision. 
+For example, if `PERSON` tokens in the dataset collide with both `TITLE` and `ORG`, the tool should first try to map to the more common match.
 
 ### Issue types (after projection)
 
