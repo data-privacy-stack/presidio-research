@@ -340,7 +340,7 @@
         "Notebook runs end-to-end without error"
       ],
       "priority": 18,
-      "passes": false,
+      "passes": true,
       "notes": "File: notebooks/4_Evaluate_Presidio_Analyzer.ipynb. Depends on US-001 through US-017 (new CanonicalMapper API must exist)."
     },
     {

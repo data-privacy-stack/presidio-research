@@ -33,3 +33,22 @@
   - IssueType.PREDICTION_ONLY and IssueType.UNRESOLVED should be suppressed (mapped to None) in integration tests
 ---
 
+
+## 2026-04-27 - US-018
+- What was implemented: Updated notebooks/4_Evaluate_Presidio_Analyzer.ipynb for new two-phase API
+  - Cell 2 (imports): Added IncompleteMapping to imports
+  - Cell 15 (markdown): Rewrote workflow description with issue type table and two-phase explanation
+  - Cell 16 (code): Replaced CanonicalMapper(canonical_depth=3) with CanonicalMapper(), added render_html()
+  - Cell 17 (code): Added IncompleteMapping demo (try/except before resolving)
+  - Added markdown cell 18: Resolve issues explanation
+  - Added code cell 19: map() calls for PERSON->NAME, DATE_TIME->DATE, LOCATION->LOC, ORGANIZATION->ORG, plus dynamic suppression of remaining blocking labels
+  - Added code cell 20: get_mapped_results_dataframe() + experiment.log_parameter + mapped_df.head()
+  - Removed old cells: standalone mapped_df.head(50) and experiment.log_parameter (merged into cell 20)
+- Files changed: notebooks/4_Evaluate_Presidio_Analyzer.ipynb, ralph/update_nb4.py, ralph/cleanup_nb4.py
+- **Learnings for future iterations:**
+  - edit_notebook_file tool updates VSCode in-memory state but may not persist to disk reliably; use direct JSON editing via Python scripts instead
+  - When editing notebooks with Python scripts, always run ruff format on the helper .py files before committing
+  - The helper scripts (update_nb4.py etc.) go in ralph/ — they're needed for the commit but can stay there
+  - edit_notebook_file + Python script double-writes cause duplicate cells; always check and clean up with a cleanup script
+  - Cell index arithmetic: when inserting N cells and deleting M cells, compute final indices after all insertions before deletions
+---
