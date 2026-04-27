@@ -9,3 +9,27 @@
 - _build_branch_map uses canonical_depth but also records intermediate nodes with their path
 - The full hierarchy tree is in presidio_evaluator/entity_mapping/definitions.py (HIERARCHY dict)
 - DO NOT add overlap_counts to MappingIssue as a positional field - use field(default_factory=...)
+- pre-commit runs: ruff format (THEN ruff check, THEN pytest unit tests). Always run ruff format before committing.
+- LOCATION is depth-2 (PII->LOCATION), so it becomes COLLISION_AMBIGUOUS at eval_depth=3. Use LOC (depth-3) instead.
+- US_PASSPORT resolves via EXACT (it's in the alias map), not COUNTRY tier. Use GERMANY_PASSPORT_NUMBER to test COUNTRY tier.
+- Presidio outputs depth-2 labels (PERSON, LOCATION, DATE_TIME, ORGANIZATION). These need .map() to depth-3 before get_mapped_results_dataframe() at eval_depth=3.
+- get_mapped_results_dataframe() returns 7 columns (adds original_annotation, original_prediction). Shape assertions must compare row count only.
+- eval_depth computed from annotation labels ONLY (self._label_annotation_counts), not predictions.
+
+## 2025-01-XX - US-001 through US-017
+- What was implemented: Complete rewrite of entity_mapping package as two-phase CanonicalMapper
+  - data_objects.py: new IssueType enum (UNRESOLVED, COLLISION_TRIVIAL, COLLISION_AMBIGUOUS, COLLISION_CROSS_BRANCH, PREDICTION_ONLY, DATASET_ONLY), overlap_counts field on MappingIssue
+  - hierarchy.py: added get_depth() method
+  - mapper.py: completely rewritten — _Resolution dataclass, two-phase analyze() (Identify→Project), eval_surface locking, majority-vote eval_depth from annotations only, issue detection, map(), get_mapped_results_dataframe(), render_html()
+  - test_canonical_mapper.py: completely rewritten for new API
+  - tests/integration/test_notebook.py: updated to resolve COLLISION_AMBIGUOUS Presidio labels before extraction
+- Files changed: presidio_evaluator/entity_mapping/data_objects.py, hierarchy.py, mapper.py, __init__.py; tests/entity_mapping/test_canonical_mapper.py; tests/integration/test_notebook.py; progress.txt
+- **Learnings for future iterations:**
+  - pre-commit enforces ruff format — always run it before committing
+  - LOCATION is depth-2, causes COLLISION_AMBIGUOUS. Standard fix: map LOCATION→LOC
+  - Presidio's depth-2 labels (PERSON, LOCATION, DATE_TIME, ORGANIZATION) must be mapped to depth-3 before calling get_mapped_results_dataframe() when dataset uses depth-3 annotations
+  - get_mapped_results_dataframe() adds 2 extra columns; old shape == checks break
+  - Integration tests now resolve all blocking issues before extraction using a standard _PRESIDIO_LABEL_MAP helper
+  - IssueType.PREDICTION_ONLY and IssueType.UNRESOLVED should be suppressed (mapped to None) in integration tests
+---
+
