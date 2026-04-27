@@ -1,0 +1,11 @@
+## Codebase Patterns
+- Branch: ralph/dataset-anchored-mapper (created from ralph/presidio-evaluator-redesign)
+- Tests run with: pytest tests/entity_mapping/ (fast); full suite: pytest
+- Linting: ruff check presidio_evaluator/entity_mapping/
+- EntityHierarchy._strip_bio() is a static method used both in hierarchy.py and mapper.py
+- canonical_to_branch[entity] gives the full branch path list; len() gives depth
+- all_canonical_entities is the set of nodes at canonical_depth
+- _rebuild() recomputes raw_to_canonical, all_canonical_entities, canonical_to_branch
+- _build_branch_map uses canonical_depth but also records intermediate nodes with their path
+- The full hierarchy tree is in presidio_evaluator/entity_mapping/definitions.py (HIERARCHY dict)
+- DO NOT add overlap_counts to MappingIssue as a positional field - use field(default_factory=...)

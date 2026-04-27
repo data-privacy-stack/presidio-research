@@ -1,8 +1,3 @@
-"""
-PII entity taxonomy definitions: canonical hierarchy, country tokens, and base exception.
-"""
-
-
 # ---------------------------------------------------------------------------
 # Canonical hierarchy
 # First level: PII
@@ -11,6 +6,7 @@ PII entity taxonomy definitions: canonical hierarchy, country tokens, and base e
 # LEGAL_PII, TRAVEL_PII, EDUCATION, DATE_TIME
 # Third level: subtypes of each second-level entity (e.g. PERSON -> NAME, CONTACT -> EMAIL_ADDRESS, etc.)
 # ---------------------------------------------------------------------------
+
 
 HIERARCHY: dict = {
     "PII": {
