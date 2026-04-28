@@ -357,7 +357,7 @@
         "Notebook runs end-to-end without error"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": "File: notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb. Depends on US-001 through US-017."
     },
     {
@@ -378,7 +378,7 @@
         "Notebook runs end-to-end without error"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": "File: notebooks/6_Interactive_Entity_Mapping.ipynb. Full rewrite. Depends on US-001 through US-017."
     },
     {
@@ -395,7 +395,7 @@
         "All code examples are syntactically valid Python"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": "File: docs/entity_hierarchy.md. Depends on US-001 through US-017."
     },
     {
@@ -412,7 +412,7 @@
         "Remove references to old issue types or API parameters"
       ],
       "priority": 22,
-      "passes": false,
+      "passes": true,
       "notes": "File: docs/mapping_scenarios.md. Depends on US-001 through US-017."
     },
     {
@@ -424,7 +424,7 @@
         "No code snippets reference old API parameters"
       ],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": "File: docs/why_canonical_entity_mapping.md. Small update. Depends on US-001 through US-017."
     }
   ]

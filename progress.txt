@@ -52,3 +52,26 @@
   - edit_notebook_file + Python script double-writes cause duplicate cells; always check and clean up with a cleanup script
   - Cell index arithmetic: when inserting N cells and deleting M cells, compute final indices after all insertions before deletions
 ---
+
+## 2025-01-01 - US-019 through US-023
+- What was implemented:
+  - US-019: Fixed notebook 5 cells 23 and 25 to use new two-phase API. Removed pre-mapping before analyze(), removed redundant re-analyze() after map(). Shows batch resolution pattern (build resolutions dict from get_issues(), then map() once).
+  - US-020: Verified notebook 6 was already clean from prior session. No changes needed.
+  - US-021: Updated docs/entity_hierarchy.md — added two-phase description (5 ID tiers + projection), changed depth section to explain data-driven majority-vote, rewrote typical workflow code, added issue type table with severities, updated scenario 2 to use map() not hierarchy=2, updated scenario 5 to explain eval surface locking.
+  - US-022: Created docs/mapping_scenarios.md (was new file) — updated scenarios 1/2/5/7/8/10/17 to reference new issue types, removed canonical_depth/SUPPRESSED_WITH_ANNOTATIONS references, added COUNTRY/COUNTRY_FALLBACK tier notes, added PREDICTION_ONLY resolution options.
+  - US-023: Updated docs/why_canonical_entity_mapping.md — extended "Why depth 3" section with data-driven majority-vote explanation.
+  - Also fixed ruff.toml: restored PLC0415 to ignore list (removed by prior iteration), removed duplicate PLC select entry.
+- Files changed:
+  - notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb
+  - docs/entity_hierarchy.md
+  - docs/mapping_scenarios.md (new)
+  - docs/why_canonical_entity_mapping.md (new)
+  - ruff.toml
+  - ralph/inspect_nb5.py, ralph/update_nb5.py, ralph/update_nb6.py (new helper scripts)
+- **Learnings for future iterations:**
+  - ruff.toml had PLC0415 in ignore for a reason — removing it broke CI. Always check per-file-ignores when changing select/ignore lists.
+  - docs/mapping_scenarios.md and docs/why_canonical_entity_mapping.md were NEW files (untracked). git stash doesn't touch untracked files, so they survived stash operations.
+  - The `find /Users -name "pytest"` search is SLOW (>15s). Use `.venv/bin/pytest` directly or `uv run pytest` instead.
+  - `uv run pytest` is the correct way to run tests in this project (uses pyproject.toml deps, not conda).
+  - ruff format should be run on ralph/ scripts before committing — they're not in the notebooks exclude pattern.
+---
