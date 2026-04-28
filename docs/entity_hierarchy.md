@@ -1,386 +1,210 @@
-# PII Entity Hierarchy
+# Entity Mapping
 
-This document explains the design of the canonical PII entity taxonomy used throughout Presidio Evaluator,
-and shows how to work with the `EntityHierarchy` API.
+## The problem
 
-## Overview
+When you evaluate a PII detection model, the model and the dataset almost never use the same labels. Your dataset might call something `ORGANIZATION`, while the model calls it `ORG`. Your dataset says `PHONE_NUMBER`, the model says `PHONE`. Some models output `B-PERSON` (with BIO tags), others just `PERSON`. Some emit `GERMANY_PASSPORT_NUMBER`, others just `PASSPORT`.
 
-Different PII detection tools and models
-each define their own entity label vocabularies. A model trained for healthcare may emit `PATIENT_NAME` or `HCW`, while another
-emits `FULLNAME` or `PassengerID`. Evaluation across these tools requires a shared canonical vocabulary that every raw label
-can be normalized to.
+If you compare these labels directly, everything looks like a mismatch — even when the model found the right thing.
 
-`presidio_evaluator.entity_mapping` provides:
+## How it works
 
-- **`HIERARCHY`** — a single nested Python dict that is the authoritative taxonomy.
-- **`EntityHierarchy`** — a class that wraps the taxonomy and exposes canonicalization, branch lookup, BIO prefix stripping, and alias extension.
-- **`CanonicalMapper`** — a workflow class that resolves a full set of raw model/dataset labels through auto-resolution, fuzzy matching, and manual override.
+Presidio Evaluator solves this with a **shared vocabulary** of canonical entity names. Every label — from any model or dataset — gets mapped to one of these canonical names before evaluation using a **two-phase process**:
 
----
+**Phase 1 — Identify:** each label is matched to a canonical entity through five tiers (in priority order):
+1. Exact match in the alias map
+2. Country-prefix strip (e.g. `GERMANY_PASSPORT_NUMBER` → `PASSPORT`)
+3. Country-prefix fallback (tries removing leading country code)
+4. Fuzzy string match (≥0.80 similarity by default)
+5. `UNRESOLVED` — flagged for manual resolution
 
-## Taxonomy structure
+Examples:
+- `EMAIL`, `email_address`, `EMAILADDRESS` → all become `EMAIL_ADDRESS`
+- `B-PERSON`, `PERSON-I` → BIO tags are stripped, both become `NAME`
+- `GERMANY_PASSPORT_NUMBER` → country prefix is recognized, becomes `PASSPORT`
+- `CREDITCARD`, `credit_card` → case and delimiters don't matter, becomes `FINANCIAL`
 
-`HIERARCHY` is a nested `dict`. Each key is an entity name; the value is either:
+**Phase 2 — Project:** canonical entities are projected onto the *eval surface* — a set of entities at a
+depth computed by majority vote from the **dataset annotation labels**. Depth-2 ancestors that have
+multiple depth-3 descendants trigger a `COLLISION_AMBIGUOUS` issue; descendants that have exactly
+one matching ancestor on the eval surface are auto-fixed as `COLLISION_TRIVIAL`.
 
-- a **`dict`** → an intermediate (parent) node that has children, or
-- a **`list`** → a leaf node whose list contains raw aliases that also resolve to this entity.
+Labels that can't be resolved automatically are flagged for you to handle manually.
 
-### Depth and canonicalization
+## The canonical vocabulary
 
-The default canonical depth is **3** (passed as `canonical_depth=3` to `EntityHierarchy.__init__`). Nodes are counted from the root (`PII` = depth 1):
+The canonical entities are organized in a hierarchy. At the default evaluation level (depth 3), there are entities like `EMAIL_ADDRESS`, `PASSPORT`, `NAME`, `STREET_ADDRESS`, etc. These sit under broader categories:
 
-| Depth | Role | Behaviour |
-|-------|------|-----------|
-| 1 | Root (`PII`) | Self-maps — `h.canonicalize("PII")` → `"PII"` |
-| 2 | Domain branch (e.g. `GOVERNMENT_ID`, `CONTACT`) | Self-maps — `h.canonicalize("CONTACT")` → `"CONTACT"` |
-| 3 | **Canonical entity** (e.g. `EMAIL_ADDRESS`, `PASSPORT`) | The resolution target |
-| 4+ | Fine-grained sub-type (e.g. `CARD_NUMBER` under `CREDIT_CARD` under `FINANCIAL`) | Rolls up to its depth-3 ancestor |
-
-canonicalization is **case- and delimiter-agnostic**: `credit_card`, `CREDIT_CARD`, and `CreditCard` all resolve the
-same way.
-
-### Top-level branches
-
-| Branch | What it covers |
-|--------|----------------|
+| Category | Entities it includes |
+|----------|---------------------|
 | `PERSON` | Names, usernames, aliases |
-| `DEMOGRAPHIC` | Age, gender, ethnicity, nationality, physical descriptors |
 | `CONTACT` | Email, phone, fax, social handles |
-| `LOCATION` | Addresses (street → postal code), geo-coordinates |
-| `ORGANIZATION` | Companies, schools, government agencies, medical facilities |
-| `EMPLOYMENT` | Job titles, departments, employee/customer IDs |
-| `GOVERNMENT_ID` | SSN, passport, driver license, tax ID, national ID, and similar |
-| `FINANCIAL_PII` | Credit cards, bank accounts, crypto wallets, financial amounts |
-| `DEVICE_IDENTIFIER` | Device IDs, IMEI, MAC address, user-agent |
-| `BIOMETRIC` | Fingerprint, face, iris, DNA — GDPR Article 9 special-category data |
-| `NETWORK_IDENTIFIER` | IP address, URL, domain, cookies |
-| `AUTHENTICATION` | Passwords, PINs, API keys, tokens |
-| `PHI` | Protected health information (patient ID, health insurance, conditions, medications, clinical research) |
-| `VEHICLE_PII` | License plates, VIN |
-| `LEGAL_PII` | Case numbers, court and arrest records, inmate IDs |
-| `TRAVEL_PII` | Passenger name records, e-tickets, world-tracer numbers |
-| `EDUCATION` | Student IDs, academic records, institution IDs |
-| `DATE_TIME` | Dates, times, epochs, durations |
+| `LOCATION` | Addresses, cities, countries, geo-coordinates |
+| `ORGANIZATION` | Companies, schools, government agencies |
+| `GOVERNMENT_ID` | SSN, passport, driver license, tax ID |
+| `FINANCIAL_PII` | Credit cards, bank accounts, crypto wallets |
+| `PHI` | Patient IDs, health insurance, conditions, medications |
+| `DATE_TIME` | Dates, times, durations |
 
-### Branches with extra depth
+(Full list: `DEMOGRAPHIC`, `EMPLOYMENT`, `DEVICE_IDENTIFIER`, `BIOMETRIC`, `NETWORK_IDENTIFIER`, `AUTHENTICATION`, `VEHICLE_PII`, `LEGAL_PII`, `TRAVEL_PII`, `EDUCATION`)
 
-A few branches have a four-level structure where depth-2 (`*_PII`) wraps a depth-3 canonical (`FINANCIAL`,
-`VEHICLE`, …) which in turn wraps depth-4 sub-types. The practical consequence is that fine-grained labels
-roll up to the depth-3 canonical:
+The **evaluation depth is data-driven**: `CanonicalMapper` computes a weighted majority vote across the
+annotation labels in your results DataFrame and selects depth 2 or 3 (capped at 3). Depth 3 is the most
+common outcome when a dataset uses fine-grained entity types like `EMAIL_ADDRESS`, `NAME`, or `SSN`.
 
-```
-FINANCIAL_PII (depth 2, self-maps)
-  └─ FINANCIAL (depth 3, canonical)
-       ├─ CREDIT_CARD (depth 4, rolls up → "FINANCIAL")
-       │    ├─ CARD_NUMBER, CVV, EXPIRATION, …  (depth 5)
-       └─ BANK_ACCOUNT (depth 4, rolls up → "FINANCIAL")
-            ├─ ACCOUNT_NUMBER, IBAN, SWIFT_BIC, …  (depth 5)
-```
+For more on why this approach was chosen over alternatives, see [why_canonical_entity_mapping.md](why_canonical_entity_mapping.md).
 
-```python
-h = EntityHierarchy()
-h.canonicalize("CREDIT_CARD")   # → "FINANCIAL"
-h.canonicalize("IBAN")          # → "FINANCIAL"
-h.canonicalize("FINANCIAL_PII") # → "FINANCIAL_PII"  (depth-2 self-map)
-```
-
-### Country-prefix auto-mapping
-
-Rather than listing every `URUGUAY_TAX_ID`, `AUSTRALIA_DRIVERS_LICENSE`, etc. explicitly, the module keeps two tables:
-
-- **`COUNTRIES`** — all 249 ISO 3166-1 alpha-2 codes plus full English country name tokens, demonyms, and adjectival forms (e.g. `AUSTRALIA`, `GERMANY`, `BRITISH`, `FRENCH`).
-- **`country_prefixed_doc_types`** — an instance attribute on `EntityHierarchy`; a suffix keyword → canonical entity mapping (e.g. `"DRIVER"` → `"DRIVER_LICENSE"`). Mutate directly: `h.country_prefixed_doc_types["MY_SUFFIX"] = "MY_CANONICAL"`.
-
-Any `<COUNTRY>_<SUFFIX>` label is resolved automatically. An unrecognized suffix with a known country prefix defaults
-to `"NATIONAL_ID"`.
-
-```python
-h = EntityHierarchy()
-h.canonicalize("URUGUAY_TAX_ID")           # → "TAX_ID"
-h.canonicalize("AUSTRALIA_DRIVERS_LICENSE") # → "DRIVER_LICENSE"
-h.canonicalize("GERMANY_PASSPORT_NUMBER")   # → "PASSPORT"
-h.canonicalize("BRAZIL_UNKNOWN_DOC")        # → "NATIONAL_ID"  (fallback)
-```
-
----
-
-## Design decisions
-
-### Approaches to entity label mapping
-
-Different tools and datasets use incompatible label vocabularies. Several strategies exist for reconciling them during
-evaluation; each has a different cost/comparability trade-off.
-
-**1. Score against own labels** — each model is evaluated only on the entity types it natively supports, with no
-mapping. Requires nothing from the user but makes cross-model comparison impossible — models are evaluated on different
-things.
-
-**2. One model's schema as standard** — all models map to one model's native label set. Simple but arbitrary: it
-privileges one model's worldview, penalizes others for not conforming to it, and creates a moving target if that
-model's schema changes.
-
-**3. User labels as standard** — model outputs map to whatever labels the user used in their dataset. Feels natural
-but breaks down quickly — user labels are inconsistent across datasets, often ambiguous, and can't be reused across
-evaluations.
-
-**4. Multi-label annotation** — users tag the same span multiple times, anticipating each model's vocabulary (e.g. a
-span tagged as both `US_SSN` and `ID`). Eliminates the mapping layer but requires every model's vocabulary to be known
-and stable at annotation time; re-annotation is needed whenever a model is added or changed. It also introduces scoring
-ambiguity: if a span carries two labels and a model detects only one, how many false negatives does it generate? A
-model's recall on a given entity type becomes a function of how many co-labels its spans carry rather than purely of
-its detection quality.
-
-**5. Interactive per-model mapping** — users map their labels to each model's vocabulary interactively, one model at a
-time. Gives full transparency but repeats the mapping effort per model per dataset, with no guarantee of consistency
-across models.
-
-**6. Canonical entities** (this approach) — a tool-owned, model-agnostic schema that every model and every user
-dataset maps to once. The only approach that achieves full comparability, reusability across users, and stability over
-time. The trade-off is a one-time mapping step; mapping decisions can silently affect scores, making transparency in
-the mapping layer important.
-
-| Approach | Comparability | User burden | Stability | Customizability |
-|---|---|---|---|---|
-| 1. Score against own labels | None | None | High | Low |
-| 2. One model as standard | Biased | Low | Low | Low |
-| 3. User labels as standard | Per dataset | Medium | Low | High |
-| 4. Multi-label annotation | Inconsistent | High | Low | Medium |
-| 5. Interactive per-model mapping | Inconsistent | High | Medium | High |
-| **6. Canonical entities** | **Full** | **Once** | **High** | **Medium** |
-
-### Why not a flat alias map?
-
-A flat `{raw: canonical}` dict was the original approach. It breaks down as the number of participating tools grows —
-every new model means manually adding dozens of aliases. The nested hierarchy makes the *relationship* between entities
-explicit and lets the country-prefix engine generate thousands of aliases automatically.
-
-### Why depth 3 as the default?
-
-Depth 2 (the domain branches) is useful for coarse-grained comparison (e.g. "did the model find any government ID?").
-Depth 3 provides enough specificity for meaningful evaluation without fragmenting into micro-types that no realistic
-model distinguishes. Depth-4+ entities exist for completeness but are intentionally aggregated upward during evaluation.
-
-### BIOMETRIC vs PHYSICAL_DESCRIPTOR
-
-`BIOMETRIC` (under `PII`) covers **authentication-grade** physical identifiers — fingerprint, iris scan, DNA,
-voice print — that are GDPR Article 9 special-category data. `PHYSICAL_DESCRIPTOR` (under `DEMOGRAPHIC`) covers
-**soft observable attributes** (eye colour, height, skin tone) that describe a person but do not uniquely re-identify
-them. `BLOOD_TYPE` sits under `PHI` because it surfaces in a clinical rather than demographic context.
-
-### PHI vs DEMOGRAPHIC
-
-Medical observations (health conditions, medications, injuries) are under `PHI`, not `DEMOGRAPHIC`, because they are
-clinical data governed by health-data regulations (HIPAA, GDPR Article 9) rather than demographic attributes.
-
----
-
-## Usage
-
-### Basic lookup — `EntityHierarchy`
-
-```python
-from presidio_evaluator.entity_mapping import EntityHierarchy, EntityNotMappedError
-
-h = EntityHierarchy()   # uses the built-in HIERARCHY at canonical_depth=3
-
-h.canonicalize("EMAIL")           # → "EMAIL_ADDRESS"
-h.canonicalize("date_of_birth")   # → "BIRTH_DATE"
-h.canonicalize("CREDITCARD")      # → "FINANCIAL"
-
-h.get_branch("PASSPORT")
-# → ["PII", "GOVERNMENT_ID", "PASSPORT"]
-
-h.get_branch("GERMANY_PASSPORT_NUMBER")
-# → ["PII", "GOVERNMENT_ID", "PASSPORT"]
-```
-
-`EntityNotMappedError` (a subclass of `ValueError`) is raised for labels that cannot be resolved:
-
-```python
-try:
-    h.canonicalize("TOTALLY_UNKNOWN")
-except EntityNotMappedError as e:
-    print(e)  # Unknown entity label: 'TOTALLY_UNKNOWN'
-```
-
-#### Fuzzy resolution
-
-`canonicalize()` accepts an optional `threshold` (default `0.80`). Set `threshold=1.0` to force exact matching only:
-
-```python
-h.canonicalize("EMAIL_ADRES")               # → "EMAIL_ADDRESS"  (fuzzy match)
-h.canonicalize("EMAIL_ADRES", threshold=1.0) # → EntityNotMappedError
-```
-
-#### BIO prefix stripping
-
-Labels with BIO/BIOES/BILOU/BILUO prefixes or suffixes are automatically stripped before lookup:
-
-```python
-h.canonicalize("B-PERSON")   # → "NAME"
-h.canonicalize("PERSON-I")   # → "NAME"
-```
-
-### Accessing instance lookup tables
-
-The lookup tables built from the hierarchy are exposed as instance attributes:
-
-```python
-h = EntityHierarchy()
-
-# dict[str, str] — normalized raw → canonical
-h.raw_to_canonical["CREDITCARD"]   # → "FINANCIAL"
-
-# list[str] — every canonical-depth node name
-h.all_canonical_entities           # ["NAME", "EMAIL_ADDRESS", ...]
-
-# dict[str, list[str]] — canonical → full ancestor path
-h.canonical_to_branch["PASSPORT"]  # → ["PII", "GOVERNMENT_ID", "PASSPORT"]
-```
-
-### Normalizing a label
-
-`EntityHierarchy.normalize()` is a static method that strips BIO prefixes/suffixes, uppercases, and removes `_` and `-`. It is the first step of every canonicalization:
-
-```python
-EntityHierarchy.normalize("b-email_address")  # → "EMAILADDRESS"
-EntityHierarchy.normalize("PERSON-I")         # → "PERSON"
-```
-
-### Adding aliases
-
-```python
-h = EntityHierarchy()
-h.add_alias("EMAIL_ADDRESS", "ELECTRONIC_MAIL")
-h.canonicalize("ELECTRONIC_MAIL")  # → "EMAIL_ADDRESS"
-```
-
-`add_alias()` raises `KeyError` if `entity_name` is not found in the hierarchy. Each `add_alias()` call triggers a full rebuild of the internal lookup tables.
-
-### Country-prefix customization
-
-Add entries to `country_prefixed_doc_types` to teach the engine new suffix → canonical mappings:
-
-```python
-h = EntityHierarchy()
-h.country_prefixed_doc_types["HEALTH_CARD"] = "HEALTH_INSURANCE_ID"
-h.canonicalize("CANADA_HEALTH_CARD")  # → "HEALTH_INSURANCE_ID"
-
-del h.country_prefixed_doc_types["HEALTH_CARD"]
-```
-
-### Custom taxonomy from scratch
-
-Pass your own hierarchy dict to the constructor:
-
-```python
-from presidio_evaluator.entity_mapping import EntityHierarchy
-
-custom = EntityHierarchy(
-    hierarchy={"MY_ROOT": {"MY_BRANCH": {"MY_ENTITY": ["alias1", "alias2"]}}},
-    canonical_depth=3,
-)
-custom.canonicalize("alias1")  # → "MY_ENTITY"
-```
-
-### Inspecting the tree
-
-```python
-h = EntityHierarchy()
-
-print(h.all_canonical_entities)            # list of all canonical names
-print(h.canonical_to_branch["PASSPORT"])   # ["PII", "GOVERNMENT_ID", "PASSPORT"]
-```
-
-### Mapping model output with `CanonicalMapper`
-
-`CanonicalMapper` resolves a full set of raw entity labels — as used by models or evaluation datasets — to canonical entities. Auto-resolution runs at construction time (exact alias → country-prefix → fuzzy); unresolvable labels land in `pending` and must be handled manually before `get_mapping()` will succeed.
+## Typical workflow
 
 ```python
 from presidio_evaluator.entity_mapping import CanonicalMapper, IncompleteMapping
 
-mapper = CanonicalMapper(["EMAIL_ADDRESS", "EMAILADRES", "MY_CUSTOM_LABEL"])
-# repr: "CanonicalMapper(2 resolved, 1 pending)"
+# 1. Create a mapper (no constructor arguments needed)
+mapper = CanonicalMapper()
 
-mapper.render_html()   # inspect in Jupyter; plain-text fallback in terminals
-```
+# 2. Analyze your data — labels are auto-resolved, eval depth is inferred from annotations
+mapper.analyze(results_df)
 
-#### Handling pending labels
+# 3. Inspect issues
+mapper.render_html()                               # visual overview in Jupyter
+for issue in mapper.get_issues():
+    print(f"[{issue.severity.value}] {issue.type.value}: {issue.labels}")
 
-```python
-# Option A: manually assign a canonical (or None to suppress from evaluation)
+# 4. Fix WARNING/ERROR issues before extracting the DataFrame
+#    map to a canonical entity, or None to suppress
 mapper.map({"MY_CUSTOM_LABEL": "EMAIL_ADDRESS"})
+mapper.map({"JUNK_LABEL": None})                    # None = exclude from evaluation
 
-# Option B: resolve interactively in the terminal (shows ranked fuzzy suggestions)
-mapper.resolve_interactively()
+# 5. get_mapped_results_dataframe() raises IncompleteMapping if WARNING/ERROR issues remain
+try:
+    mapped_df = mapper.get_mapped_results_dataframe()
+except IncompleteMapping:
+    print("Resolve blocking issues first — call get_issues() to see them")
 
-# Retrieve the final mapping dict
-mapping = mapper.get_mapping()
-# → {"EMAIL_ADDRESS": "EMAIL_ADDRESS", "EMAILADRES": "EMAIL_ADDRESS", "MY_CUSTOM_LABEL": "EMAIL_ADDRESS"}
+# 6. Look up where a specific label was mapped
+print(mapper.get_mapping(entity="ORG"))
 ```
 
-`get_mapping()` raises `IncompleteMapping` (a `RuntimeError` subclass) if any labels remain pending.
-`map()` is atomic — if any entry is invalid, no changes are applied.
-
-#### Rendering the mapping for review
+If you already know some labels need specific mappings, pre-map them **before** `analyze()`
+so they don't appear as issues:
 
 ```python
-# Return an HTML string for saving or embedding; pending labels shown, no exception raised
-html = mapper.get_mapping(mode="html")
-
-# Return a plain-text table string
-text = mapper.get_mapping(mode="text")
+mapper = CanonicalMapper()
+mapper.map({"MY_CUSTOM_LABEL": "EMAIL_ADDRESS", "JUNK_LABEL": None})
+mapper.analyze(results_df)
 ```
 
-#### Applying the mapping to evaluation results
+**Multi-model comparison:** the eval surface (set of entities used for evaluation) is locked after the
+first `analyze()` call. Subsequent `analyze()` calls for other models reuse the same surface, ensuring
+all models are evaluated on the same entity set:
 
 ```python
-# results_df is the 5-column DataFrame returned by model.predict_dataset()
-mapped_df = mapper.get_mapped_results_dataframe(results_df)
-
-# Switch to a coarser hierarchy level
-mapped_df = mapper.get_mapped_results_dataframe(results_df, hierarchy=2)
+mapper = CanonicalMapper()
+mapper.analyze(model_a_df)   # locks eval surface from dataset annotations
+mapper.analyze(model_b_df)   # reuses the same locked eval surface
 ```
-
-When annotation and prediction labels are related but resolve to different canonical entities at the current depth, a `UserWarning` is emitted. Passing `hierarchy=2` (or another depth) rebuilds the underlying `EntityHierarchy` and re-resolves all previously seen labels.
 
 ---
 
-## Quick reference
+## Common issues
 
-### `EntityHierarchy`
+When you call `mapper.analyze(df)`, the mapper checks for problems that could silently distort your scores. Call `mapper.get_issues()` to see them — sorted by severity (ERROR first), then by token count. There are six issue types:
 
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `EntityHierarchy()` | `EntityHierarchy` | Default instance at `canonical_depth=3` |
-| `h.canonicalize(raw, threshold=0.80)` | `str` | Resolve raw label → canonical; fuzzy-enabled by default |
-| `h.get_branch(raw)` | `list[str]` | Full ancestor path for a raw label |
-| `EntityHierarchy.normalize(label)` | `str` (static) | Strip BIO prefix/suffix, uppercase, remove `_`/`-` |
-| `h.add_alias(entity, alias)` | `None` | Add a raw alias to an existing entity |
-| `h.raw_to_canonical` | `dict[str, str]` | Normalized raw → canonical |
-| `h.all_canonical_entities` | `list[str]` | Every canonical-depth entity name |
-| `h.canonical_to_branch` | `dict[str, list[str]]` | Canonical → full ancestor path |
-| `h.country_prefixed_doc_types` | `dict[str, str]` | Suffix → canonical overrides for the country-prefix engine |
+| Type | Severity | Meaning |
+|------|----------|---------|
+| `UNRESOLVED` | ERROR | Label could not be matched — blocks `get_mapped_results_dataframe()` |
+| `COLLISION_AMBIGUOUS` | WARNING | Depth-2 label maps to multiple depth-3 entities — blocks extraction |
+| `COLLISION_CROSS_BRANCH` | WARNING | Label maps across hierarchy branches — blocks extraction |
+| `PREDICTION_ONLY` | WARNING | Label only in predictions, not dataset — blocks extraction |
+| `COLLISION_TRIVIAL` | INFO | Auto-fixed: descendant collapsed to single ancestor |
+| `DATASET_ONLY` | INFO | Label only in dataset annotations (model never predicts it) |
 
-### `CanonicalMapper`
+> **Warning**: `get_mapped_results_dataframe()` raises `IncompleteMapping` if any WARNING or ERROR issues remain. INFO issues are non-blocking.
 
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `CanonicalMapper(labels)` | `CanonicalMapper` | Resolve a set of raw labels with auto + manual fallback |
-| `mapper.pending` | `list[str]` | Unresolved labels, alphabetically sorted |
-| `mapper.map(dict)` | `CanonicalMapper` | Manually assign canonicals (atomic, returns `self`) |
-| `mapper.resolve_interactively()` | `CanonicalMapper` | Terminal prompt loop for pending labels |
-| `mapper.get_mapping()` | `dict[str, str\|None]` | Final mapping (raises `IncompleteMapping` if pending) |
-| `mapper.get_mapping(mode="html")` | `str` | HTML audit table (no exception on pending) |
-| `mapper.get_mapping(mode="text")` | `str` | Plain-text audit table (no exception on pending) |
-| `mapper.render_html()` | `None` | Display in Jupyter / print plain-text fallback |
-| `mapper.get_mapped_results_dataframe(df)` | `pd.DataFrame` | Remap annotation/prediction columns |
+### 1. A label could not be resolved to any canonical entity
 
-### Module-level constants
+This happens when the mapper encounters a label it doesn't recognize — it's not in the alias map, doesn't fuzzy-match anything above the threshold, and doesn't have a recognizable country prefix.
 
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `HIERARCHY` | `dict` | The raw taxonomy dict |
-| `COUNTRIES` | `set[str]` | All recognized country tokens |
-| `EntityNotMappedError` | `ValueError` subclass | Raised for unresolvable labels |
-| `IncompleteMapping` | `RuntimeError` subclass | Raised by `get_mapping()` when labels are still pending |
+**Example:** Your dataset has spans annotated as `MEDICAL_RECORD` but that label doesn't exist in the hierarchy and isn't close enough to any alias to fuzzy-match.
+
+**The problem:** Unresolved labels pass through to evaluation unchanged. Since neither side recognizes them as a canonical entity, they won't match anything — silently inflating your false positive and false negative counts. This also blocks `get_mapping()` from returning a complete mapping.
+
+**Fix 1. — map it to the right canonical entity:**
+```python
+mapper.map({"MEDICAL_RECORD": "MEDICAL_RECORD_NUMBER"})  # or whichever canonical fits
+```
+
+**Fix 2. — suppress it if it's irrelevant:**
+```python
+mapper.map({"MEDICAL_RECORD": None})  # exclude from evaluation
+```
+
+The issue's `resolution_options` will suggest the closest canonical match (if any) and always offer a suppress option.
+
+### 2. Mixed granularity — labels resolve to parent/child categories
+
+This happens when two labels that refer to related things end up at different levels in the hierarchy. It can show up in two ways:
+
+**In the mapping:** Your model outputs `MY_LOCATION` which you mapped to `LOCATION`, and your dataset has `MY_CITY` which auto-resolved to `ADDRESS`. `ADDRESS` is a more specific type of `LOCATION` — they're the same concept family, but at different levels.
+
+**In specific rows:** Your dataset annotates a span as `ADDRESS` and the model predicts `STREET_ADDRESS` for the same span. Both refer to the same real-world thing, but at different levels of specificity.
+
+**The problem:** In both cases, the evaluator counts this as wrong — even though the model found the right span. Your scores will look worse than they actually are.
+
+**Fix 1. — align them manually.** Pick the more specific or the broader one, and map both labels to the same level:
+```python
+mapper.map({"MY_LOCATION": "ADDRESS"})      # go specific
+# or
+mapper.map({"MY_CITY": "LOCATION"})          # go broad
+```
+
+**Fix 2. — align to the depth the eval surface uses.** The eval surface is computed automatically
+from the dataset annotations. If your dataset uses depth-2 labels (e.g. `PERSON`), the eval surface
+will be at depth 2, and depth-3 model labels will auto-collapse. If the dataset uses depth-3 labels,
+use `map()` to remap the model's depth-2 label to a specific depth-3 target:
+```python
+mapper.map({"PERSON": "NAME"})  # pick the right depth-3 entity
+```
+
+### 3. You marked a label that has real annotations in the dataset as not important (mapped to `None`)
+
+There are two very different reasons you might do this, and only one of them is safe:
+
+**Safe — suppressing a model's label:** If a model predicts `ORGANIZATION` but your dataset doesn't have it annotated, suppressing it is fine. You're choosing not to evaluate the model on that entity type. That's a deliberate decision you control.
+
+**Problematic — suppressing an annotated label:** If your dataset has spans annotated as `ORGANIZATION`, suppressing that label discards ground truth that were deliberately tagged. Those spans vanish from the evaluation entirely — no false negatives, no false positives, no PII coverage. Your evaluation results will silently say nothing about that entity type, even though your dataset covers it.
+
+**Example:** You called `mapper.map({"MY_ORG": None})`. The model's `MY_ORG` predictions are removed — fine. But your dataset also has 50 annotated `MY_ORG` spans. Those are removed too. Your evaluation now has a blind spot for `MY_ORG` with no indication in the scores.
+
+**Fix — map it to a canonical instead of suppressing it:**
+```python
+mapper.map({"MY_ORG": "ORGANIZATION"})  # or whichever canonical fits
+```
+
+If you genuinely want to exclude it (e.g. it's a catch-all junk label with no real meaning), keep `None` — but do it consciously and note it in your experiment log.
+
+### 4. The model predicts an entity type that the dataset doesn't cover
+
+**Example:** Your dataset has annotations for `PERSON` and `ORGANIZATION`. The model predicts `STREET_NUMBER` for some spans. `STREET_NUMBER` maps to the canonical entity `ADDRESS` — but no label in your dataset maps to `ADDRESS`. There are no gold annotations to compare against.
+
+**The problem:** Every `STREET_NUMBER` prediction counts as a false positive — not because the model is wrong, but because the dataset simply has no spans that map to the same canonical entity. This makes the model's precision look worse than it is.
+
+**Fix 1. — suppress the entity if your dataset doesn't cover it:**
+
+```python
+mapper.map({"STREET_NUMBER": None})
+```
+
+**Fix 2. — add the missing annotations:** If the model is actually finding real PII that was missed during annotation, the right fix is to go back and annotate those spans.
+
+### 5. The eval surface is locked — a new model uses different entities
+
+The eval surface (set of entities used for evaluation) is **locked after the first `analyze()` call**.
+This ensures all models are evaluated on the same entity set for fair comparison.
+
+**Example:** You evaluated model A and locked the surface at depth 3. Model B predicts a label that
+would have changed the eval depth if analyzed alone. It's projected onto the existing locked surface.
+
+**This is intentional.** The dataset annotations define the ground truth, so the eval surface is
+anchored to the first model's dataset. If model B has labels that don't fit the surface, they appear
+as `COLLISION_AMBIGUOUS` or `PREDICTION_ONLY` issues — resolve them with `map()` before extracting
+results.

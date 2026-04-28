@@ -55,7 +55,6 @@ ignore = [
 
     # --- Import style: valid pattern in data_generator __init__ ---
     "PLC0415",  # Import outside top-level
-
     # --- zip strict: acceptable in production evaluation code ---
     "B905",    # zip() without explicit strict= parameter
     # --- Formatter conflict: COM812 may produce conflicting results with ruff format ---
