@@ -135,9 +135,10 @@ class PresidioAnalyzerWrapper(BaseModel):
                 print(
                     f"Warning: Entity {entity} is not supported by this instance of Presidio Analyzer Engine",
                 )
-        print("--------")
-        print("Entities supported by this Presidio Analyzer instance:")
-        print(", ".join(supported_entities))
+        if self.verbose:
+            print("--------")
+            print("Entities supported by this Presidio Analyzer instance:")
+            print(", ".join(supported_entities))
 
     def _update_recognizers_based_on_entities_to_keep(self) -> None:
         """Add ORGANIZATION as it is removed by default."""

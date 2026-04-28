@@ -64,7 +64,11 @@ class MapperRenderer:
             type_counts[key] = type_counts.get(key, 0) + 1
 
         n_auto = type_counts.get("TRIVIAL", 0)
-        depth_info = f"Eval depth: {m._eval_depth}" if m._eval_depth else "Not analyzed"
+        depth_info = (
+            f"Canonical depth: {m._canonical_depth}"
+            if m._canonical_depth
+            else "Not analyzed"
+        )
         summary_parts = [
             f'<span style="color:#57606a;font-size:12px">{depth_info}</span>',
         ]
@@ -205,7 +209,11 @@ class MapperRenderer:
         ann_counts = m._label_annotation_counts
         pred_counts = m._label_prediction_counts
 
-        depth_info = f"Eval depth: {m._eval_depth}" if m._eval_depth else "Not analyzed"
+        depth_info = (
+            f"Canonical depth: {m._canonical_depth}"
+            if m._canonical_depth
+            else "Not analyzed"
+        )
         n_blocking = sum(
             1
             for i in m._issues

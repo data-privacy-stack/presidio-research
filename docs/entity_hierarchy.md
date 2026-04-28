@@ -23,10 +23,10 @@ Examples:
 - `GERMANY_PASSPORT_NUMBER` → country prefix is recognized, becomes `PASSPORT`
 - `CREDITCARD`, `credit_card` → case and delimiters don't matter, becomes `FINANCIAL`
 
-**Phase 2 — Project:** canonical entities are projected onto the *eval surface* — a set of entities at a
+**Phase 2 — Project:** canonical entities are projected onto the *canonical surface* — a set of entities at a
 depth computed by majority vote from the **dataset annotation labels**. Depth-2 ancestors that have
 multiple depth-3 descendants trigger a `COLLISION_AMBIGUOUS` issue; descendants that have exactly
-one matching ancestor on the eval surface are auto-fixed as `COLLISION_TRIVIAL`.
+one matching ancestor on the canonical surface are auto-fixed as `COLLISION_TRIVIAL`.
 
 Labels that can't be resolved automatically are flagged for you to handle manually.
 
@@ -61,7 +61,7 @@ from presidio_evaluator.entity_mapping import CanonicalMapper, IncompleteMapping
 # 1. Create a mapper (no constructor arguments needed)
 mapper = CanonicalMapper()
 
-# 2. Analyze your data — labels are auto-resolved, eval depth is inferred from annotations
+# 2. Analyze your data — labels are auto-resolved, canonical depth is inferred from annotations
 mapper.analyze(results_df)
 
 # 3. Inspect issues
@@ -93,14 +93,14 @@ mapper.map({"MY_CUSTOM_LABEL": "EMAIL_ADDRESS", "JUNK_LABEL": None})
 mapper.analyze(results_df)
 ```
 
-**Multi-model comparison:** the eval surface (set of entities used for evaluation) is locked after the
+**Multi-model comparison:** the canonical surface (set of entities used for evaluation) is locked after the
 first `analyze()` call. Subsequent `analyze()` calls for other models reuse the same surface, ensuring
 all models are evaluated on the same entity set:
 
 ```python
 mapper = CanonicalMapper()
-mapper.analyze(model_a_df)   # locks eval surface from dataset annotations
-mapper.analyze(model_b_df)   # reuses the same locked eval surface
+mapper.analyze(model_a_df)   # locks canonical surface from dataset annotations
+mapper.analyze(model_b_df)   # reuses the same locked canonical surface
 ```
 
 ---
@@ -157,8 +157,8 @@ mapper.map({"MY_LOCATION": "ADDRESS"})      # go specific
 mapper.map({"MY_CITY": "LOCATION"})          # go broad
 ```
 
-**Fix 2. — align to the depth the eval surface uses.** The eval surface is computed automatically
-from the dataset annotations. If your dataset uses depth-2 labels (e.g. `PERSON`), the eval surface
+**Fix 2. — align to the depth the canonical surface uses.** The canonical surface is computed automatically
+from the dataset annotations. If your dataset uses depth-2 labels (e.g. `PERSON`), the canonical surface
 will be at depth 2, and depth-3 model labels will auto-collapse. If the dataset uses depth-3 labels,
 use `map()` to remap the model's depth-2 label to a specific depth-3 target:
 ```python
@@ -196,15 +196,15 @@ mapper.map({"STREET_NUMBER": None})
 
 **Fix 2. — add the missing annotations:** If the model is actually finding real PII that was missed during annotation, the right fix is to go back and annotate those spans.
 
-### 5. The eval surface is locked — a new model uses different entities
+### 5. The canonical surface is locked — a new model uses different entities
 
-The eval surface (set of entities used for evaluation) is **locked after the first `analyze()` call**.
+The canonical surface (set of entities used for evaluation) is **locked after the first `analyze()` call**.
 This ensures all models are evaluated on the same entity set for fair comparison.
 
 **Example:** You evaluated model A and locked the surface at depth 3. Model B predicts a label that
-would have changed the eval depth if analyzed alone. It's projected onto the existing locked surface.
+would have changed the canonical depth if analyzed alone. It's projected onto the existing locked surface.
 
-**This is intentional.** The dataset annotations define the ground truth, so the eval surface is
+**This is intentional.** The dataset annotations define the ground truth, so the canonical surface is
 anchored to the first model's dataset. If model B has labels that don't fit the surface, they appear
 as `COLLISION_AMBIGUOUS` or `PREDICTION_ONLY` issues — resolve them with `map()` before extracting
 results.

@@ -32,9 +32,9 @@ The model emits thousands of fine-grained labels; the dataset uses ≤10 broad c
 
 **Real example (Notebook 5):** The OpenMed HuggingFace model predicts `PERSON`, `LOCATION`, `ORGANIZATION`, etc., while the synth dataset labels `city`, `country`, `street_address`, `state`, `county`, `coordinate`, `postcode` as separate entities.
 
-**Issue type produced:** `COLLISION_AMBIGUOUS` (WARNING) — blocking. When a depth-2 ancestor like `LOCATION` is seen in predictions but the eval surface is at depth 3 (computed by majority vote from the dataset annotations), the mapper can't determine which depth-3 entity to project onto. The user must call `map({'LOCATION': 'LOC'})` (or another appropriate target) to resolve.
+**Issue type produced:** `COLLISION_AMBIGUOUS` (WARNING) — blocking. When a depth-2 ancestor like `LOCATION` is seen in predictions but the canonical surface is at depth 3 (computed by majority vote from the dataset annotations), the mapper can't determine which depth-3 entity to project onto. The user must call `map({'LOCATION': 'LOC'})` (or another appropriate target) to resolve.
 
-**Projection rules in action:** If instead the dataset uses depth-2 labels and the eval surface locks at depth 2, then fine-grained model labels like `STREET_ADDRESS` auto-collapse to `LOCATION` as `COLLISION_TRIVIAL` (INFO, non-blocking).
+**Projection rules in action:** If instead the dataset uses depth-2 labels and the canonical surface locks at depth 2, then fine-grained model labels like `STREET_ADDRESS` auto-collapse to `LOCATION` as `COLLISION_TRIVIAL` (INFO, non-blocking).
 
 ---
 
@@ -112,7 +112,7 @@ The same string alias appears under multiple canonical entities in the hierarchy
 
 **Issue types produced:**
 - `COLLISION_CROSS_BRANCH` (WARNING) — blocking. Raised when a label resolves to a canonical entity that has co-occurring labels on the same tokens mapping to a different hierarchy branch. Must be resolved with `map()` before extracting results.
-- `COLLISION_AMBIGUOUS` (WARNING) — blocking. Raised when a depth-2 ancestor maps to multiple depth-3 entities on the eval surface (the top co-occurring candidate is shown in `overlap_counts`). Use `map({'LABEL': 'CANONICAL'})` to pick the right one.
+- `COLLISION_AMBIGUOUS` (WARNING) — blocking. Raised when a depth-2 ancestor maps to multiple depth-3 entities on the canonical surface (the top co-occurring candidate is shown in `overlap_counts`). Use `map({'LABEL': 'CANONICAL'})` to pick the right one.
 
 ---
 
@@ -166,7 +166,7 @@ The dataset and model operate at different hierarchy depths, producing ancestor�
 
 **Real example (Notebook 5):** Dataset labels `city`, `street_address`, `postcode` (depth 3), model predicts `LOCATION` (depth 2).
 
-**How the new API handles this:** The eval depth is computed automatically by majority vote from the dataset annotations. If the dataset is predominantly depth-3, the eval surface is depth-3 and depth-2 model predictions trigger `COLLISION_AMBIGUOUS` (WARNING). Resolve with `map({'LOCATION': 'LOC'})` to pick the right depth-3 target.
+**How the new API handles this:** The canonical depth is computed automatically by majority vote from the dataset annotations. If the dataset is predominantly depth-3, the canonical surface is depth-3 and depth-2 model predictions trigger `COLLISION_AMBIGUOUS` (WARNING). Resolve with `map({'LOCATION': 'LOC'})` to pick the right depth-3 target.
 
 ---
 

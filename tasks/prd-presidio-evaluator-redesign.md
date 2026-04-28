@@ -41,31 +41,33 @@ This redesign separates concerns into three clean layers — **Model → Mapper 
 
 ### US-002: Map entities using CanonicalMapper with hierarchy support
 
-**Description:** As a user, I want to create a `CanonicalMapper` and map my results DataFrame so that dataset and model entities are resolved to the same canonical namespace before evaluation.
+**Description:** As a user, I want to create a `CanonicalMapper` and map my results DataFrame so that model predictions are projected onto the dataset's entity vocabulary before evaluation.
 
 **Acceptance Criteria:**
-- [ ] `CanonicalMapper.__init__` accepts an optional `hierarchy` parameter (default=3) controlling resolution depth
-- [ ] `get_mapped_results_dataframe(results_df, hierarchy=3)` is a regular method (not classmethod)
-- [ ] It extracts unique labels from both `annotation` and `prediction` columns of the DataFrame
-- [ ] New labels not yet seen are auto-resolved and added to the internal mapping
-- [ ] Returns a new DataFrame with `annotation` and `prediction` columns remapped at the requested hierarchy level
-- [ ] Labels mapped to `None` pass through unchanged (they will become FP or FN during evaluation)
-- [ ] The mapper does NOT store the DataFrame — only the mapping dict
-- [ ] When mapped predictions and annotations resolve to different granularities (e.g., model predicts `PERSON` but dataset annotates `FIRSTNAME`), the mapper logs a user-friendly warning explaining that these won't match during evaluation, and suggests: (a) use a broader mapping level so both resolve to `PERSON`, or (b) use `mapper.map()` to tell the mapper what `PERSON` means in context. The warning names the affected entities — no jargon about hierarchy levels or internals.
-- [ ] Unit tests cover: basic remapping, `None` passthrough, hierarchy levels 1/2/3, incremental label discovery, mixed-level warning
+- [ ] `CanonicalMapper.__init__` accepts optional `canonical_depth` (default=None for auto-discovery) and `eval_entities` parameters
+- [ ] `analyze(results_df)` discovers labels, auto-discovers evaluation depth via majority vote of annotation depths, identifies labels in hierarchy, and projects predictions onto dataset entity set
+- [ ] `get_mapped_results_dataframe()` returns a new DataFrame with `annotation` and `prediction` columns remapped
+- [ ] Trivial collisions (ancestor/descendant on same branch) are auto-fixed and flagged as COLLISION_TRIVIAL
+- [ ] Ambiguous collisions (ancestor of multiple dataset entities) are flagged as COLLISION_AMBIGUOUS for user decision
+- [ ] Cross-branch collisions are flagged as COLLISION_CROSS_BRANCH for user decision
+- [ ] PREDICTION_ONLY entities default to removal (suppress from evaluation)
+- [ ] DATASET_ONLY entities default to keep (show model gaps as false negatives)
+- [ ] Issues sorted by severity then affected token count (most impactful first)
+- [ ] Labels mapped to `None` become `"O"` in the output DataFrame
+- [ ] Unit tests cover: auto-discovery of depth, projection rules, collision detection, DATASET_ONLY, PREDICTION_ONLY, frequency-based sorting
 - [ ] Typecheck/lint passes
 
 ---
 
 ### US-003: Inspect entity mappings in table form
 
-**Description:** As a user, I want to call `mapper.get_mapping(mode='html')` or `mode='text'` so that I can see exactly how each entity was resolved, at a glance.
+**Description:** As a user, I want to call `mapper.render_html()` or `mapper.get_mapping(mode='text')` so that I can see how each entity was resolved and what issues remain, sorted by impact.
 
 **Acceptance Criteria:**
 - [ ] `get_mapping()` with no arguments still returns `dict[str, str | None]` (backward compatible)
-- [ ] `get_mapping(mode='html')` returns an HTML table string with columns: Original Entity, Mapped Entity (Level 3), Category (Level 2), Resolution Tier
+- [ ] `get_mapping(mode='html')` returns an HTML table string with columns: Raw Label, Identified As, Mapped To, Issue, Tokens Affected
 - [ ] `get_mapping(mode='text')` returns a plain-text table suitable for terminal/CLI output
-- [ ] Pending labels are shown as "*(pending)*" in the mapped column
+- [ ] Issues are sorted by severity then token count (most impactful first)
 - [ ] Unit tests verify HTML contains expected `<table>` markup and text output is readable
 - [ ] Typecheck/lint passes
 
@@ -186,9 +188,9 @@ This redesign separates concerns into three clean layers — **Model → Mapper 
 **Description:** As a user, I want the evaluation notebooks to demonstrate the new 5-step pipeline so that I can follow working examples to evaluate my own models.
 
 **Acceptance Criteria:**
-- [ ] `notebooks/4_Evaluate_Presidio_Analyzer.ipynb` uses: load dataset → `predict_dataset()` → `CanonicalMapper` → `calculate_score_on_df()` → `Plotter`
+- [ ] `notebooks/4_Evaluate_Presidio_Analyzer.ipynb` uses: load dataset → `predict_dataset()` → `CanonicalMapper().analyze()` → `get_mapped_results_dataframe()` → `calculate_score_on_df()` → `Plotter`
 - [ ] `notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb` uses the same pipeline with custom recognizers
-- [ ] `notebooks/6_Interactive_Entity_Mapping.ipynb` demonstrates `CanonicalMapper` API: `get_mapped_results_dataframe()`, `get_mapping(mode='html')`, `map()` for manual resolution
+- [ ] `notebooks/6_Interactive_Entity_Mapping.ipynb` demonstrates `CanonicalMapper` API: `analyze()`, `render_html()` (with frequency-sorted issues), `map()` for manual resolution, multi-model comparison
 - [ ] Each notebook runs end-to-end without errors (verified by running all cells)
 - [ ] Typecheck/lint passes (for any `.py` cells)
 

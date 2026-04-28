@@ -8,7 +8,15 @@ from enum import Enum
 
 
 class IssueType(Enum):
-    """Category of mapping issue detected during analysis."""
+    """Category of mapping issue detected during analysis.
+
+    UNRESOLVED:          Label could not be matched to any canonical entity. Blocks extraction.
+    COLLISION_TRIVIAL:   Label was auto-projected to the correct eval-surface entity (same branch). Non-blocking.
+    COLLISION_AMBIGUOUS: Label is an ancestor of multiple eval-surface entities (e.g. LOCATION at depth 3). Blocks extraction.
+    COLLISION_CROSS_BRANCH: Label is on a different hierarchy branch from all eval-surface entities. Blocks extraction.
+    PREDICTION_ONLY:     Label appears in predictions but not in dataset annotations (all occurrences are FP). Blocks extraction.
+    DATASET_ONLY:        Entity has annotations but no prediction maps to it (all annotations are FN). Non-blocking.
+    """
 
     UNRESOLVED = "unresolved"
     COLLISION_TRIVIAL = "collision_trivial"

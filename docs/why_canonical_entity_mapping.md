@@ -59,10 +59,10 @@ model distinguishes. Depth-4+ entities exist for completeness but are intentiona
 **Depth is now data-driven:** rather than accepting a fixed `canonical_depth` parameter, `CanonicalMapper` computes
 the evaluation depth automatically via a weighted majority vote over the annotation labels in your results DataFrame.
 Each annotation label is mapped to a canonical entity, its depth is measured (capped at 3), and the weighted average
-determines the eval surface. Depth 3 is the most common outcome for datasets that use fine-grained entity types like
+determines the canonical surface. Depth 3 is the most common outcome for datasets that use fine-grained entity types like
 `EMAIL_ADDRESS`, `NAME`, or `SSN`. Depth 2 results when the dataset predominantly uses broad categories like `PERSON`
 or `LOCATION`.
 
-This means no manual tuning is required — the eval surface reflects the granularity of the ground truth data.
-Multi-model comparisons are consistent because the eval surface is locked after the first `analyze()` call and reused
+This means no manual tuning is required — the canonical surface reflects the granularity of the ground truth data.
+Multi-model comparisons are consistent because the canonical surface is locked after the first `analyze()` call and reused
 for all subsequent models.

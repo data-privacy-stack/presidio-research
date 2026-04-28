@@ -101,9 +101,9 @@ class CanonicalMapper:
         self._label_annotation_counts: dict[str, int] = {}
         self._label_prediction_counts: dict[str, int] = {}
 
-        # Eval surface (locked after first analyze())
-        self._eval_surface: set[str] | None = None
-        self._eval_depth: int | None = None
+        # Canonical surface (locked after first analyze())
+        self._canonical_surface: set[str] | None = None
+        self._canonical_depth: int | None = None
 
         # Issues and DataFrame (per analyze() call)
         self._issues: list[MappingIssue] = []
@@ -112,9 +112,13 @@ class CanonicalMapper:
     # -- Properties -----------------------------------------------------------
 
     @property
-    def eval_surface(self) -> set[str]:
+    def canonical_surface(self) -> set[str]:
         """The locked evaluation surface (empty set before first analyze())."""
-        return set(self._eval_surface) if self._eval_surface is not None else set()
+        return (
+            set(self._canonical_surface)
+            if self._canonical_surface is not None
+            else set()
+        )
 
     @property
     def pending(self) -> list[str]:
@@ -132,7 +136,7 @@ class CanonicalMapper:
         EXACT -> COUNTRY -> COUNTRY_FALLBACK -> FUZZY -> UNRESOLVED.
 
         Phase 2 - Project: compute majority-vote depth (first call only),
-        lock eval surface, project all identified labels onto it.
+        lock canonical surface, project all identified labels onto it.
 
         :param results_df: DataFrame with annotation and prediction columns.
         :return: self (for chaining).
@@ -182,28 +186,28 @@ class CanonicalMapper:
         ]
         self._add_labels(raw_labels)
 
-        # Phase 2a: compute eval depth (first analyze() only)
-        if self._eval_surface is None:
-            self._eval_depth = self._compute_eval_depth(results_df)
+        # Phase 2a: compute canonical depth (first analyze() only)
+        if self._canonical_surface is None:
+            self._canonical_depth = self._compute_canonical_depth(results_df)
             h_eval = EntityHierarchy(
                 hierarchy=self._hierarchy.hierarchy,
-                canonical_depth=self._eval_depth,
+                canonical_depth=self._canonical_depth,
             )
-            self._eval_surface = set(h_eval.all_canonical_entities)
+            self._canonical_surface = set(h_eval.all_canonical_entities)
             logger.info(
-                "Eval surface locked at depth %d: %d entities (%s...)",
-                self._eval_depth,
-                len(self._eval_surface),
-                ", ".join(sorted(self._eval_surface)[:5]),
+                "Canonical surface locked at depth %d: %d entities (%s...)",
+                self._canonical_depth,
+                len(self._canonical_surface),
+                ", ".join(sorted(self._canonical_surface)[:5]),
             )
         else:
             logger.info(
-                "Eval surface reused (depth %d, %d entities).",
-                self._eval_depth,
-                len(self._eval_surface),
+                "Canonical surface reused (depth %d, %d entities).",
+                self._canonical_depth,
+                len(self._canonical_surface),
             )
 
-        # Phase 2b: project all labels onto eval surface
+        # Phase 2b: project all labels onto canonical surface
         self._project_all()
 
         # Detect cross-surface issues
@@ -221,8 +225,8 @@ class CanonicalMapper:
         logger.info(
             "Analysis complete: depth=%d, surface=%d entities, %d labels, "
             "%d auto-fixes, %d blocking issue(s).",
-            self._eval_depth,
-            len(self._eval_surface),
+            self._canonical_depth,
+            len(self._canonical_surface),
             len(self._records),
             n_auto,
             n_warn,
@@ -232,7 +236,7 @@ class CanonicalMapper:
 
     # -- Majority-vote depth --------------------------------------------------
 
-    def _compute_eval_depth(self, results_df: pd.DataFrame) -> int:
+    def _compute_canonical_depth(self, results_df: pd.DataFrame) -> int:
         """Compute weighted majority-vote depth from annotation entities.
 
         Formula: round(sum(min(depth, 3) * tokens) / sum(tokens))
@@ -337,10 +341,10 @@ class CanonicalMapper:
     # -- Projection -----------------------------------------------------------
 
     def _project_all(self) -> None:
-        """Project all identified labels onto the eval surface."""
-        if self._eval_surface is None:
+        """Project all identified labels onto the canonical surface."""
+        if self._canonical_surface is None:
             return
-        eval_surface = self._eval_surface
+        canonical_surface = self._canonical_surface
         h_full = _FULL_HIERARCHY
 
         for lbl, rec in self._records.items():
@@ -358,7 +362,7 @@ class CanonicalMapper:
                 if rec.canonical is None:
                     rec.projected = None
                     rec.projection_type = "NONE"
-                elif rec.canonical in eval_surface:
+                elif rec.canonical in canonical_surface:
                     rec.projected = rec.canonical
                     rec.projection_type = "EXACT"
                 else:
@@ -372,8 +376,8 @@ class CanonicalMapper:
                 rec.projection_type = "NONE"
                 continue
 
-            # Exact match on eval surface
-            if canonical in eval_surface:
+            # Exact match on canonical surface
+            if canonical in canonical_surface:
                 rec.projected = canonical
                 rec.projection_type = "EXACT"
                 continue
@@ -384,7 +388,7 @@ class CanonicalMapper:
             # Descendant of an eval-surface entity?
             found_ancestor = None
             for ancestor in reversed(full_branch[:-1]):
-                if ancestor in eval_surface:
+                if ancestor in canonical_surface:
                     found_ancestor = ancestor
                     break
 
@@ -401,7 +405,7 @@ class CanonicalMapper:
             # Ancestor of eval-surface entities?
             descendants_on_surface = [
                 e
-                for e in eval_surface
+                for e in canonical_surface
                 if canonical in (h_full.canonical_to_branch.get(e) or [])
             ]
             if len(descendants_on_surface) == 1:
@@ -426,7 +430,7 @@ class CanonicalMapper:
 
     def _detect_issues(self) -> None:
         """Detect all issues after projection and sort them."""
-        if self._eval_surface is None:
+        if self._canonical_surface is None:
             return
         self._issues.clear()
 
@@ -502,7 +506,7 @@ class CanonicalMapper:
             n_pred = self._label_prediction_counts.get(lbl, 0)
             descendants = [
                 e
-                for e in self._eval_surface
+                for e in self._canonical_surface
                 if canonical in (h_full.canonical_to_branch.get(e) or [])
             ]
             overlap_counts = self._compute_overlap(lbl, descendants)
@@ -545,7 +549,7 @@ class CanonicalMapper:
             canonical = rec.canonical
             n_ann = self._label_annotation_counts.get(lbl, 0)
             n_pred = self._label_prediction_counts.get(lbl, 0)
-            overlap_counts = self._compute_overlap(lbl, list(self._eval_surface))
+            overlap_counts = self._compute_overlap(lbl, list(self._canonical_surface))
             top_overlap = sorted(
                 overlap_counts.items(), key=lambda x: x[1], reverse=True
             )[:3]
@@ -625,7 +629,7 @@ class CanonicalMapper:
                     type=IssueType.PREDICTION_ONLY,
                     severity=IssueSeverity.WARNING,
                     message=(
-                        f"{entity!r} appears in predictions but not in the eval surface "
+                        f"{entity!r} appears in predictions but not in the canonical surface "
                         f"({n_pred} prediction tokens). "
                         f"Suppress: mapper.map({{lbl: None}}), "
                         f"or remap: mapper.map({{lbl: 'TARGET'}})."
@@ -639,11 +643,11 @@ class CanonicalMapper:
 
         # DATASET_ONLY (INFO)
         # Entities that ARE annotated (in annotated_projected) but have NO predictions
-        # projecting to them. Intersect with eval_surface to exclude manual off-surface
+        # projecting to them. Intersect with canonical_surface to exclude manual off-surface
         # projections from the count.
         dataset_only_entities = (
             annotated_projected - predicted_projected
-        ) & self._eval_surface
+        ) & self._canonical_surface
         for entity in sorted(dataset_only_entities):
             raw_labels = [
                 lbl
@@ -657,7 +661,7 @@ class CanonicalMapper:
                     type=IssueType.DATASET_ONLY,
                     severity=IssueSeverity.INFO,
                     message=(
-                        f"{entity!r} is in the eval surface but no prediction maps to it. "
+                        f"{entity!r} is in the canonical surface but no prediction maps to it. "
                         f"{n_ann} annotation tokens -- all will count as false negatives."
                     ),
                     labels=raw_labels or [entity],
@@ -711,8 +715,8 @@ class CanonicalMapper:
         valid_canonicals = set(self._hierarchy.all_canonical_entities) | set(
             self._hierarchy.raw_to_canonical.values()
         )
-        if self._eval_surface:
-            valid_canonicals |= self._eval_surface
+        if self._canonical_surface:
+            valid_canonicals |= self._canonical_surface
 
         for _lbl, canonical in mappings.items():
             if canonical is not None and canonical not in valid_canonicals:
@@ -732,7 +736,9 @@ class CanonicalMapper:
                 logger.info("[MANUAL]  %s -> %s", lbl, canonical)
                 proj_type = (
                     "EXACT"
-                    if (self._eval_surface and canonical in self._eval_surface)
+                    if (
+                        self._canonical_surface and canonical in self._canonical_surface
+                    )
                     else "MANUAL"
                 )
                 self._records[lbl] = _Resolution(
@@ -743,7 +749,7 @@ class CanonicalMapper:
                     projection_type=proj_type,
                 )
 
-        if self._results_df is not None and self._eval_surface is not None:
+        if self._results_df is not None and self._canonical_surface is not None:
             self._detect_issues()
 
         return self

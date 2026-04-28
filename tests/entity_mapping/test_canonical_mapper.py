@@ -39,7 +39,7 @@ def _make_df(annotations, predictions):
 class TestConstructor:
     def test_no_args(self):
         mapper = CanonicalMapper()
-        assert mapper.eval_surface == set()
+        assert mapper.canonical_surface == set()
         assert mapper.pending == []
         assert mapper._records == {}
 
@@ -108,7 +108,7 @@ class TestIdentification:
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: Eval depth computation
+# Phase 2: Canonical depth computation
 # ---------------------------------------------------------------------------
 
 
@@ -117,35 +117,35 @@ class TestEvalDepth:
         # NAME is depth 3 in the hierarchy: PII -> PERSON -> NAME
         df = _make_df(["NAME"] * 10, ["NAME"] * 10)
         mapper = CanonicalMapper().analyze(df)
-        assert mapper._eval_depth == 3
+        assert mapper._canonical_depth == 3
 
     def test_depth_capped_at_3(self):
         # FIRST_NAME is depth 4 — should be capped to 3 before vote
         df = _make_df(["FIRST_NAME"] * 10, ["FIRST_NAME"] * 10)
         mapper = CanonicalMapper().analyze(df)
-        assert mapper._eval_depth == 3
+        assert mapper._canonical_depth == 3
 
-    def test_eval_surface_locked_after_first_analyze(self):
+    def test_canonical_surface_locked_after_first_analyze(self):
         df1 = _make_df(["NAME", "EMAIL_ADDRESS"], ["NAME", "EMAIL_ADDRESS"])
         df2 = _make_df(["LOCATION"], ["LOCATION"])
         mapper = CanonicalMapper()
         mapper.analyze(df1)
-        surface1 = frozenset(mapper.eval_surface)
+        surface1 = frozenset(mapper.canonical_surface)
         mapper.analyze(df2)
-        surface2 = frozenset(mapper.eval_surface)
+        surface2 = frozenset(mapper.canonical_surface)
         assert surface1 == surface2
 
-    def test_eval_surface_not_empty_after_analyze(self):
+    def test_canonical_surface_not_empty_after_analyze(self):
         df = _make_df(["EMAIL_ADDRESS"], ["EMAIL_ADDRESS"])
         mapper = CanonicalMapper().analyze(df)
-        assert len(mapper.eval_surface) > 0
+        assert len(mapper.canonical_surface) > 0
 
-    def test_eval_surface_property_returns_copy(self):
+    def test_canonical_surface_property_returns_copy(self):
         df = _make_df(["EMAIL_ADDRESS"], ["EMAIL_ADDRESS"])
         mapper = CanonicalMapper().analyze(df)
-        s1 = mapper.eval_surface
+        s1 = mapper.canonical_surface
         s1.add("FAKE_ENTITY")
-        assert "FAKE_ENTITY" not in mapper.eval_surface
+        assert "FAKE_ENTITY" not in mapper.canonical_surface
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +162,7 @@ class TestProjection:
         assert rec.projection_type == "EXACT"
 
     def test_descendant_trivial_auto_fix(self):
-        # Use PERSON (depth 2) annotations so eval surface locks at depth 2.
+        # Use PERSON (depth 2) annotations so canonical surface locks at depth 2.
         # NAME (depth 3) in predictions is a descendant of PERSON → TRIVIAL.
         df = _make_df(["PERSON"] * 10, ["NAME"] * 10)
         mapper = CanonicalMapper().analyze(df)
@@ -378,14 +378,14 @@ class TestGetMappedResultsDf:
 
 
 class TestMultiModel:
-    def test_eval_surface_locked_across_models(self):
+    def test_canonical_surface_locked_across_models(self):
         df1 = _make_df(["NAME", "EMAIL_ADDRESS"], ["NAME", "EMAIL_ADDRESS"])
         df2 = _make_df(["NAME", "EMAIL_ADDRESS"], ["LOCATION", "LOCATION"])
         mapper = CanonicalMapper()
         mapper.analyze(df1)
-        surface1 = frozenset(mapper.eval_surface)
+        surface1 = frozenset(mapper.canonical_surface)
         mapper.analyze(df2)
-        surface2 = frozenset(mapper.eval_surface)
+        surface2 = frozenset(mapper.canonical_surface)
         assert surface1 == surface2
 
     def test_issues_recomputed_per_model(self):
