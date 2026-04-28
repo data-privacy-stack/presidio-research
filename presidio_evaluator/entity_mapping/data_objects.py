@@ -21,8 +21,6 @@ class IssueType(Enum):
 class IssueSeverity(Enum):
     """How serious the mapping issue is."""
 
-    # TODO: add :params: to docstring
-
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
@@ -36,8 +34,6 @@ class ResolutionOption:
     An empty ``mapper_call`` means re-running ``analyze()`` with different
     parameters (described in ``description``).
     """
-
-    # TODO: add :params: to docstring
 
     action: str
     description: str

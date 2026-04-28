@@ -21,6 +21,10 @@ from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
 
 logger = logging.getLogger("presidio_evaluator.entity_mapping")
 
+# Full-depth hierarchy used for branch lookups and depth calculations.
+# Constructed once at module load; never mutated.
+_FULL_HIERARCHY = EntityHierarchy(canonical_depth=10)
+
 _SEVERITY_ORDER = {
     IssueSeverity.ERROR: 0,
     IssueSeverity.WARNING: 1,
@@ -235,7 +239,6 @@ class CanonicalMapper:
         Formula: round(sum(min(depth, 3) * tokens) / sum(tokens))
         Tie at 0.5: prefer deeper (math.ceil).
         """
-        h_full = EntityHierarchy(canonical_depth=10)
         total_tokens = 0
         weighted_sum = 0.0
 
@@ -243,7 +246,7 @@ class CanonicalMapper:
             rec = self._records.get(lbl)
             if rec is None or rec.canonical is None:
                 continue
-            branch = h_full.canonical_to_branch.get(rec.canonical)
+            branch = _FULL_HIERARCHY.canonical_to_branch.get(rec.canonical)
             if branch is None:
                 continue
             depth = len(branch)
@@ -339,8 +342,7 @@ class CanonicalMapper:
         if self._eval_surface is None:
             return
         eval_surface = self._eval_surface
-
-        h_full = EntityHierarchy(canonical_depth=10)
+        h_full = _FULL_HIERARCHY
 
         for lbl, rec in self._records.items():
             if rec.tier == "NONE":
@@ -429,7 +431,7 @@ class CanonicalMapper:
             return
         self._issues.clear()
 
-        h_full = EntityHierarchy(canonical_depth=10)
+        h_full = _FULL_HIERARCHY
 
         # UNRESOLVED (ERROR)
         for lbl, rec in self._records.items():
@@ -618,11 +620,6 @@ class CanonicalMapper:
                     description=f"Suppress {entity!r} from evaluation",
                     mapper_call=dict.fromkeys(raw_labels),
                 ),
-                ResolutionOption(
-                    action="keep_as_fp",
-                    description=f"Keep {entity!r} as-is (every prediction counts as FP)",
-                    mapper_call={lbl: lbl for lbl in raw_labels},
-                ),
             ]
             self._issues.append(
                 MappingIssue(
@@ -632,8 +629,7 @@ class CanonicalMapper:
                         f"{entity!r} appears in predictions but not in the eval surface "
                         f"({n_pred} prediction tokens). "
                         f"Suppress: mapper.map({{lbl: None}}), "
-                        f"remap: mapper.map({{lbl: 'TARGET'}}), "
-                        f"keep as FP: mapper.map({{lbl: lbl}})."
+                        f"or remap: mapper.map({{lbl: 'TARGET'}})."
                     ),
                     labels=raw_labels,
                     annotation_count=0,
@@ -643,22 +639,20 @@ class CanonicalMapper:
             )
 
         # DATASET_ONLY (INFO)
-        for entity in sorted(self._eval_surface - annotated_projected):
-            n_ann = self._label_annotation_counts.get(entity, 0)
-            for lbl, rec in self._records.items():
-                if (
-                    rec.projected == entity
-                    and self._label_annotation_counts.get(lbl, 0) > 0
-                ):
-                    n_ann += self._label_annotation_counts.get(lbl, 0)
-            if n_ann == 0:
-                continue
+        # Entities that ARE annotated (in annotated_projected) but have NO predictions
+        # projecting to them. Intersect with eval_surface to exclude manual off-surface
+        # projections from the count.
+        dataset_only_entities = (
+            annotated_projected - predicted_projected
+        ) & self._eval_surface
+        for entity in sorted(dataset_only_entities):
             raw_labels = [
                 lbl
                 for lbl, rec in self._records.items()
                 if rec.projected == entity
                 and self._label_annotation_counts.get(lbl, 0) > 0
             ]
+            n_ann = sum(self._label_annotation_counts.get(lbl, 0) for lbl in raw_labels)
             self._issues.append(
                 MappingIssue(
                     type=IssueType.DATASET_ONLY,
@@ -962,7 +956,7 @@ class CanonicalMapper:
                 f'<ol style="margin:6px 0 0 0;padding-left:18px;color:#24292f">{items}</ol>'
                 f"</div>"
             )
-        warnings_html = "".join(blocks)
+        issues_html = "".join(blocks)
 
         def row_sort_key(item: tuple[str, _Resolution]) -> tuple:
             lbl, rec = item
@@ -1023,7 +1017,7 @@ class CanonicalMapper:
             '<div style="font-family:-apple-system,BlinkMacSystemFont,'
             'Segoe UI,Helvetica,Arial,sans-serif">'
             '<h3 style="margin-top:0;color:#24292f">Entity Label Mapping Audit</h3>'
-            f"{warnings_html}"
+            f"{issues_html}"
             f'<div style="margin:10px 0">{"".join(summary_parts)}</div>'
             '<table style="width:100%;border-collapse:collapse;font-size:13px">'
             '<thead><tr style="background:#f6f8fa;border-bottom:2px solid #d0d7de">'

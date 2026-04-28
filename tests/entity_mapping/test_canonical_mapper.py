@@ -215,13 +215,17 @@ class TestIssues:
         assert pred_only[0].severity == IssueSeverity.WARNING
 
     def test_dataset_only_info(self):
-        # EMAIL_ADDRESS in annotations only (no EMAIL_ADDRESS predictions)
+        # EMAIL_ADDRESS in annotations but no EMAIL_ADDRESS predictions
         df = _make_df(["NAME"] * 5 + ["EMAIL_ADDRESS"] * 5, ["NAME"] * 10)
         mapper = CanonicalMapper().analyze(df)
         issues = mapper.get_issues()
         ds_only = [i for i in issues if i.type == IssueType.DATASET_ONLY]
+        assert len(ds_only) > 0, "Expected at least one DATASET_ONLY issue"
+        assert any("EMAIL_ADDRESS" in i.labels for i in ds_only)
         for issue in ds_only:
             assert issue.severity == IssueSeverity.INFO
+            assert issue.annotation_count > 0
+            assert issue.prediction_count == 0
 
     def test_collision_trivial_info(self):
         # Lock surface with NAME at depth 3, then analyze FIRST_NAME
