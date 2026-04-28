@@ -8,6 +8,7 @@ from presidio_evaluator.entity_mapping import (
     IncompleteMapping,
     IssueSeverity,
     IssueType,
+    MapperRenderer,
 )
 
 # ---------------------------------------------------------------------------
@@ -424,7 +425,7 @@ class TestGetMapping:
 
 
 # ---------------------------------------------------------------------------
-# render_html() / _print_text()
+# MapperRenderer
 # ---------------------------------------------------------------------------
 
 
@@ -432,18 +433,18 @@ class TestRenderHtml:
     def test_print_text_does_not_raise(self):
         df = _make_df(["EMAIL_ADDRESS"], ["EMAIL_ADDRESS"])
         mapper = CanonicalMapper().analyze(df)
-        mapper._print_text()  # should not raise
+        MapperRenderer(mapper).print_text()  # should not raise
 
     def test_build_html_returns_string(self):
         df = _make_df(["EMAIL_ADDRESS", "NAME"], ["EMAIL_ADDRESS", "NAME"])
         mapper = CanonicalMapper().analyze(df)
-        html = mapper._build_html()
+        html = MapperRenderer(mapper).build_html()
         assert isinstance(html, str)
         assert "<table" in html
 
     def test_build_html_before_analyze(self):
         mapper = CanonicalMapper()
-        html = mapper._build_html()
+        html = MapperRenderer(mapper).build_html()
         assert isinstance(html, str)
 
 

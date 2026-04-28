@@ -16,11 +16,14 @@ from presidio_evaluator.entity_mapping.mapper import (
     CanonicalMapper,
     IncompleteMapping,
 )
+from presidio_evaluator.entity_mapping.rendering import MapperRenderer
 
 __all__ = [
     # Mapper
     "CanonicalMapper",
     "IncompleteMapping",
+    # Rendering
+    "MapperRenderer",
     # Issues
     "IssueType",
     "IssueSeverity",
