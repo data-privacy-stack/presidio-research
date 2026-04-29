@@ -97,3 +97,18 @@
   - SpanEvaluator.calculate_score_on_df() expects "annotation" and "prediction" column names; rename level-specific columns before passing
   - All 643 tests pass (including 13 new)
 ---
+
+## 2025-01-28 - US-006/US-012/US-014/US-015/US-024
+- Implemented COLLISION_AMBIGUOUS severity change from WARNING to INFO (non-blocking) per ADR-003
+- US-006: mapper.py — changed severity to INFO, updated message to reference calculate_hierarchical_scores(), updated _ISSUE_TYPE_ORDER to sort COLLISION_AMBIGUOUS after WARNING issues, removed dead fix_part variable
+- US-012: auto-fixed by US-006 (get_mapped_results_dataframe blocks on ERROR/WARNING only — INFO excluded)
+- US-014: auto-fixed by US-006 (resolve_interactively iterates ERROR/WARNING only — INFO excluded)  
+- US-015: rendering.py — added type_style_override dict with teal badge (#2aa198) for COLLISION_AMBIGUOUS; badge and row color now teal instead of yellow; updated gap_why text to say "non-blocking, use evaluator.calculate_hierarchical_scores()"
+- US-024: Moved calculate_hierarchical_scores from standalone module (evaluation/hierarchical_evaluation.py) to concrete method on BaseEvaluator. Module-level _to_l1/_to_l0 helpers added to base_evaluator.py. EntityHierarchy imported lazily inside method (TYPE_CHECKING guard at module level). Deleted standalone file. Updated evaluation/__init__.py to remove standalone import. Updated tests to use evaluator instance method.
+- Files changed: mapper.py, rendering.py, base_evaluator.py, evaluation/__init__.py, hierarchical_evaluation.py (deleted), test_hierarchical_evaluation.py, test_canonical_mapper.py (staged unstaged fix for _canonical_depth→canonical_surface)
+- **Learnings for future iterations:**
+  - US-012 and US-014 were auto-fixed by the severity change — no additional code changes needed when a type changes from WARNING to INFO
+  - Pre-commit stashes unstaged files before running pytest — if you have related unstaged test fixes, stage them before committing or pre-commit will fail
+  - type_style_override pattern: add a per-type dict alongside sev_style in rendering.py, apply with .get(issue.type, sev_style[issue.severity])
+  - TYPE_CHECKING guard pattern for lazy imports in base_evaluator.py: use `if TYPE_CHECKING:` at module level and string annotations in function signatures
+---

@@ -109,7 +109,7 @@
         "Tests pass"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "ADR-003: COLLISION_AMBIGUOUS severity must change from WARNING to INFO (non-blocking). Hierarchical evaluation handles ambiguous ancestors at the right level \u2014 no forced mapping choice needed."
     },
     {
@@ -222,7 +222,7 @@
         "Tests pass"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "ADR-003: COLLISION_AMBIGUOUS is now INFO (non-blocking). Blocking criteria must reflect this: only ERROR + WARNING (COLLISION_CROSS_BRANCH, PREDICTION_ONLY) block; COLLISION_AMBIGUOUS no longer blocks."
     },
     {
@@ -263,7 +263,7 @@
         "Tests pass"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "ADR-003: COLLISION_AMBIGUOUS is now INFO so resolve_interactively() must NOT prompt for it. Only UNRESOLVED (ERROR) and COLLISION_CROSS_BRANCH/PREDICTION_ONLY (WARNING) are prompted."
     },
     {
@@ -284,7 +284,7 @@
         "Tests pass"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "ADR-003: COLLISION_AMBIGUOUS badge colour changes from yellow (WARNING) to a distinct info colour since severity is now INFO."
     },
     {
@@ -445,8 +445,8 @@
         "Tests pass"
       ],
       "priority": 24,
-      "passes": false,
-      "notes": "ADR-003. The wrapper belongs on BaseEvaluator so any evaluator subclass inherits it automatically — calculate_score_on_df() is already defined there. Caller pattern: evaluator = SpanEvaluator(); results = evaluator.calculate_hierarchical_scores(mapped_df). Files: presidio_evaluator/evaluation/base_evaluator.py. Remove the standalone function added in the prior implementation."
+      "passes": true,
+      "notes": "ADR-003. The wrapper belongs on BaseEvaluator so any evaluator subclass inherits it automatically \u2014 calculate_score_on_df() is already defined there. Caller pattern: evaluator = SpanEvaluator(); results = evaluator.calculate_hierarchical_scores(mapped_df). Files: presidio_evaluator/evaluation/base_evaluator.py. Remove the standalone function added in the prior implementation."
     }
   ]
 }
