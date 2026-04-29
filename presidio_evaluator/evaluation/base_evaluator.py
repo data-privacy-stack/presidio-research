@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
@@ -10,9 +10,29 @@ from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.evaluation.skipwords import get_skip_words
 from presidio_evaluator.models import BaseModel
 
+if TYPE_CHECKING:
+    from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
+
 logger = logging.getLogger(__name__)
 
 GENERIC_ENTITIES = ("PII", "ID", "PII", "PHI", "ID_NUM", "NUMBER", "NUM", "GENERIC_PII")
+
+
+def _to_l1(entity: str, hierarchy: "EntityHierarchy") -> str:
+    """Map an entity label to its depth-2 (branch) ancestor."""
+    if entity == "O":
+        return "O"
+    branch = hierarchy.canonical_to_branch.get(entity)
+    if branch is None:
+        return entity  # unknown entity — pass through unchanged
+    if len(branch) >= 2:
+        return branch[1]  # e.g. ['PII', 'PERSON', 'NAME'] -> 'PERSON'
+    return branch[0]  # depth-1 node (PII itself)
+
+
+def _to_l0(entity: str) -> str:
+    """Map any non-O entity label to 'PII'."""
+    return "O" if entity == "O" else "PII"
 
 
 class DeprecationError(RuntimeError):
@@ -247,3 +267,55 @@ class BaseEvaluator(ABC):
             return np.nan
 
         return ((1 + beta**2) * precision * recall) / (((beta**2) * precision) + recall)
+
+    def calculate_hierarchical_scores(
+        self,
+        mapped_df: pd.DataFrame,
+        hierarchy: "EntityHierarchy | None" = None,
+        beta: float = 2.0,
+    ) -> dict[str, EvaluationResult]:
+        """Evaluate model performance at three granularity levels simultaneously.
+
+        Accepts the output of :meth:`CanonicalMapper.get_mapped_results_dataframe`
+        and produces scores at:
+
+        - **L0**: PII vs. O — privacy-critical binary detection signal.
+        - **L1**: Branch-level (PERSON, LOCATION, …) — category accuracy.
+        - **L2**: Canonical surface (NAME, STREET_ADDRESS, …) — granularity accuracy.
+
+        :param mapped_df: DataFrame as returned by
+            ``CanonicalMapper.get_mapped_results_dataframe()``.
+        :param hierarchy: :class:`EntityHierarchy` instance used for branch
+            lookups.  Defaults to the standard :func:`EntityHierarchy` built from
+            :data:`HIERARCHY`.
+        :param beta: F-beta parameter (default ``2.0``).
+        :return: ``dict[str, EvaluationResult]`` with keys ``"L0"``, ``"L1"``,
+            ``"L2"``.
+
+        See Also
+        --------
+        docs/adr/ADR-003-hierarchical-evaluation.md
+        """
+        from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
+
+        if hierarchy is None:
+            hierarchy = EntityHierarchy()
+
+        results: dict[str, EvaluationResult] = {}
+
+        # --- L2: canonical surface — use mapped_df as-is ---
+        results["L2"] = self.calculate_score_on_df(mapped_df, beta=beta)
+
+        # --- L1: branch-level (depth-2 ancestors) ---
+        l1_df = mapped_df.copy()
+        l1_df["annotation"] = l1_df["annotation"].apply(lambda e: _to_l1(e, hierarchy))
+        l1_df["prediction"] = l1_df["prediction"].apply(lambda e: _to_l1(e, hierarchy))
+        results["L1"] = self.calculate_score_on_df(l1_df, beta=beta)
+
+        # --- L0: PII vs. O (binary) ---
+        l0_df = mapped_df.copy()
+        l0_df["annotation"] = l0_df["annotation"].apply(_to_l0)
+        l0_df["prediction"] = l0_df["prediction"].apply(_to_l0)
+        results["L0"] = self.calculate_score_on_df(l0_df, beta=beta)
+
+        return results

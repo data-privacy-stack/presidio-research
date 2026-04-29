@@ -115,15 +115,19 @@ class TestIdentification:
 class TestEvalDepth:
     def test_all_depth3_entities(self):
         # NAME is depth 3 in the hierarchy: PII -> PERSON -> NAME
+        # Annotating NAME should produce a surface that includes NAME (depth-3 PERSON branch)
         df = _make_df(["NAME"] * 10, ["NAME"] * 10)
         mapper = CanonicalMapper().analyze(df)
-        assert mapper._canonical_depth == 3
+        assert "NAME" in mapper.canonical_surface
+        assert "PERSON" not in mapper.canonical_surface  # depth-2 node not in surface
 
     def test_depth_capped_at_3(self):
-        # FIRST_NAME is depth 4 — should be capped to 3 before vote
+        # FIRST_NAME is depth 4 — should be capped to 3 before branch vote,
+        # so the PERSON branch surface should contain NAME (depth-3 node), not FIRST_NAME.
         df = _make_df(["FIRST_NAME"] * 10, ["FIRST_NAME"] * 10)
         mapper = CanonicalMapper().analyze(df)
-        assert mapper._canonical_depth == 3
+        assert "NAME" in mapper.canonical_surface
+        assert "FIRST_NAME" not in mapper.canonical_surface
 
     def test_canonical_surface_locked_after_first_analyze(self):
         df1 = _make_df(["NAME", "EMAIL_ADDRESS"], ["NAME", "EMAIL_ADDRESS"])

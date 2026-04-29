@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import difflib
 import logging
-import math
 from dataclasses import dataclass
 
 import pandas as pd
@@ -20,6 +19,14 @@ from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
 
 logger = logging.getLogger("presidio_evaluator.entity_mapping")
 
+
+def _get_renderer_class():  # noqa: ANN201
+    """Lazy import of MapperRenderer to avoid circular imports at module load time."""
+    from presidio_evaluator.entity_mapping.rendering import MapperRenderer  # noqa: PLC0415, I001
+
+    return MapperRenderer
+
+
 # Full-depth hierarchy used for branch lookups and depth calculations.
 # Constructed once at module load; never mutated.
 _FULL_HIERARCHY = EntityHierarchy(canonical_depth=10)
@@ -32,9 +39,9 @@ _SEVERITY_ORDER = {
 
 _ISSUE_TYPE_ORDER = {
     IssueType.UNRESOLVED: 0,
-    IssueType.COLLISION_AMBIGUOUS: 1,
-    IssueType.COLLISION_CROSS_BRANCH: 2,
-    IssueType.PREDICTION_ONLY: 3,
+    IssueType.COLLISION_CROSS_BRANCH: 1,
+    IssueType.PREDICTION_ONLY: 2,
+    IssueType.COLLISION_AMBIGUOUS: 3,
     IssueType.COLLISION_TRIVIAL: 4,
     IssueType.DATASET_ONLY: 5,
 }
@@ -45,7 +52,7 @@ class _Resolution:
     tier: str  # EXACT | FUZZY | COUNTRY | COUNTRY_FALLBACK | MANUAL | NONE | UNRESOLVED
     canonical: str | None
     score: float | None  # similarity score for FUZZY; None otherwise
-    projected: str | None = None  # final eval-surface entity after projection
+    projected: str | None = None  # final canonical representation after projection
     projection_type: str | None = (
         None  # EXACT | TRIVIAL | AMBIGUOUS | CROSS_BRANCH | UNRESOLVED | NONE
     )
@@ -103,7 +110,6 @@ class CanonicalMapper:
 
         # Canonical surface (locked after first analyze())
         self._canonical_surface: set[str] | None = None
-        self._canonical_depth: int | None = None
 
         # Issues and DataFrame (per analyze() call)
         self._issues: list[MappingIssue] = []
@@ -186,24 +192,17 @@ class CanonicalMapper:
         ]
         self._add_labels(raw_labels)
 
-        # Phase 2a: compute canonical depth (first analyze() only)
+        # Phase 2a: compute canonical surface (first analyze() only)
         if self._canonical_surface is None:
-            self._canonical_depth = self._compute_canonical_depth(results_df)
-            h_eval = EntityHierarchy(
-                hierarchy=self._hierarchy.hierarchy,
-                canonical_depth=self._canonical_depth,
-            )
-            self._canonical_surface = set(h_eval.all_canonical_entities)
+            self._canonical_surface = self._compute_canonical_surface()
             logger.info(
-                "Canonical surface locked at depth %d: %d entities (%s...)",
-                self._canonical_depth,
+                "Canonical surface locked: %d entities (%s...)",
                 len(self._canonical_surface),
                 ", ".join(sorted(self._canonical_surface)[:5]),
             )
         else:
             logger.info(
-                "Canonical surface reused (depth %d, %d entities).",
-                self._canonical_depth,
+                "Canonical surface reused (%d entities).",
                 len(self._canonical_surface),
             )
 
@@ -223,9 +222,8 @@ class CanonicalMapper:
             if i.severity in (IssueSeverity.ERROR, IssueSeverity.WARNING)
         )
         logger.info(
-            "Analysis complete: depth=%d, surface=%d entities, %d labels, "
+            "Analysis complete: surface=%d entities, %d labels, "
             "%d auto-fixes, %d blocking issue(s).",
-            self._canonical_depth,
             len(self._canonical_surface),
             len(self._records),
             n_auto,
@@ -234,35 +232,94 @@ class CanonicalMapper:
 
         return self
 
-    # -- Majority-vote depth --------------------------------------------------
+    # -- Per-branch canonical surface -----------------------------------------
 
-    def _compute_canonical_depth(self, results_df: pd.DataFrame) -> int:
-        """Compute weighted majority-vote depth from annotation entities.
+    def _compute_canonical_surface(self) -> set[str]:
+        """Compute the canonical surface via per-branch majority vote.
 
-        Formula: round(sum(min(depth, 3) * tokens) / sum(tokens))
-        Tie at 0.5: prefer deeper (math.ceil).
+        For each depth-2 hierarchy branch, sum annotation tokens at each depth
+        level (capped at 3). The depth with the most tokens wins for that branch.
+        The canonical surface is the union of all nodes at the winning depth
+        across all branches.
+
+        Example — PERSON branch has PERSON (depth 2, 1369 tokens) and TITLE
+        (depth 3, 142 tokens): depth 2 wins → PERSON is in the surface.
+        Example — PERSON branch has NAME (depth 3, 45 tokens), TITLE (depth 3,
+        20 tokens), USERNAME (depth 3, 10 tokens), PERSON (depth 2, 5 tokens):
+        depth 3 wins → {NAME, TITLE, USERNAME, PREFIX, SUFFIX, ALIAS, …} are
+        in the surface, PERSON is not → PERSON triggers COLLISION_AMBIGUOUS.
         """
-        total_tokens = 0
-        weighted_sum = 0.0
+        h_full = _FULL_HIERARCHY
 
-        for lbl, count in self._label_annotation_counts.items():
-            rec = self._records.get(lbl)
-            if rec is None or rec.canonical is None:
+        # Accumulate per-branch, per-depth annotation token counts.
+        # branch_key = depth-2 node (e.g. 'PERSON', 'LOCATION').
+        branch_depth_tokens: dict[str, dict[int, int]] = {}
+        for lbl, rec in self._records.items():
+            if rec.canonical is None:
                 continue
-            branch = _FULL_HIERARCHY.canonical_to_branch.get(rec.canonical)
-            if branch is None:
+            n_ann = self._label_annotation_counts.get(lbl, 0)
+            if n_ann == 0:
                 continue
-            depth = len(branch)
-            capped = min(depth, 3)
-            weighted_sum += capped * count
-            total_tokens += count
+            branch_path = h_full.canonical_to_branch.get(rec.canonical)
+            if not branch_path or len(branch_path) < 2:
+                continue
+            branch_key = branch_path[1]  # depth-2 node
+            depth = min(len(branch_path), 3)  # cap at 3
+            dtokens = branch_depth_tokens.setdefault(branch_key, {})
+            dtokens[depth] = dtokens.get(depth, 0) + n_ann
 
-        if total_tokens == 0:
-            return 3  # default
+        if not branch_depth_tokens:
+            # No annotations resolved — fall back to all depth-3 nodes
+            return set(
+                EntityHierarchy(
+                    hierarchy=self._hierarchy.hierarchy, canonical_depth=3
+                ).all_canonical_entities
+            )
 
-        raw = weighted_sum / total_tokens
-        result = math.ceil(raw) if (raw - int(raw)) >= 0.5 else round(raw)
-        return max(2, min(3, result))  # clamp to [2, 3]
+        # For each branch pick the dominant depth, then collect full-hierarchy
+        # nodes at exactly that depth within the branch.
+        # When dominant_depth == 3 (the cap), include ALL nodes at depth >= 3
+        # within the branch so that depth-4+ annotations project as TRIVIAL
+        # descendants rather than unresolved cross-branch.
+        surface: set[str] = set()
+        for branch_key, depth_tokens in branch_depth_tokens.items():
+            dominant_depth = max(depth_tokens, key=lambda d: depth_tokens[d])
+            for node, path in h_full.canonical_to_branch.items():
+                if len(path) < 2 or path[1] != branch_key:
+                    continue
+                node_depth = len(path)
+                if dominant_depth < 3:
+                    # Exact depth match only (depth 2 branch representative)
+                    if node_depth == dominant_depth:
+                        surface.add(node)
+                elif node_depth == 3:
+                    # dominant_depth == 3: include nodes at depth exactly 3
+                    # (depth-4+ nodes are descendants and will TRIVIAL-project up)
+                    surface.add(node)
+
+        # For branches that appear only in predictions (no annotation tokens at all),
+        # include their canonical nodes at depth 3 so that projection yields EXACT and
+        # PREDICTION_ONLY detection can fire correctly.  Without this, purely predicted
+        # branches fall through to CROSS_BRANCH, masking the real issue.
+        for lbl, rec in self._records.items():
+            if rec.canonical is None:
+                continue
+            if self._label_prediction_counts.get(lbl, 0) == 0:
+                continue
+            if self._label_annotation_counts.get(lbl, 0) > 0:
+                continue  # already handled above
+            branch_path = h_full.canonical_to_branch.get(rec.canonical)
+            if not branch_path or len(branch_path) < 2:
+                continue
+            branch_key = branch_path[1]
+            if branch_key in branch_depth_tokens:
+                continue  # this branch already has annotation entries
+            # Add depth-3 nodes for this prediction-only branch
+            for node, path in h_full.canonical_to_branch.items():
+                if len(path) >= 2 and path[1] == branch_key and len(path) == 3:
+                    surface.add(node)
+
+        return surface
 
     # -- Identification -------------------------------------------------------
 
@@ -385,7 +442,7 @@ class CanonicalMapper:
             # Check ancestry using full-depth hierarchy
             full_branch = h_full.canonical_to_branch.get(canonical, [])
 
-            # Descendant of an eval-surface entity?
+            # Descendant of a canonical representation?
             found_ancestor = None
             for ancestor in reversed(full_branch[:-1]):
                 if ancestor in canonical_surface:
@@ -394,7 +451,7 @@ class CanonicalMapper:
 
             if found_ancestor is not None:
                 logger.info(
-                    "[AUTO-FIX] %s -> %s  (descendant projected to eval-surface entity)",
+                    "[AUTO-FIX] %s -> %s  (descendant projected to canonical representation)",
                     lbl,
                     found_ancestor,
                 )
@@ -402,7 +459,7 @@ class CanonicalMapper:
                 rec.projection_type = "TRIVIAL"
                 continue
 
-            # Ancestor of eval-surface entities?
+            # Ancestor of canonical-surface entities?
             descendants_on_surface = [
                 e
                 for e in canonical_surface
@@ -412,7 +469,7 @@ class CanonicalMapper:
                 target = descendants_on_surface[0]
                 logger.info(
                     "[AUTO-FIX] %s -> %s  "
-                    "(ancestor projected to sole eval-surface descendant)",
+                    "(ancestor projected to sole canonical descendant)",
                     lbl,
                     target,
                 )
@@ -497,7 +554,7 @@ class CanonicalMapper:
                 )
             )
 
-        # COLLISION_AMBIGUOUS (WARNING)
+        # COLLISION_AMBIGUOUS (INFO — non-blocking; hierarchical evaluation handles this level)
         for lbl, rec in self._records.items():
             if rec.projection_type != "AMBIGUOUS":
                 continue
@@ -521,18 +578,49 @@ class CanonicalMapper:
                 )
                 for cand in sorted_candidates
             ]
-            overlap_str = ", ".join(
-                f"{e}: {overlap_counts.get(e, 0)}" for e in sorted_candidates
-            )
+            # Build a human-readable message that explains the two-phase process.
+            # Phase 1 (Identify): the raw label was matched to a canonical hierarchy node.
+            # Phase 2 (Project): that node sits *above* multiple per-branch canonical
+            # representatives — so the mapper cannot project automatically.
+            try:
+                canon_depth = h_full.get_depth(canonical)
+            except Exception:
+                canon_depth = None
+
+            # Derive the dominant depth for this branch from the candidates themselves.
+            cand_depths = set()
+            for cand in sorted_candidates:
+                try:
+                    cand_depths.add(h_full.get_depth(cand))
+                except EntityNotMappedError:
+                    logger.debug("get_depth failed for candidate %r", cand)
+            branch_depth = min(cand_depths) if cand_depths else None
+
+            if lbl == canonical:
+                id_part = f"'{lbl}' is a recognized hierarchy entity"
+            else:
+                id_part = f"'{lbl}' was matched to hierarchy entity '{canonical}'"
+
+            depth_part = ""
+            if canon_depth is not None and branch_depth is not None:
+                depth_part = (
+                    f" (depth {canon_depth}) is too coarse for this dataset,"
+                    f" which uses depth-{branch_depth} sub-types in this group"
+                )
+
+            sub_types_str = ", ".join(sorted_candidates)
+            top_cand = sorted_candidates[0] if sorted_candidates else "TARGET"
+            top_cnt = overlap_counts.get(top_cand, 0)  # noqa: F841 — used in message below
+
             self._issues.append(
                 MappingIssue(
                     type=IssueType.COLLISION_AMBIGUOUS,
-                    severity=IssueSeverity.WARNING,
+                    severity=IssueSeverity.INFO,
                     message=(
-                        f"{lbl!r} maps to {canonical!r} which is an ancestor of multiple "
-                        f"eval-surface entities: {sorted_candidates}. "
-                        f"Token overlap: [{overlap_str}]. "
-                        f"Call mapper.map({{{lbl!r}: 'TARGET'}}) to resolve."
+                        f"{id_part}{depth_part}. "
+                        f"Operates at a coarser level than [{sub_types_str}]. "
+                        f"Use calculate_hierarchical_scores() to score each level "
+                        f"automatically, or remap manually: mapper.map({{{lbl!r}: {top_cand!r}}})."
                     ),
                     labels=[lbl],
                     annotation_count=n_ann,
@@ -581,7 +669,7 @@ class CanonicalMapper:
                     severity=IssueSeverity.WARNING,
                     message=(
                         f"{lbl!r} ({canonical!r}) is on a different hierarchy branch "
-                        f"from all eval-surface entities.{insight} "
+                        f"from all canonical representations.{insight} "
                         f"Call mapper.map({{{lbl!r}: 'TARGET'}}) to remap or suppress."
                     ),
                     labels=[lbl],
@@ -872,11 +960,16 @@ class CanonicalMapper:
         Convenience wrapper. For more control use
         ``MapperRenderer(mapper).render()`` directly.
         """
-        from presidio_evaluator.entity_mapping.rendering import (  # noqa: PLC0415
-            MapperRenderer,
-        )
+        _get_renderer_class()(self).render()
 
-        MapperRenderer(self).render()
+    def render_summary(self) -> None:
+        """Render a compact per-label summary table (counts + confidence).
+
+        Shows one row per label with: canonical match, projected entity,
+        annotation/prediction token counts, and match confidence.
+        Convenience wrapper around ``MapperRenderer(mapper).render_summary()``.
+        """
+        _get_renderer_class()(self).render_summary()
 
     def __repr__(self) -> str:
         n = len(self._records)
