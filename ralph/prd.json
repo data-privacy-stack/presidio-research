@@ -101,7 +101,7 @@
         "Exact match in eval surface: keep as-is",
         "Descendant of an eval-surface entity: auto-map up to ancestor (record as COLLISION_TRIVIAL)",
         "Unambiguous ancestor (parent of exactly 1 eval-surface entity): auto-map down (record as COLLISION_TRIVIAL)",
-        "Ambiguous ancestor (parent of N eval-surface entities): flag as COLLISION_AMBIGUOUS",
+        "Ambiguous ancestor (parent of N eval-surface entities): flag as COLLISION_AMBIGUOUS with severity INFO (non-blocking); hierarchical evaluation scores it at the correct level automatically",
         "Different branch from all eval-surface entities: flag as COLLISION_CROSS_BRANCH",
         "Labels not in hierarchy: remain UNRESOLVED",
         "Add unit tests for each projection rule with a small hierarchy and controlled DataFrame",
@@ -109,8 +109,8 @@
         "Tests pass"
       ],
       "priority": 6,
-      "passes": true,
-      "notes": "Core projection logic. Uses canonical_to_branch to determine ancestor/descendant relationships."
+      "passes": false,
+      "notes": "ADR-003: COLLISION_AMBIGUOUS severity must change from WARNING to INFO (non-blocking). Hierarchical evaluation handles ambiguous ancestors at the right level \u2014 no forced mapping choice needed."
     },
     {
       "id": "US-007",
@@ -209,8 +209,8 @@
       "title": "Implement blocking in get_mapped_results_dataframe()",
       "description": "As a developer, I need get_mapped_results_dataframe() to block on WARNING+ issues and output original_ columns.",
       "acceptanceCriteria": [
-        "Raises IncompleteMapping if any ERROR or WARNING issues remain unresolved",
-        "INFO issues (COLLISION_TRIVIAL, DATASET_ONLY) do not block",
+        "Raises IncompleteMapping if any ERROR or WARNING issues remain unresolved; COLLISION_AMBIGUOUS is INFO and does NOT block",
+        "INFO issues (COLLISION_TRIVIAL, DATASET_ONLY, COLLISION_AMBIGUOUS) do not block",
         "Exception message lists the unresolved issue types and labels",
         "When no blocking issues: returns DataFrame with annotation and prediction rewritten to eval-surface entities",
         "Suppressed labels become 'O' in both columns",
@@ -222,8 +222,8 @@
         "Tests pass"
       ],
       "priority": 12,
-      "passes": true,
-      "notes": "File: mapper.py. Updates existing get_mapped_results_dataframe()."
+      "passes": false,
+      "notes": "ADR-003: COLLISION_AMBIGUOUS is now INFO (non-blocking). Blocking criteria must reflect this: only ERROR + WARNING (COLLISION_CROSS_BRANCH, PREDICTION_ONLY) block; COLLISION_AMBIGUOUS no longer blocks."
     },
     {
       "id": "US-013",
@@ -252,19 +252,19 @@
       "title": "Implement resolve_interactively()",
       "description": "As a developer, I need resolve_interactively() to prompt only for WARNING+ issues with ranked suggestions.",
       "acceptanceCriteria": [
-        "resolve_interactively(prompt_fn=input) iterates over WARNING+ issues only",
+        "resolve_interactively(prompt_fn=input) iterates over WARNING+ issues only; COLLISION_AMBIGUOUS (now INFO) is skipped",
         "For each issue shows: issue type, affected token count, ranked suggestions (with overlap counts for COLLISION_AMBIGUOUS)",
         "Prompt accepts: suggestion number, free-text entity name, or NONE to suppress",
         "Re-prompts on invalid input",
-        "No-op when there are no WARNING+ issues",
+        "No-op when there are no WARNING+ issues; COLLISION_AMBIGUOUS never triggers a prompt",
         "Returns self for chaining",
         "Add unit test with injected prompt_fn that auto-answers: verify issue is resolved after interactive session",
         "ruff check passes",
         "Tests pass"
       ],
       "priority": 14,
-      "passes": true,
-      "notes": "New method. Uses prompt_fn for testability."
+      "passes": false,
+      "notes": "ADR-003: COLLISION_AMBIGUOUS is now INFO so resolve_interactively() must NOT prompt for it. Only UNRESOLVED (ERROR) and COLLISION_CROSS_BRANCH/PREDICTION_ONLY (WARNING) are prompted."
     },
     {
       "id": "US-015",
@@ -273,7 +273,7 @@
       "acceptanceCriteria": [
         "Summary bar shows: auto-discovered depth, counts per issue type, total auto-fixes applied",
         "Detail table has one row per raw label, sorted by severity then token count",
-        "Badge colours: exact match = green, COLLISION_TRIVIAL = blue, UNRESOLVED = red, PREDICTION_ONLY = grey, DATASET_ONLY = amber, COLLISION_AMBIGUOUS/CROSS_BRANCH = yellow/orange",
+        "Badge colours: exact match = green, COLLISION_TRIVIAL = blue, UNRESOLVED = red, PREDICTION_ONLY = grey, DATASET_ONLY = amber, COLLISION_CROSS_BRANCH = orange, COLLISION_AMBIGUOUS = teal (INFO, non-blocking)",
         "Cross-branch overlaps with high token counts show systematic misprediction insights",
         "Uses IPython.display.HTML in Jupyter; falls back to plain text",
         "Never raises (catches ImportError for IPython)",
@@ -284,8 +284,8 @@
         "Tests pass"
       ],
       "priority": 15,
-      "passes": true,
-      "notes": "Rewrite of existing _build_html. New layout: summary bar + detail table."
+      "passes": false,
+      "notes": "ADR-003: COLLISION_AMBIGUOUS badge colour changes from yellow (WARNING) to a distinct info colour since severity is now INFO."
     },
     {
       "id": "US-016",
