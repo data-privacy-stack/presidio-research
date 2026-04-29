@@ -432,7 +432,7 @@
       "title": "Hierarchical multi-level evaluation convenience wrapper",
       "description": "As a user who wants to evaluate model performance at multiple entity granularity levels simultaneously, I want a convenience wrapper that produces L0/L1/L2 scores in one call.",
       "acceptanceCriteria": [
-        "calculate_hierarchical_scores(mapped_df) is a method on SpanEvaluator (or BaseEvaluator), NOT a standalone function in entity_mapping",
+        "calculate_hierarchical_scores(mapped_df) is a method on BaseEvaluator, NOT a standalone function in entity_mapping",
         "Method accepts output of get_mapped_results_dataframe()",
         "Produces scores at three levels: L0 (PII vs O), L1 (branch-level depth-2 nodes: PERSON, LOCATION, etc.), L2 (canonical surface depth-3 nodes: NAME, STREET_ADDRESS, etc.)",
         "For each level, projects annotation/prediction values to the appropriate depth node and calls self.calculate_score_on_df() internally",
@@ -446,7 +446,7 @@
       ],
       "priority": 24,
       "passes": false,
-      "notes": "ADR-003. The wrapper belongs on SpanEvaluator so the evaluation module stays self-contained and the caller pattern mirrors existing usage: evaluator = SpanEvaluator(); results = evaluator.calculate_hierarchical_scores(mapped_df). Files: presidio_evaluator/evaluation/span_evaluator.py (or base_evaluator.py). Remove the standalone function added in the prior implementation."
+      "notes": "ADR-003. The wrapper belongs on BaseEvaluator so any evaluator subclass inherits it automatically — calculate_score_on_df() is already defined there. Caller pattern: evaluator = SpanEvaluator(); results = evaluator.calculate_hierarchical_scores(mapped_df). Files: presidio_evaluator/evaluation/base_evaluator.py. Remove the standalone function added in the prior implementation."
     }
   ]
 }
