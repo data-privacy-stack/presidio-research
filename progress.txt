@@ -75,3 +75,25 @@
   - `uv run pytest` is the correct way to run tests in this project (uses pyproject.toml deps, not conda).
   - ruff format should be run on ralph/ scripts before committing — they're not in the notebooks exclude pattern.
 ---
+
+## 2026-04-29 - US-024
+- What was implemented: Hierarchical multi-level evaluation convenience wrapper
+  - New file: presidio_evaluator/entity_mapping/hierarchical_evaluation.py
+    - `calculate_hierarchical_scores(mapped_df, hierarchy=None, beta=2.0)` function
+    - Accepts output of `get_mapped_results_dataframe()`
+    - Produces L0 (PII vs O), L1 (branch-level depth-2), L2 (canonical surface depth-3) scores
+    - Uses SpanEvaluator for each level — no changes to SpanEvaluator
+    - Returns dict[str, EvaluationResult] with keys "L0", "L1", "L2"
+    - Documented with reference to ADR-003
+  - Updated: presidio_evaluator/entity_mapping/__init__.py — exported calculate_hierarchical_scores
+  - New file: tests/entity_mapping/test_hierarchical_evaluation.py — 13 tests
+- Files changed:
+  - presidio_evaluator/entity_mapping/hierarchical_evaluation.py (new)
+  - presidio_evaluator/entity_mapping/__init__.py
+  - tests/entity_mapping/test_hierarchical_evaluation.py (new)
+- **Learnings for future iterations:**
+  - SpanEvaluator.pii_recall/pii_precision/pii_f measures span-level PII detection regardless of entity type — tests checking granularity differences must use per_type metrics instead (results["L2"].per_type["NAME"].recall)
+  - _to_l1(): canonical_to_branch[entity][1] gives depth-2 ancestor for depth-3 entities; for depth-2 entities [1] IS the entity itself; for depth-1 (PII), use branch[0]
+  - SpanEvaluator.calculate_score_on_df() expects "annotation" and "prediction" column names; rename level-specific columns before passing
+  - All 643 tests pass (including 13 new)
+---

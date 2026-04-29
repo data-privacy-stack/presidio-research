@@ -426,6 +426,23 @@
       "priority": 23,
       "passes": true,
       "notes": "File: docs/why_canonical_entity_mapping.md. Small update. Depends on US-001 through US-017."
+    },
+    {
+      "id": "US-024",
+      "title": "Hierarchical multi-level evaluation convenience wrapper",
+      "description": "As a user who wants to evaluate model performance at multiple entity granularity levels simultaneously, I want a convenience wrapper that produces L0/L1/L2 scores in one call.",
+      "acceptanceCriteria": [
+        "calculate_hierarchical_scores(mapped_df) accepts output of get_mapped_results_dataframe()",
+        "Produces scores at three levels: L0 (PII vs O), L1 (branch-level depth-2 nodes: PERSON, LOCATION, etc.), L2 (canonical surface depth-3 nodes: NAME, STREET_ADDRESS, etc.)",
+        "For each level, maps annotation/prediction values to the appropriate depth node and calls SpanEvaluator \u2014 no changes to SpanEvaluator required",
+        "Returns dict[str, EvaluationResult] mapping level name (\"L0\", \"L1\", \"L2\") to its result",
+        "Documented with reference to ADR-003",
+        "ruff check passes on modified files",
+        "Tests pass"
+      ],
+      "priority": 24,
+      "passes": true,
+      "notes": "New feature. See ADR-003: docs/adr/ADR-003-hierarchical-evaluation.md. Files: presidio_evaluator/entity_mapping/mapper.py or a new hierarchical_evaluation.py module."
     }
   ]
 }
