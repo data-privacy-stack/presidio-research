@@ -11,9 +11,6 @@ from presidio_evaluator.entity_mapping.definitions import (
     HIERARCHY,
     EntityNotMappedError,
 )
-from presidio_evaluator.entity_mapping.hierarchical_evaluation import (
-    calculate_hierarchical_scores,
-)
 from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
 from presidio_evaluator.entity_mapping.mapper import (
     CanonicalMapper,
@@ -25,8 +22,6 @@ __all__ = [
     # Mapper
     "CanonicalMapper",
     "IncompleteMapping",
-    # Hierarchical evaluation
-    "calculate_hierarchical_scores",
     # Rendering
     "MapperRenderer",
     # Issues

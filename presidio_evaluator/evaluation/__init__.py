@@ -7,6 +7,7 @@ from .plotter import Plotter
 from .token_evaluator import Evaluator, TokenEvaluator
 from .span_evaluator import SpanEvaluator
 from .skipwords import get_skip_words
+from .hierarchical_evaluation import calculate_hierarchical_scores
 
 __all__ = [
     "EvaluationResult",
@@ -19,4 +20,5 @@ __all__ = [
     "TokenEvaluator",
     "Evaluator",
     "get_skip_words",
+    "calculate_hierarchical_scores",
 ]

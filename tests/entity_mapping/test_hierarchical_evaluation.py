@@ -3,11 +3,11 @@
 import pandas as pd
 import pytest
 
-from presidio_evaluator.entity_mapping import (
-    EntityHierarchy,
+from presidio_evaluator.entity_mapping import EntityHierarchy
+from presidio_evaluator.evaluation import (
+    EvaluationResult,
     calculate_hierarchical_scores,
 )
-from presidio_evaluator.evaluation import EvaluationResult
 
 # ---------------------------------------------------------------------------
 # Helpers
