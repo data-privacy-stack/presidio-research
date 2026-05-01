@@ -67,7 +67,7 @@
         "Typecheck passes."
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on US-002 (COLLISION_SAME_BRANCH must be in IssueType enum)."
     },
     {

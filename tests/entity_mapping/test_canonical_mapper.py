@@ -197,7 +197,7 @@ class TestIssues:
     def test_collision_same_branch_info(self):
         # PERSON prediction co-occurs with NAME annotation — same branch (PERSON), different depth
         df = _make_df(["NAME"] * 8, ["PERSON"] * 8)
-        mapper = CanonicalMapper().analyze(df)
+        mapper = CanonicalMapper().analyze(df, min_severity="INFO")
         same_branch = [
             i for i in mapper.get_issues() if i.type == IssueType.COLLISION_SAME_BRANCH
         ]
@@ -213,6 +213,59 @@ class TestIssues:
             if issue.type == IssueType.UNRESOLVED and "UNKNOWN_99" in issue.labels:
                 total = (issue.annotation_count or 0) + (issue.prediction_count or 0)
                 assert total >= 1
+
+
+# ---------------------------------------------------------------------------
+# min_severity parameter on analyze()
+# ---------------------------------------------------------------------------
+
+
+class TestMinSeverity:
+    def test_default_warning_excludes_info(self):
+        # Default min_severity='WARNING' — COLLISION_SAME_BRANCH (INFO) must be hidden
+        df = _make_df(["NAME"] * 8, ["PERSON"] * 8)
+        mapper = CanonicalMapper().analyze(df)
+        same_branch = [
+            i for i in mapper.get_issues() if i.type == IssueType.COLLISION_SAME_BRANCH
+        ]
+        assert same_branch == []
+
+    def test_info_shows_same_branch(self):
+        df = _make_df(["NAME"] * 8, ["PERSON"] * 8)
+        mapper = CanonicalMapper().analyze(df, min_severity="INFO")
+        same_branch = [
+            i for i in mapper.get_issues() if i.type == IssueType.COLLISION_SAME_BRANCH
+        ]
+        assert len(same_branch) > 0
+
+    def test_error_shows_only_unresolved(self):
+        df = _make_df(["XYZZY_99"] * 5, ["NAME"] * 5)
+        mapper = CanonicalMapper().analyze(df, min_severity="ERROR")
+        issues = mapper.get_issues()
+        severities = {i.severity for i in issues}
+        assert severities <= {IssueSeverity.ERROR}
+
+    def test_warning_shows_warning_and_error(self):
+        df = _make_df(["XYZZY_99"] * 5, ["EMAIL_ADDRESS"] * 5)
+        mapper = CanonicalMapper().analyze(df, min_severity="WARNING")
+        issues = mapper.get_issues()
+        severities = {i.severity for i in issues}
+        assert all(
+            s in (IssueSeverity.ERROR, IssueSeverity.WARNING) for s in severities
+        )
+
+    def test_invalid_severity_raises_valueerror(self):
+        df = _make_df(["NAME"], ["NAME"])
+        with pytest.raises(ValueError, match="Unrecognised severity"):
+            CanonicalMapper().analyze(df, min_severity="CRITICAL")
+
+    def test_enum_value_accepted(self):
+        df = _make_df(["NAME"] * 5, ["PERSON"] * 5)
+        mapper = CanonicalMapper().analyze(df, min_severity=IssueSeverity.INFO)
+        same_branch = [
+            i for i in mapper.get_issues() if i.type == IssueType.COLLISION_SAME_BRANCH
+        ]
+        assert len(same_branch) > 0
 
 
 # ---------------------------------------------------------------------------

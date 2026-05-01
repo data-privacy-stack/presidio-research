@@ -109,6 +109,7 @@ class CanonicalMapper:
         # Issues and DataFrame (per analyze() call)
         self._issues: list[MappingIssue] = []
         self._results_df: pd.DataFrame | None = None
+        self._min_severity: IssueSeverity = IssueSeverity.WARNING
 
     # -- Properties -----------------------------------------------------------
 
@@ -121,15 +122,39 @@ class CanonicalMapper:
 
     # -- Analysis -------------------------------------------------------------
 
-    def analyze(self, results_df: pd.DataFrame) -> CanonicalMapper:
+    def analyze(
+        self,
+        results_df: pd.DataFrame,
+        min_severity: str | IssueSeverity = "WARNING",
+    ) -> CanonicalMapper:
         """Identify all labels in the hierarchy (single-phase, no projection).
 
         Resolves every raw label via
         EXACT -> COUNTRY -> COUNTRY_FALLBACK -> FUZZY -> UNRESOLVED.
 
         :param results_df: DataFrame with annotation and prediction columns.
+        :param min_severity: Minimum severity to surface via get_issues() and
+            render_html(). Accepts 'ERROR', 'WARNING', 'INFO' (or IssueSeverity
+            enum values). Default is 'WARNING'. COLLISION_SAME_BRANCH (INFO)
+            is only shown when min_severity='INFO'.
         :return: self (for chaining).
+        :raises ValueError: If min_severity is an unrecognised string.
         """
+        # Validate min_severity
+        if isinstance(min_severity, str):
+            try:
+                self._min_severity = IssueSeverity(min_severity.lower())
+            except ValueError:
+                valid = [s.value for s in IssueSeverity]
+                raise ValueError(
+                    f"Unrecognised severity {min_severity!r}. Valid values: {valid}"
+                ) from None
+        elif isinstance(min_severity, IssueSeverity):
+            self._min_severity = min_severity
+        else:
+            raise TypeError(
+                f"min_severity must be str or IssueSeverity, got {type(min_severity).__name__}"
+            )
         if not isinstance(results_df, pd.DataFrame):
             raise TypeError(
                 f"results_df must be a pandas DataFrame, got {type(results_df).__name__}"
@@ -554,8 +579,13 @@ class CanonicalMapper:
     # -- Issues ---------------------------------------------------------------
 
     def get_issues(self) -> list[MappingIssue]:
-        """Return issues from the last analyze() call, sorted by severity then token count."""
-        return list(self._issues)
+        """Return issues from the last analyze() call, filtered by min_severity.
+
+        Issues with severity below min_severity are excluded. COLLISION_SAME_BRANCH
+        (INFO) is only returned when min_severity='INFO'.
+        """
+        min_order = _SEVERITY_ORDER[self._min_severity]
+        return [i for i in self._issues if _SEVERITY_ORDER[i.severity] <= min_order]
 
     # -- Mutation -------------------------------------------------------------
 

@@ -12,3 +12,12 @@
   - rendering.py was fully updated for single-phase: proj_priority → tier_priority, rec.projected → rec.resolved, rec.canonical → rec.resolved, m._canonical_surface removed
   - Full redesign of audit HTML table is US-006 — US-003 only did minimal compatibility fixes
 ---
+
+## 2025-05-01 - US-004
+- What was implemented: Added min_severity parameter to analyze(). Default 'WARNING'. Accepts str or IssueSeverity enum. Raises ValueError for unrecognised strings. get_issues() now filters by _min_severity — COLLISION_SAME_BRANCH (INFO) hidden unless min_severity='INFO'. Added TestMinSeverity test class with 6 tests.
+- Files changed: presidio_evaluator/entity_mapping/mapper.py, tests/entity_mapping/test_canonical_mapper.py, ralph/prd.json
+- **Learnings for future iterations:**
+  - IssueSeverity enum values are lowercase ('error', 'warning', 'info') — use .lower() not .upper() when converting
+  - _SEVERITY_ORDER dict enables numeric severity comparison for filtering
+  - Default min_severity stored on self._min_severity; initialized to WARNING in __init__
+---
