@@ -27,14 +27,14 @@ class MapperRenderer:
         html = MapperRenderer(mapper).build_html()  # raw HTML string
     """
 
-    # Badge colours per projection_type: (background, text)
+    # Badge colours per tier: (background, text)
     _PROJ_COLORS: dict[str, tuple[str, str]] = {
         "EXACT": ("#d1f4e0", "#2da44e"),
-        "TRIVIAL": ("#ddf4ff", "#0969da"),
+        "FUZZY": ("#ddf4ff", "#0969da"),
+        "COUNTRY": ("#ddf4ff", "#0969da"),
+        "COUNTRY_FALLBACK": ("#fff8c5", "#d4a72c"),
         "MANUAL": ("#ddf4ff", "#0969da"),
         "UNRESOLVED": ("#ffebe9", "#cf222e"),
-        "AMBIGUOUS": ("#fff8c5", "#d4a72c"),
-        "CROSS_BRANCH": ("#fff1f0", "#d4492a"),
         "NONE": ("#f6f8fa", "#57606a"),
     }
 
@@ -116,16 +116,8 @@ class MapperRenderer:
             rec = records[lbl]
             ann = ann_counts.get(lbl, 0)
             pred = pred_counts.get(lbl, 0)
-            canonical_differs = (
-                rec.canonical and rec.projected and rec.canonical != rec.projected
-            )
-            if rec.projected:
-                projected_cell = f'<code style="font-size:12px">{rec.projected}</code>'
-                if canonical_differs:
-                    projected_cell += (
-                        f' <span style="color:#57606a;font-size:11px">'
-                        f"(via {rec.canonical})</span>"
-                    )
+            if rec.resolved:
+                projected_cell = f'<code style="font-size:12px">{rec.resolved}</code>'
             else:
                 projected_cell = '<em style="color:#57606a;font-size:12px">—</em>'
             rows.append(
@@ -156,9 +148,7 @@ class MapperRenderer:
             'Segoe UI,Helvetica,Arial,sans-serif;max-width:900px">'
             '<h4 style="margin:0 0 6px;color:#24292f">Label mapping summary</h4>'
             '<p style="font-size:12px;color:#57606a;margin:0 0 8px">'
-            "One row per label. <em>Mapped to</em> is the final canonical entity used for "
-            "evaluation. When an intermediate match differs (e.g. depth-4 label projected "
-            "up to a depth-3 surface node), it is shown in parentheses. "
+            "One row per label. <em>Mapped to</em> is the resolved hierarchy entity. "
             "Counts are pre-mapping token occurrences.</p>" + table + "</div>"
         )
 
@@ -169,14 +159,14 @@ class MapperRenderer:
         ann_counts = m._label_annotation_counts
         pred_counts = m._label_prediction_counts
 
-        proj_priority = {
+        tier_priority = {
             "UNRESOLVED": 0,
-            "AMBIGUOUS": 1,
-            "CROSS_BRANCH": 2,
-            "TRIVIAL": 3,
-            "EXACT": 4,
-            "MANUAL": 4,
-            "NONE": 5,
+            "EXACT": 1,
+            "FUZZY": 2,
+            "COUNTRY": 3,
+            "COUNTRY_FALLBACK": 4,
+            "MANUAL": 5,
+            "NONE": 6,
         }
 
         # ── Shared helpers ────────────────────────────────────────────────
@@ -271,7 +261,7 @@ class MapperRenderer:
         ann_pairs = sorted(
             [(lbl, rec) for lbl, rec in records.items() if ann_counts.get(lbl, 0) > 0],
             key=lambda x: (
-                proj_priority.get(x[1].projection_type or "NONE", 9),
+                tier_priority.get(x[1].tier or "NONE", 9),
                 -ann_counts.get(x[0], 0),
             ),
         )
@@ -279,7 +269,7 @@ class MapperRenderer:
         pred_pairs = sorted(
             [(lbl, rec) for lbl, rec in records.items() if pred_counts.get(lbl, 0) > 0],
             key=lambda x: (
-                proj_priority.get(x[1].projection_type or "NONE", 9),
+                tier_priority.get(x[1].tier or "NONE", 9),
                 -pred_counts.get(x[0], 0),
             ),
         )
@@ -297,9 +287,9 @@ class MapperRenderer:
             rows = []
 
             for lbl, rec in pairs:
-                pt = rec.projection_type or "NONE"
+                pt = rec.tier or "NONE"
                 row_bg, _ = self._PROJ_COLORS.get(pt, ("#ffffff", "#666"))
-                display_entity = rec.projected or rec.canonical
+                display_entity = rec.resolved
                 projected_cell = (
                     f'<code style="font-size:12px">{display_entity}</code>'
                     if display_entity
@@ -402,17 +392,9 @@ class MapperRenderer:
         )
 
         # ── Summary header ────────────────────────────────────────────────
-        surface = m._canonical_surface
-        depth_info = (
-            f"{len(surface)} canonical entities (per-branch)"
-            if surface
-            else "Not analyzed"
-        )
-        n_blocking = sum(
-            1
-            for i in m.get_issues()
-            if i.severity in (IssueSeverity.ERROR, IssueSeverity.WARNING)
-        )
+        n_labels = len(records)
+        depth_info = f"{n_labels} labels identified" if n_labels else "Not analyzed"
+        n_blocking = sum(1 for i in m.get_issues() if i.severity == IssueSeverity.ERROR)
         status_msg = (
             f'<span style="color:#cf222e;font-weight:600">'
             f"{n_blocking} issue(s) need your attention</span>"
@@ -465,34 +447,24 @@ class MapperRenderer:
         pred_counts = m._label_prediction_counts
 
         depth_info = (
-            f"{len(m._canonical_surface)} canonical entities (per-branch)"
-            if m._canonical_surface
-            else "Not analyzed"
+            f"{len(m._records)} labels identified" if m._records else "Not analyzed"
         )
-        n_blocking = sum(
-            1
-            for i in m._issues
-            if i.severity in (IssueSeverity.ERROR, IssueSeverity.WARNING)
-        )
+        n_blocking = sum(1 for i in m._issues if i.severity == IssueSeverity.ERROR)
         print(
             f"Entity Label Mapping Audit  "
-            f"({depth_info}, {len(records)} labels, {n_blocking} blocking issues)\n"
+            f"({depth_info}, {len(records)} labels, {n_blocking} unresolved)\n"
         )
         for issue in m._issues:
             print(f"  [{issue.severity.value.upper()}] {issue.message}")
         print()
         print(
-            f"{'Label':<30} {'ID Tier':<18} {'Canonical':<30} "
-            f"{'Projection':<14} {'Projected To':<30} {'Ann':>6} {'Pred':>6}"
+            f"{'Label':<30} {'ID Tier':<18} {'Resolved':<30} {'Score':<14} {'Ann':>6} {'Pred':>6}"
         )
-        print("-" * 140)
+        print("-" * 110)
         for lbl, rec in sorted(records.items()):
-            canonical = rec.canonical or "-"
-            projected = rec.projected or "-"
-            pt = rec.projection_type or "-"
+            resolved = rec.resolved or "-"
+            tier = rec.tier or "-"
+            score = f"{rec.score:.0%}" if rec.score is not None else "-"
             ann = str(ann_counts.get(lbl, "-"))
             pred = str(pred_counts.get(lbl, "-"))
-            print(
-                f"{lbl:<30} {rec.tier:<18} {canonical:<30} "
-                f"{pt:<14} {projected:<30} {ann:>6} {pred:>6}"
-            )
+            print(f"{lbl:<30} {tier:<18} {resolved:<30} {score:<14} {ann:>6} {pred:>6}")

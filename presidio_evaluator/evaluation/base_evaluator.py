@@ -1,24 +1,22 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 
 from presidio_evaluator import InputSample
+from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
 from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.evaluation.skipwords import get_skip_words
 from presidio_evaluator.models import BaseModel
-
-if TYPE_CHECKING:
-    from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
 
 logger = logging.getLogger(__name__)
 
 GENERIC_ENTITIES = ("PII", "ID", "PII", "PHI", "ID_NUM", "NUMBER", "NUM", "GENERIC_PII")
 
 
-def _to_l1(entity: str, hierarchy: "EntityHierarchy") -> str:
+def _to_l1(entity: str, hierarchy: EntityHierarchy) -> str:
     """Map an entity label to its depth-2 (branch) ancestor."""
     if entity == "O":
         return "O"
@@ -271,7 +269,7 @@ class BaseEvaluator(ABC):
     def calculate_hierarchical_scores(
         self,
         mapped_df: pd.DataFrame,
-        hierarchy: "EntityHierarchy | None" = None,
+        hierarchy: EntityHierarchy | None = None,
         beta: float = 2.0,
     ) -> dict[str, EvaluationResult]:
         """Evaluate model performance at three granularity levels simultaneously.
@@ -292,12 +290,7 @@ class BaseEvaluator(ABC):
         :return: ``dict[str, EvaluationResult]`` with keys ``"L0"``, ``"L1"``,
             ``"L2"``.
 
-        See Also
-        --------
-        docs/adr/ADR-003-hierarchical-evaluation.md
         """
-        from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
-
         if hierarchy is None:
             hierarchy = EntityHierarchy()
 

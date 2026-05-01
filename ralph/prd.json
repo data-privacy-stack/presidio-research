@@ -1,452 +1,180 @@
 {
   "project": "presidio-evaluator",
-  "branchName": "ralph/dataset-anchored-mapper",
-  "description": "Rewrite CanonicalMapper as a two-phase (Identify \u2192 Project) mapper where the dataset's annotations define the evaluation surface via majority-vote depth.",
+  "branchName": "ralph/canonical-mapper-single-phase",
+  "description": "Replace the two-phase CanonicalMapper (Identify+Project) with a single-phase design. The mapper emits MappedResults — a frozen dataclass with four pre-projected DataFrames (.original/.binary/.branch/.detailed) — and calculate_hierarchical_scores() is updated to accept it directly, eliminating internal column projection. Issue taxonomy is simplified to five types (UNRESOLVED/COLLISION_CROSS_BRANCH/PREDICTION_ONLY/DATASET_ONLY/COLLISION_SAME_BRANCH). No changes to SpanEvaluator, TokenEvaluator, EvaluationResult, or Plotter.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Replace IssueType enum and data objects",
-      "description": "As a developer, I need the new issue taxonomy in place before any mapper logic can reference it.",
+      "title": "Define MappedResults and level helpers",
+      "description": "As a developer, I need the MappedResults frozen dataclass and _to_binary/_to_branch projection helpers in place before the mapper and evaluator can reference them.",
       "acceptanceCriteria": [
-        "Replace IssueType values with: UNRESOLVED, COLLISION_TRIVIAL, COLLISION_AMBIGUOUS, COLLISION_CROSS_BRANCH, PREDICTION_ONLY, DATASET_ONLY",
-        "Remove old types: DEPTH_MISMATCH, SUPPRESSED_WITH_ANNOTATIONS, HIERARCHY_DEPTH_CHANGED",
-        "IssueSeverity enum unchanged (ERROR, WARNING, INFO)",
-        "Add overlap_counts field (dict[str, int] | None) to MappingIssue for token-overlap data",
-        "ResolutionOption dataclass unchanged",
-        "Update __init__.py exports to reflect new types",
-        "ruff check passes on presidio_evaluator/entity_mapping/data_objects.py",
-        "ruff check passes on presidio_evaluator/entity_mapping/__init__.py"
+        "Define MappedResults as a frozen dataclass in presidio_evaluator/entity_mapping/data_objects.py with fields: .original, .binary, .branch, .detailed (each a pandas DataFrame).",
+        "Create presidio_evaluator/entity_mapping/level_helpers.py with two pure functions: _to_binary(label: str | None) -> str and _to_branch(label: str | None, hierarchy: EntityHierarchy) -> str. Both map None/'O' to 'O', any non-O label to 'PII' (binary) or its depth-2 branch ancestor (branch).",
+        "Neither MappedResults nor level_helpers.py imports from mapper.py — no circular dependency.",
+        "Typecheck passes."
       ],
       "priority": 1,
       "passes": true,
-      "notes": "File: presidio_evaluator/entity_mapping/data_objects.py and __init__.py. This is a pure data-object change \u2014 no mapper logic yet."
+      "notes": ""
     },
     {
       "id": "US-002",
-      "title": "Add get_depth helper to EntityHierarchy",
-      "description": "As a developer, I need a get_depth(entity) method on EntityHierarchy so the mapper can compute majority-vote depth.",
+      "title": "Update IssueType taxonomy",
+      "description": "As a user, I want a cleaner set of issue types matching the new single-phase design so the audit table is not cluttered with obsolete concepts.",
       "acceptanceCriteria": [
-        "Add get_depth(entity: str) -> int method to EntityHierarchy that returns the depth of a canonical entity (PII=1, PERSON=2, NAME=3, FIRST_NAME=4)",
-        "Depth is derived from len(canonical_to_branch[entity])",
-        "Raises EntityNotMappedError if entity not found",
-        "Add unit test in tests/entity_mapping/test_entity_hierarchy.py for get_depth with entities at depths 2, 3, and 4",
-        "ruff check passes on hierarchy.py",
-        "Tests pass"
+        "Remove COLLISION_TRIVIAL and COLLISION_AMBIGUOUS from the IssueType enum in data_objects.py and from all code paths in mapper.py that generate them.",
+        "Add COLLISION_SAME_BRANCH to IssueType enum with severity INFO. It fires when a prediction label and annotation label co-occur on the same tokens and both resolve to the same hierarchy branch at different depths (e.g. model predicts PERSON depth-2, dataset annotates NAME depth-3).",
+        "COLLISION_CROSS_BRANCH remains at WARNING. PREDICTION_ONLY remains at WARNING. DATASET_ONLY remains at WARNING. UNRESOLVED remains at ERROR.",
+        "COUNTRY_FALLBACK is not an IssueType — it is logged at INFO level internally only and never surfaced in get_issues() or render_html() regardless of min_severity.",
+        "Update _ISSUE_TYPE_ORDER in mapper.py: remove COLLISION_TRIVIAL and COLLISION_AMBIGUOUS; add COLLISION_SAME_BRANCH. Ordering: ERROR before WARNING before INFO; within same severity, descending token count.",
+        "Typecheck passes."
       ],
       "priority": 2,
       "passes": true,
-      "notes": "File: presidio_evaluator/entity_mapping/hierarchy.py. Small addition to existing class."
+      "notes": ""
     },
     {
       "id": "US-003",
-      "title": "Scaffold new CanonicalMapper constructor",
-      "description": "As a developer, I need the new CanonicalMapper constructor with only hierarchy and fuzzy_threshold params, plus internal state for eval surface locking.",
+      "title": "Remove projection phase, emit MappedResults",
+      "description": "As a developer, I want the mapper to be single-phase (Identify only) so annotations are never rewritten and get_mapped_results_dataframe() returns a MappedResults object with four pre-projected DataFrames.",
       "acceptanceCriteria": [
-        "Constructor accepts only hierarchy (dict | EntityHierarchy | None) and fuzzy_threshold (float, default 0.80) as keyword-only args",
-        "Remove labels, canonical_depth, eval_entities parameters from constructor",
-        "Add internal state: _eval_surface (set[str] | None), _eval_depth (int | None), _records (dict), _issues (list), _results_df (None)",
-        "Add eval_surface property returning set[str] (empty set if not yet computed)",
-        "Add pending property returning list of unresolved labels",
-        "Existing _auto_resolve, _auto_resolve_one, _add_labels, _stripped methods preserved (identification logic reused)",
-        "IncompleteMapping exception class preserved",
-        "ruff check passes on mapper.py",
-        "Tests pass: test that CanonicalMapper() constructs without error and eval_surface is empty"
+        "Remove _compute_canonical_surface(), the _canonical_surface attribute, and the canonical_surface property from CanonicalMapper.",
+        "Remove canonical_depth and eval_entities from __init__ (if still present).",
+        "analyze() no longer computes or locks a canonical surface.",
+        "Rename rec.canonical to rec.resolved (or rec.hierarchy_node) on the internal _Resolution dataclass throughout mapper.py. canonical_to_branch on EntityHierarchy is NOT renamed.",
+        "get_mapped_results_dataframe() returns a MappedResults frozen dataclass (defined in US-001) with four DataFrame attributes. In each, all non-label columns (sentence_id, token, start_indices) are preserved unchanged: .original has annotation and prediction as the raw input labels, unmodified. .binary has annotation and prediction resolved to 'PII' for any non-O label, 'O' otherwise (use _to_binary from level_helpers). .branch has annotation and prediction resolved to the depth-2 branch ancestor (use _to_branch from level_helpers); 'O' passes through; suppressed labels (None) become 'O'. .detailed has annotation and prediction resolved to the hierarchy node at native depth (rec.resolved); 'O' passes through; suppressed labels become 'O'.",
+        "All four DataFrames have only annotation and prediction as label columns — no _binary/_branch/_detailed suffixes. Each is directly passable to calculate_score_on_df() and Plotter without renaming.",
+        "get_mapped_results_dataframe() still raises IncompleteMapping when any UNRESOLVED labels remain.",
+        "Update all existing tests that reference canonical_surface, depth projection behavior, original_annotation/original_prediction column names, or rec.canonical. Tests that asserted old projection output should be rewritten to assert MappedResults structure.",
+        "Typecheck passes."
       ],
       "priority": 3,
       "passes": true,
-      "notes": "File: presidio_evaluator/entity_mapping/mapper.py. Gut the old constructor, keep identification helpers."
+      "notes": "Depends on US-001 (MappedResults and level_helpers must exist). rec.canonical rename is scoped to the internal _Resolution dataclass only — not the public API."
     },
     {
       "id": "US-004",
-      "title": "Implement majority-vote depth computation",
-      "description": "As a developer, I need a _compute_eval_depth method that computes the weighted majority-vote depth from annotation entities.",
+      "title": "Add min_severity to analyze()",
+      "description": "As a user, I want to control which issues are surfaced so I can focus on blocking issues only, or drill down to INFO-level same-branch depth mismatches.",
       "acceptanceCriteria": [
-        "Add _compute_eval_depth(results_df) method that computes round(sum(min(depth,3) * tokens) / sum(tokens))",
-        "Depth per entity comes from EntityHierarchy.get_depth()",
-        "Depth is capped at 3 per entity before weighting",
-        "Tie-breaking at 0.5: prefer deeper (more specific) depth (use math.ceil or equivalent)",
-        "Returns an int representing the eval depth",
-        "Add unit tests: dataset with all depth-3 entities returns 3; dataset with mix of depth-2 and depth-3 entities returns correct weighted result; dataset with depth-4 entities caps them to 3",
-        "ruff check passes",
-        "Tests pass"
+        "New signature: analyze(results_df, min_severity='WARNING'). Default is WARNING.",
+        "min_severity='ERROR' — get_issues() and render_html() show only UNRESOLVED.",
+        "min_severity='WARNING' — show UNRESOLVED + COLLISION_CROSS_BRANCH + PREDICTION_ONLY + DATASET_ONLY.",
+        "min_severity='INFO' — show all of the above plus COLLISION_SAME_BRANCH.",
+        "min_severity accepts both string ('WARNING') and IssueSeverity enum values.",
+        "Raises ValueError for unrecognised severity strings.",
+        "COLLISION_SAME_BRANCH issues are never shown when min_severity is 'WARNING' or 'ERROR'.",
+        "Typecheck passes."
       ],
       "priority": 4,
-      "passes": true,
-      "notes": "Internal method on CanonicalMapper. Needs annotation column counts from DataFrame."
+      "passes": false,
+      "notes": "Depends on US-002 (COLLISION_SAME_BRANCH must be in IssueType enum)."
     },
     {
       "id": "US-005",
-      "title": "Implement eval surface construction and locking",
-      "description": "As a developer, I need the eval surface to be computed from the majority-vote depth and locked after the first analyze() call.",
+      "title": "Add get_mapping() method",
+      "description": "As a pipeline operator, I want a serialisable view of the current mapping state so I can version-control or share it across runs.",
       "acceptanceCriteria": [
-        "After depth computation, eval surface = set of hierarchy nodes at that depth (from EntityHierarchy at that canonical_depth)",
-        "Eval surface stored in _eval_surface and _eval_depth",
-        "First analyze() call computes and locks the surface",
-        "Subsequent analyze() calls skip recomputation and reuse the locked surface",
-        "eval_surface property returns the locked set",
-        "Add unit test: first analyze() sets eval_surface; second analyze() with different DataFrame keeps the same eval_surface",
-        "ruff check passes",
-        "Tests pass"
+        "mapper.get_mapping() returns dict[str, str | None] where keys are raw labels and values are the resolved hierarchy entity (or None for suppressed labels).",
+        "Only resolved labels are included; UNRESOLVED labels are excluded.",
+        "The returned dict is a plain copy — mutating it does not affect the mapper.",
+        "Typecheck passes."
       ],
       "priority": 5,
-      "passes": true,
-      "notes": "Requires creating an EntityHierarchy with the computed depth to get all_canonical_entities at that depth."
+      "passes": false,
+      "notes": "Depends on US-003 (rec.resolved rename must be in place before reading from _records)."
     },
     {
       "id": "US-006",
-      "title": "Implement projection rules for all labels",
-      "description": "As a developer, I need the projection step that maps all identified labels (annotations and predictions) onto the eval surface.",
+      "title": "Update HTML audit table for new issue taxonomy",
+      "description": "As a user, I want the HTML audit table to accurately reflect the new issue types and severities so I understand what action (if any) to take.",
       "acceptanceCriteria": [
-        "After identification, each label is projected onto the eval surface using hierarchy branch info",
-        "Exact match in eval surface: keep as-is",
-        "Descendant of an eval-surface entity: auto-map up to ancestor (record as COLLISION_TRIVIAL)",
-        "Unambiguous ancestor (parent of exactly 1 eval-surface entity): auto-map down (record as COLLISION_TRIVIAL)",
-        "Ambiguous ancestor (parent of N eval-surface entities): flag as COLLISION_AMBIGUOUS with severity INFO (non-blocking); hierarchical evaluation scores it at the correct level automatically",
-        "Different branch from all eval-surface entities: flag as COLLISION_CROSS_BRANCH",
-        "Labels not in hierarchy: remain UNRESOLVED",
-        "Add unit tests for each projection rule with a small hierarchy and controlled DataFrame",
-        "ruff check passes",
-        "Tests pass"
+        "Remove all references to COLLISION_TRIVIAL, COLLISION_AMBIGUOUS, and 'eval surface' / 'canonical surface' from the rendered HTML.",
+        "Add a badge colour for COLLISION_SAME_BRANCH (blue).",
+        "Summary bar shows counts per new issue type: UNRESOLVED (red), COLLISION_CROSS_BRANCH (orange), PREDICTION_ONLY (grey), DATASET_ONLY (amber), COLLISION_SAME_BRANCH (blue).",
+        "Detail table respects min_severity: COLLISION_SAME_BRANCH rows only appear when min_severity='INFO'.",
+        "For COLLISION_SAME_BRANCH rows, display: raw label, resolved hierarchy entity, co-occurring annotation label, token count, and the note: 'Same-branch depth mismatch — handled automatically by hierarchical evaluation (branch/detailed projection).'",
+        "For COLLISION_CROSS_BRANCH rows, retain overlap counts with annotation labels.",
+        "render_html() still works before analyze() is called (shows empty state).",
+        "Typecheck passes."
       ],
       "priority": 6,
-      "passes": true,
-      "notes": "ADR-003: COLLISION_AMBIGUOUS severity must change from WARNING to INFO (non-blocking). Hierarchical evaluation handles ambiguous ancestors at the right level \u2014 no forced mapping choice needed."
+      "passes": false,
+      "notes": "Depends on US-002 (new issue types) and US-004 (min_severity stored on mapper after analyze())."
     },
     {
       "id": "US-007",
-      "title": "Implement PREDICTION_ONLY and DATASET_ONLY detection",
-      "description": "As a developer, I need issue detection for prediction-only and dataset-only entities after projection.",
+      "title": "Update calculate_hierarchical_scores() to accept MappedResults",
+      "description": "As a user, I want a single call to score all three levels, and be able to pass any individual level DataFrame to the flat evaluator or Plotter directly — no column renaming needed anywhere in the flow.",
       "acceptanceCriteria": [
-        "After projection, entities in predictions with no eval-surface counterpart flagged as PREDICTION_ONLY (WARNING)",
-        "After projection, eval-surface entities with no prediction mapping flagged as DATASET_ONLY (INFO)",
-        "PREDICTION_ONLY includes prediction token count",
-        "DATASET_ONLY includes annotation token count",
-        "Add unit test: model predicts EMAIL but dataset has no EMAIL \u2192 PREDICTION_ONLY",
-        "Add unit test: dataset has SSN but model never predicts it \u2192 DATASET_ONLY",
-        "ruff check passes",
-        "Tests pass"
+        "calculate_hierarchical_scores(results: MappedResults) calls calculate_score_on_df() on results.binary, results.branch, and results.detailed directly — no internal column projection.",
+        "The method returns dict[str, EvaluationResult] with keys 'binary', 'branch', 'detailed'.",
+        "Internal _to_binary/_to_branch (or _to_l0/_to_l1) projection helpers are removed from this method in base_evaluator.py (projection is now done once by the mapper).",
+        "A unit test verifies that for a dataset with mixed-depth annotations (e.g. both PERSON depth-2 and NAME depth-3), calculate_hierarchical_scores() produces correct branch-level scores: NAME annotation -> PERSON at branch level and PERSON prediction stays PERSON -> TP.",
+        "A unit test verifies that calling calculate_score_on_df(results.branch) directly produces the same result as scores['branch'] from calculate_hierarchical_scores().",
+        "No changes to SpanEvaluator, TokenEvaluator, EvaluationResult, or Plotter.",
+        "Typecheck passes."
       ],
       "priority": 7,
-      "passes": true,
-      "notes": "Builds on projection step. Compare projected prediction set vs eval surface."
+      "passes": false,
+      "notes": "Depends on US-001 (MappedResults type) and US-003 (mapper emitting MappedResults)."
     },
     {
       "id": "US-008",
-      "title": "Implement issue sorting and get_issues()",
-      "description": "As a developer, I need issues sorted by severity then token count so the most impactful problems surface first.",
+      "title": "Update Notebook 4 (Evaluate Presidio Analyzer)",
+      "description": "As a user following the evaluation tutorial, I want Notebook 4 to demonstrate the new single-phase mapping workflow, three-level scoring, and level-specific error analysis using the existing Plotter.",
       "acceptanceCriteria": [
-        "get_issues() returns issues sorted by severity (ERROR > WARNING > INFO), then by affected token count descending",
-        "Each MappingIssue has annotation_count and prediction_count populated from the DataFrame",
-        "UNRESOLVED issues include fuzzy suggestions at cutoff 0.40",
-        "Add unit test: multiple issues of different severities and token counts are returned in correct order",
-        "ruff check passes",
-        "Tests pass"
+        "Replace any CanonicalMapper(canonical_depth=N) with CanonicalMapper().",
+        "analyze(results_df) is called without any depth or hierarchy parameter.",
+        "Notebook includes explanatory markdown covering the five issue types and their severities.",
+        "Notebook shows resolving UNRESOLVED labels with map() before calling get_mapped_results_dataframe().",
+        "Notebook demonstrates calling calculate_hierarchical_scores(results) and printing binary, branch, detailed EvaluationResult objects.",
+        "Notebook includes a cell showing per-level Plotter use: call calculate_score_on_df(results.<level>) and pass the result to Plotter. Example shown for detailed (native depth) and branch (entity-type level).",
+        "Remove any references to canonical_surface, canonical_depth, COLLISION_TRIVIAL, COLLISION_AMBIGUOUS, or the projection phase.",
+        "Notebook runs end-to-end without error.",
+        "Typecheck passes."
       ],
       "priority": 8,
-      "passes": true,
-      "notes": "Replaces old _detect_unresolved, _detect_prediction_only, _detect_depth_mismatch, _detect_suppressed_with_annotations methods."
+      "passes": false,
+      "notes": "Depends on US-001 through US-007 all passing."
     },
     {
       "id": "US-009",
-      "title": "Implement token-overlap ranking for ambiguous collisions",
-      "description": "As a developer, I need COLLISION_AMBIGUOUS suggestions ranked by actual per-row token overlap.",
+      "title": "Update Notebook 5 (Evaluate Custom Presidio Analyzer)",
+      "description": "As a user evaluating a custom Presidio Analyzer, I want Notebook 5 to use the same single-phase mapping workflow and three-level evaluation as Notebook 4.",
       "acceptanceCriteria": [
-        "For each COLLISION_AMBIGUOUS issue, scan DataFrame rows where prediction == the ambiguous label",
-        "Count co-occurrences with each candidate annotation label from the eval surface",
-        "Store overlap counts in MappingIssue.overlap_counts (dict[str, int])",
-        "ResolutionOption suggestions ordered by overlap count descending",
-        "Add unit test: prediction PERSON with annotations NAME (100 tokens), TITLE (10 tokens), USERNAME (2 tokens) \u2192 suggestions ranked NAME > TITLE > USERNAME",
-        "ruff check passes",
-        "Tests pass"
+        "Replace any CanonicalMapper(canonical_depth=N) with CanonicalMapper().",
+        "analyze(results_df) is called without any depth or hierarchy parameter.",
+        "Notebook shows resolving UNRESOLVED labels with map() before calling get_mapped_results_dataframe().",
+        "Notebook demonstrates calling calculate_hierarchical_scores(results) and printing binary, branch, detailed EvaluationResult objects.",
+        "Notebook includes a cell showing per-level Plotter use: call calculate_score_on_df(results.<level>) and pass the result to Plotter. Example shown for detailed (native depth) and branch (entity-type level).",
+        "Remove any references to canonical_surface, canonical_depth, COLLISION_TRIVIAL, COLLISION_AMBIGUOUS, or the projection phase.",
+        "Notebook runs end-to-end without error.",
+        "Typecheck passes."
       ],
       "priority": 9,
-      "passes": true,
-      "notes": "Scans the results_df to count per-row annotation/prediction co-occurrences."
+      "passes": false,
+      "notes": "Depends on US-001 through US-007 all passing. Same pattern as US-008 (Notebook 4)."
     },
     {
       "id": "US-010",
-      "title": "Wire up analyze() end-to-end",
-      "description": "As a developer, I need analyze() to run the full pipeline: identify \u2192 compute depth \u2192 lock surface \u2192 project \u2192 detect issues \u2192 sort.",
+      "title": "Update Notebook 6 (Interactive Entity Mapping)",
+      "description": "As a user learning entity mapping in depth, I want Notebook 6 to cover the full single-phase workflow and all updated issue types.",
       "acceptanceCriteria": [
-        "analyze(results_df) discovers labels from annotation and prediction columns",
-        "Runs identification (reuses existing _auto_resolve logic)",
-        "Computes majority-vote depth and locks eval surface (first call only)",
-        "Runs projection on all identified labels",
-        "Detects PREDICTION_ONLY, DATASET_ONLY, COLLISION_* issues",
-        "Sorts issues by severity then token count",
-        "Returns self for chaining",
-        "Manual records (from prior map() calls) are preserved across analyze() calls",
-        "Issues are cleared and recomputed on each analyze() call",
-        "Add integration test: full analyze() with a realistic DataFrame covering exact matches, trivial collisions, and an unresolved label",
-        "ruff check passes",
-        "Tests pass"
+        "Rewrite intro cells to explain the single-phase model: Identify (5 tiers) only — no projection.",
+        "Add a section covering all five issue types with concrete examples and when they occur.",
+        "Explain min_severity: show analyze(results_df, min_severity='INFO') to surface COLLISION_SAME_BRANCH for awareness.",
+        "Show resolve_interactively() for guided resolution of UNRESOLVED labels (no changes to resolve_interactively() itself).",
+        "Show map() for programmatic batch resolution.",
+        "Show calling calculate_hierarchical_scores(results) and explain what binary/branch/detailed mean.",
+        "Show per-level Plotter use: call calculate_score_on_df(results.<level>) and pass the result to Plotter (same approach as Notebook 4).",
+        "Remove all references to canonical_depth, eval_entities, canonical_surface, COLLISION_TRIVIAL, COLLISION_AMBIGUOUS, or the projection phase.",
+        "Notebook runs end-to-end without error.",
+        "Typecheck passes."
       ],
       "priority": 10,
-      "passes": true,
-      "notes": "This wires together US-004 through US-009 into the analyze() method."
-    },
-    {
-      "id": "US-011",
-      "title": "Update map() with issue re-evaluation",
-      "description": "As a developer, I need map() to validate atomically, apply mappings, and re-evaluate which issues are resolved.",
-      "acceptanceCriteria": [
-        "map() validates all entries before applying any: raises ValueError on invalid canonical values",
-        "Supports remap ({'X': 'Y'}), suppress ({'X': None}), keep-as-FP ({'X': 'X'})",
-        "After applying, the mapper re-evaluates and removes resolved issues from _issues list",
-        "map() can override an already-resolved label (corrects auto-fix decisions)",
-        "Returns self for chaining",
-        "Add unit test: map() resolves a PREDICTION_ONLY warning, then get_issues() no longer contains it",
-        "Add unit test: map() with invalid value raises ValueError and applies nothing",
-        "ruff check passes",
-        "Tests pass"
-      ],
-      "priority": 11,
-      "passes": true,
-      "notes": "Builds on existing map() logic but adds issue re-evaluation after applying."
-    },
-    {
-      "id": "US-012",
-      "title": "Implement blocking in get_mapped_results_dataframe()",
-      "description": "As a developer, I need get_mapped_results_dataframe() to block on WARNING+ issues and output original_ columns.",
-      "acceptanceCriteria": [
-        "Raises IncompleteMapping if any ERROR or WARNING issues remain unresolved; COLLISION_AMBIGUOUS is INFO and does NOT block",
-        "INFO issues (COLLISION_TRIVIAL, DATASET_ONLY, COLLISION_AMBIGUOUS) do not block",
-        "Exception message lists the unresolved issue types and labels",
-        "When no blocking issues: returns DataFrame with annotation and prediction rewritten to eval-surface entities",
-        "Suppressed labels become 'O' in both columns",
-        "Adds original_annotation and original_prediction columns preserving raw labels",
-        "Other columns (sentence_id, token, start_indices) unchanged",
-        "Add unit test: calling with unresolved WARNING raises IncompleteMapping",
-        "Add unit test: calling after resolving all warnings returns correct DataFrame with original_ columns",
-        "ruff check passes",
-        "Tests pass"
-      ],
-      "priority": 12,
-      "passes": true,
-      "notes": "ADR-003: COLLISION_AMBIGUOUS is now INFO (non-blocking). Blocking criteria must reflect this: only ERROR + WARNING (COLLISION_CROSS_BRANCH, PREDICTION_ONLY) block; COLLISION_AMBIGUOUS no longer blocks."
-    },
-    {
-      "id": "US-013",
-      "title": "Implement logging for all resolution decisions",
-      "description": "As a developer, I need structured logging at INFO/WARNING for every resolution decision.",
-      "acceptanceCriteria": [
-        "EXACT resolutions logged at INFO: '[EXACT] EMAIL_ADDRESS \u2192 EMAIL_ADDRESS'",
-        "FUZZY resolutions logged at INFO with score: '[FUZZY 87%] EMAILADRES \u2192 EMAIL_ADDRESS'",
-        "COUNTRY resolutions logged at INFO: '[COUNTRY] GERMAN_PASSPORT_NUMBER \u2192 PASSPORT'",
-        "COUNTRY_FALLBACK logged at INFO with warning marker: '[COUNTRY-FALLBACK] ... \u2192 NATIONAL_ID \u26a0 document type not recognized'",
-        "Auto-fixes logged at INFO: '[AUTO-FIX] FIRST_NAME \u2192 NAME (descendant projected to eval-surface entity)'",
-        "Manual overrides logged: '[MANUAL] MY_LABEL \u2192 PERSON'",
-        "Suppressions logged: '[NONE] EXTRA_LABEL \u2192 None (suppressed from evaluation)'",
-        "Unresolved labels logged at WARNING: '[UNRESOLVED] {label} \u2014 no automatic match found'",
-        "Summary INFO line after analysis with depth, surface entities, resolution counts, auto-fixes, issues count",
-        "Logger name is presidio_evaluator.entity_mapping",
-        "ruff check passes",
-        "Tests pass"
-      ],
-      "priority": 13,
-      "passes": true,
-      "notes": "Update existing logging calls in _auto_resolve_one and add new logging in projection step."
-    },
-    {
-      "id": "US-014",
-      "title": "Implement resolve_interactively()",
-      "description": "As a developer, I need resolve_interactively() to prompt only for WARNING+ issues with ranked suggestions.",
-      "acceptanceCriteria": [
-        "resolve_interactively(prompt_fn=input) iterates over WARNING+ issues only; COLLISION_AMBIGUOUS (now INFO) is skipped",
-        "For each issue shows: issue type, affected token count, ranked suggestions (with overlap counts for COLLISION_AMBIGUOUS)",
-        "Prompt accepts: suggestion number, free-text entity name, or NONE to suppress",
-        "Re-prompts on invalid input",
-        "No-op when there are no WARNING+ issues; COLLISION_AMBIGUOUS never triggers a prompt",
-        "Returns self for chaining",
-        "Add unit test with injected prompt_fn that auto-answers: verify issue is resolved after interactive session",
-        "ruff check passes",
-        "Tests pass"
-      ],
-      "priority": 14,
-      "passes": true,
-      "notes": "ADR-003: COLLISION_AMBIGUOUS is now INFO so resolve_interactively() must NOT prompt for it. Only UNRESOLVED (ERROR) and COLLISION_CROSS_BRANCH/PREDICTION_ONLY (WARNING) are prompted."
-    },
-    {
-      "id": "US-015",
-      "title": "Implement render_html() audit table",
-      "description": "As a developer, I need render_html() to show a summary bar and detail table with badge colors.",
-      "acceptanceCriteria": [
-        "Summary bar shows: auto-discovered depth, counts per issue type, total auto-fixes applied",
-        "Detail table has one row per raw label, sorted by severity then token count",
-        "Badge colours: exact match = green, COLLISION_TRIVIAL = blue, UNRESOLVED = red, PREDICTION_ONLY = grey, DATASET_ONLY = amber, COLLISION_CROSS_BRANCH = orange, COLLISION_AMBIGUOUS = teal (INFO, non-blocking)",
-        "Cross-branch overlaps with high token counts show systematic misprediction insights",
-        "Uses IPython.display.HTML in Jupyter; falls back to plain text",
-        "Never raises (catches ImportError for IPython)",
-        "Fully self-contained HTML (inline styles, no external CSS/JS)",
-        "Can be called at any point reflecting current state",
-        "Add unit test: render_html() does not raise when IPython is unavailable",
-        "ruff check passes",
-        "Tests pass"
-      ],
-      "priority": 15,
-      "passes": true,
-      "notes": "ADR-003: COLLISION_AMBIGUOUS badge colour changes from yellow (WARNING) to a distinct info colour since severity is now INFO."
-    },
-    {
-      "id": "US-016",
-      "title": "Multi-model comparison integration test",
-      "description": "As a developer, I need to verify that the same CanonicalMapper produces identical eval surfaces across multiple analyze() calls.",
-      "acceptanceCriteria": [
-        "Create integration test with two different results DataFrames (different prediction vocabularies, same annotations)",
-        "First analyze() locks eval surface",
-        "Second analyze() reuses the same eval surface",
-        "eval_surface property returns identical set after both calls",
-        "Issues differ between the two calls (different prediction labels)",
-        "Both get_mapped_results_dataframe() calls produce DataFrames with the same entity vocabulary",
-        "ruff check passes",
-        "Tests pass"
-      ],
-      "priority": 16,
-      "passes": true,
-      "notes": "Integration test in tests/entity_mapping/test_canonical_mapper.py."
-    },
-    {
-      "id": "US-017",
-      "title": "Remove sentence-transformers and clean up old code",
-      "description": "As a developer, I need to remove the sentence-transformers dependency and any remaining old issue type references.",
-      "acceptanceCriteria": [
-        "Remove sentence-transformers from pyproject.toml if present",
-        "No references to DEPTH_MISMATCH, SUPPRESSED_WITH_ANNOTATIONS, or HIERARCHY_DEPTH_CHANGED remain in any Python file",
-        "No references to canonical_depth parameter in CanonicalMapper constructor",
-        "No references to eval_entities parameter in CanonicalMapper constructor",
-        "No references to labels parameter in CanonicalMapper constructor",
-        "No references to autofix parameter on analyze()",
-        "__init__.py exports are clean: CanonicalMapper, IncompleteMapping, EntityHierarchy, EntityNotMappedError, MappingIssue, IssueType, IssueSeverity, ResolutionOption",
-        "ruff check passes on all files in presidio_evaluator/entity_mapping/",
-        "Full test suite passes: pytest tests/entity_mapping/"
-      ],
-      "priority": 17,
-      "passes": true,
-      "notes": "Final cleanup sweep. Run full test suite to catch any regressions."
-    },
-    {
-      "id": "US-018",
-      "title": "Update Notebook 4 (Evaluate Presidio Analyzer)",
-      "description": "As a user following the evaluation tutorial, I want Notebook 4 to demonstrate the new two-phase mapping workflow.",
-      "acceptanceCriteria": [
-        "Replace CanonicalMapper(canonical_depth=3) with CanonicalMapper() \u2014 no constructor params",
-        "analyze(results_df) called without hierarchy or autofix parameter",
-        "Demonstrate inspecting issues with render_html() and get_issues()",
-        "Show new issue types (COLLISION_TRIVIAL auto-fixes, PREDICTION_ONLY, COLLISION_CROSS_BRANCH) with explanatory markdown cells",
-        "Show resolving WARNING issues with map() before calling get_mapped_results_dataframe()",
-        "Show that get_mapped_results_dataframe() raises IncompleteMapping if issues are unresolved",
-        "Output DataFrame references original_annotation / original_prediction columns",
-        "Remove all references to canonical_depth, eval_entities, hierarchy param on analyze(), or old issue types (DEPTH_MISMATCH, SUPPRESSED_WITH_ANNOTATIONS, HIERARCHY_DEPTH_CHANGED)",
-        "Notebook runs end-to-end without error"
-      ],
-      "priority": 18,
-      "passes": true,
-      "notes": "File: notebooks/4_Evaluate_Presidio_Analyzer.ipynb. Depends on US-001 through US-017 (new CanonicalMapper API must exist)."
-    },
-    {
-      "id": "US-019",
-      "title": "Update Notebook 5 (Evaluate Custom Presidio Analyzer)",
-      "description": "As a user evaluating a custom or third-party model, I want Notebook 5 to show the new API for handling models with different label vocabularies.",
-      "acceptanceCriteria": [
-        "Replace mapper.analyze(results_df, hierarchy=2) with mapper.analyze(results_df) \u2014 depth auto-discovered",
-        "Remove pre-mapping of labels to None before analyze() \u2014 instead show map({'LABEL': None}) after analyze() for PREDICTION_ONLY resolution",
-        "Show iterating get_issues() to programmatically resolve all WARNING+ issues (batch resolution pattern)",
-        "Demonstrate that DATASET_ONLY entities are INFO (non-blocking) and explain that FN are counted",
-        "Use new issue type names in markdown explanations",
-        "Remove references to canonical_depth, hierarchy param on analyze(), or old issue types",
-        "Notebook runs end-to-end without error"
-      ],
-      "priority": 19,
-      "passes": true,
-      "notes": "File: notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb. Depends on US-001 through US-017."
-    },
-    {
-      "id": "US-020",
-      "title": "Update Notebook 6 (Interactive Entity Mapping Tutorial)",
-      "description": "As a user learning entity mapping in depth, I want Notebook 6 to be a comprehensive tutorial covering the full two-phase workflow, all issue types, and interactive resolution.",
-      "acceptanceCriteria": [
-        "Rewrite intro cells to explain two-phase model: Identify (5 tiers) \u2192 Project (majority-vote depth + projection rules)",
-        "Add section explaining each of the 6 issue types with concrete examples and when they occur",
-        "Demonstrate majority-vote depth auto-discovery with sample dataset",
-        "Demonstrate each projection rule with at least one example: exact match, descendant auto-fix, ancestor auto-fix, ambiguous ancestor, cross-branch, unresolved",
-        "Show resolve_interactively() for guided resolution of WARNING+ issues",
-        "Show map() for programmatic batch resolution",
-        "Demonstrate eval-surface locking: analyze() a second model and verify eval_surface is unchanged",
-        "Remove old granularity comparison (hierarchy=3 vs 2) \u2014 replace with data-driven depth explanation",
-        "Remove references to canonical_depth, eval_entities, hierarchy param on analyze(), old issue types",
-        "Include section on EntityHierarchy customization (custom hierarchy dict) \u2014 updated for new API",
-        "Notebook runs end-to-end without error"
-      ],
-      "priority": 20,
-      "passes": true,
-      "notes": "File: notebooks/6_Interactive_Entity_Mapping.ipynb. Full rewrite. Depends on US-001 through US-017."
-    },
-    {
-      "id": "US-021",
-      "title": "Update docs/entity_hierarchy.md",
-      "description": "As a documentation reader, I want the entity mapping guide to reflect the new two-phase workflow and data-driven depth.",
-      "acceptanceCriteria": [
-        "Update 'How it works' section to mention two-phase process (Identify \u2192 Project)",
-        "Update 'The canonical vocabulary' section: replace fixed-depth description with data-driven depth explanation",
-        "Update 'Typical workflow' code snippet: remove hierarchy=2, show get_issues() and map() for resolution, show blocking behavior",
-        "Remove 'evaluate at a broader level' snippet that uses analyze(results_df, hierarchy=2)",
-        "Add brief note about eval surface locking for multi-model comparison",
-        "Remove references to canonical_depth, eval_entities, or hierarchy param on analyze()",
-        "All code examples are syntactically valid Python"
-      ],
-      "priority": 21,
-      "passes": true,
-      "notes": "File: docs/entity_hierarchy.md. Depends on US-001 through US-017."
-    },
-    {
-      "id": "US-022",
-      "title": "Update docs/mapping_scenarios.md",
-      "description": "As a documentation reader, I want the mapping scenarios document to use new terminology and reference new issue types.",
-      "acceptanceCriteria": [
-        "Replace references to canonical_depth=2 / canonical_depth=3 with data-driven depth explanation",
-        "Map each scenario to the new issue type it would produce (e.g., Scenario 1 \u2192 DATASET_ONLY, Scenario 8 \u2192 PREDICTION_ONLY)",
-        "Update Scenario 2 to reference projection rules instead of depth parameter",
-        "Update Scenario 5 to mention COUNTRY and COUNTRY_FALLBACK identification tiers",
-        "Update Scenario 7 to reference COLLISION_CROSS_BRANCH and COLLISION_AMBIGUOUS",
-        "Update Scenario 8 to reference PREDICTION_ONLY issue type and resolution options (suppress, remap, keep-as-FP)",
-        "Remove references to old issue types or API parameters"
-      ],
-      "priority": 22,
-      "passes": true,
-      "notes": "File: docs/mapping_scenarios.md. Depends on US-001 through US-017."
-    },
-    {
-      "id": "US-023",
-      "title": "Update docs/why_canonical_entity_mapping.md",
-      "description": "As a documentation reader, I want the design rationale document to reflect the data-driven depth approach.",
-      "acceptanceCriteria": [
-        "Update 'Why depth 3 as the default?' section to explain depth is now auto-discovered via majority vote (depth 3 is still the cap but eval surface is data-driven)",
-        "No code snippets reference old API parameters"
-      ],
-      "priority": 23,
-      "passes": true,
-      "notes": "File: docs/why_canonical_entity_mapping.md. Small update. Depends on US-001 through US-017."
-    },
-    {
-      "id": "US-024",
-      "title": "Hierarchical multi-level evaluation convenience wrapper",
-      "description": "As a user who wants to evaluate model performance at multiple entity granularity levels simultaneously, I want a convenience wrapper that produces L0/L1/L2 scores in one call.",
-      "acceptanceCriteria": [
-        "calculate_hierarchical_scores(mapped_df) is a method on BaseEvaluator, NOT a standalone function in entity_mapping",
-        "Method accepts output of get_mapped_results_dataframe()",
-        "Produces scores at three levels: L0 (PII vs O), L1 (branch-level depth-2 nodes: PERSON, LOCATION, etc.), L2 (canonical surface depth-3 nodes: NAME, STREET_ADDRESS, etc.)",
-        "For each level, projects annotation/prediction values to the appropriate depth node and calls self.calculate_score_on_df() internally",
-        "Returns dict[str, EvaluationResult] mapping level name (\"L0\", \"L1\", \"L2\") to its result",
-        "Accepts optional hierarchy (EntityHierarchy | None) and beta (float, default 2.0) parameters",
-        "Documented with reference to ADR-003",
-        "Exported from presidio_evaluator.evaluation (not from presidio_evaluator.entity_mapping)",
-        "Any standalone calculate_hierarchical_scores function in entity_mapping or evaluation modules is removed",
-        "ruff check passes on modified files",
-        "Tests pass"
-      ],
-      "priority": 24,
-      "passes": true,
-      "notes": "ADR-003. The wrapper belongs on BaseEvaluator so any evaluator subclass inherits it automatically \u2014 calculate_score_on_df() is already defined there. Caller pattern: evaluator = SpanEvaluator(); results = evaluator.calculate_hierarchical_scores(mapped_df). Files: presidio_evaluator/evaluation/base_evaluator.py. Remove the standalone function added in the prior implementation."
+      "passes": false,
+      "notes": "Depends on US-001 through US-007 all passing."
     }
   ]
 }

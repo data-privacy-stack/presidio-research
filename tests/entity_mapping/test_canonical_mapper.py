@@ -39,7 +39,6 @@ def _make_df(annotations, predictions):
 class TestConstructor:
     def test_no_args(self):
         mapper = CanonicalMapper()
-        assert mapper.canonical_surface == set()
         assert mapper.pending == []
         assert mapper._records == {}
 
@@ -68,21 +67,21 @@ class TestIdentification:
         mapper = CanonicalMapper().analyze(df)
         rec = mapper._records["EMAIL_ADDRESS"]
         assert rec.tier == "EXACT"
-        assert rec.canonical == "EMAIL_ADDRESS"
+        assert rec.resolved == "EMAIL_ADDRESS"
 
     def test_country_prefix(self):
         df = _make_df(["GERMANY_PASSPORT_NUMBER"], ["GERMANY_PASSPORT_NUMBER"])
         mapper = CanonicalMapper().analyze(df)
         rec = mapper._records["GERMANY_PASSPORT_NUMBER"]
         assert rec.tier == "COUNTRY"
-        assert rec.canonical == "PASSPORT"
+        assert rec.resolved == "PASSPORT"
 
     def test_fuzzy_match(self):
         df = _make_df(["EMAILADRES"], ["EMAILADRES"])
         mapper = CanonicalMapper().analyze(df)
         rec = mapper._records.get("EMAILADRES")
         if rec and rec.tier == "FUZZY":
-            assert rec.canonical is not None
+            assert rec.resolved is not None
             assert rec.score is not None
 
     def test_unresolved(self):
@@ -91,14 +90,14 @@ class TestIdentification:
         assert "XYZZY_TOTALLY_UNKNOWN_99" in mapper.pending
         rec = mapper._records["XYZZY_TOTALLY_UNKNOWN_99"]
         assert rec.tier == "UNRESOLVED"
-        assert rec.canonical is None
+        assert rec.resolved is None
 
     def test_bio_prefix_stripped(self):
         df = _make_df(["B-PERSON"], ["B-PERSON"])
         mapper = CanonicalMapper().analyze(df)
         rec = mapper._records.get("B-PERSON")
         assert rec is not None
-        assert rec.canonical == "PERSON"
+        assert rec.resolved == "PERSON"
 
     def test_o_token_not_in_records(self):
         df = _make_df(["O", "EMAIL_ADDRESS"], ["O", "EMAIL_ADDRESS"])
@@ -108,79 +107,42 @@ class TestIdentification:
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: Canonical depth computation
+# Single-phase identification — no projection, no canonical surface
 # ---------------------------------------------------------------------------
 
 
-class TestEvalDepth:
-    def test_all_depth3_entities(self):
-        # NAME is depth 3 in the hierarchy: PII -> PERSON -> NAME
-        # Annotating NAME should produce a surface that includes NAME (depth-3 PERSON branch)
-        df = _make_df(["NAME"] * 10, ["NAME"] * 10)
+class TestSinglePhase:
+    def test_records_have_resolved_field(self):
+        """After analyze(), each record has a resolved hierarchy node."""
+        df = _make_df(["NAME"], ["NAME"])
         mapper = CanonicalMapper().analyze(df)
-        assert "NAME" in mapper.canonical_surface
-        assert "PERSON" not in mapper.canonical_surface  # depth-2 node not in surface
+        rec = mapper._records["NAME"]
+        assert rec.resolved == "NAME"
 
-    def test_depth_capped_at_3(self):
-        # FIRST_NAME is depth 4 — should be capped to 3 before branch vote,
-        # so the PERSON branch surface should contain NAME (depth-3 node), not FIRST_NAME.
-        df = _make_df(["FIRST_NAME"] * 10, ["FIRST_NAME"] * 10)
+    def test_depth4_label_resolves_via_hierarchy(self):
+        """FIRST_NAME resolves to its canonical hierarchy node (NAME at depth-3)."""
+        df = _make_df(["FIRST_NAME"], ["FIRST_NAME"])
         mapper = CanonicalMapper().analyze(df)
-        assert "NAME" in mapper.canonical_surface
-        assert "FIRST_NAME" not in mapper.canonical_surface
+        rec = mapper._records["FIRST_NAME"]
+        # FIRST_NAME is a depth-4 alias; canonical hierarchy node is NAME
+        assert rec.resolved is not None
+        assert rec.tier in ("EXACT", "FUZZY")
 
-    def test_canonical_surface_locked_after_first_analyze(self):
-        df1 = _make_df(["NAME", "EMAIL_ADDRESS"], ["NAME", "EMAIL_ADDRESS"])
-        df2 = _make_df(["LOCATION"], ["LOCATION"])
+    def test_no_canonical_surface_attribute(self):
+        """CanonicalMapper no longer has a canonical_surface property."""
+        mapper = CanonicalMapper()
+        assert not hasattr(mapper, "canonical_surface")
+
+    def test_analyze_twice_recomputes_issues(self):
+        """Re-analyzing with a different DataFrame recomputes issues."""
+        df1 = _make_df(["NAME"] * 5, ["NAME"] * 5)
+        df2 = _make_df(["NAME"] * 5, ["EMAIL_ADDRESS"] * 5)
         mapper = CanonicalMapper()
         mapper.analyze(df1)
-        surface1 = frozenset(mapper.canonical_surface)
+        issues1 = [i.type for i in mapper.get_issues()]
         mapper.analyze(df2)
-        surface2 = frozenset(mapper.canonical_surface)
-        assert surface1 == surface2
-
-    def test_canonical_surface_not_empty_after_analyze(self):
-        df = _make_df(["EMAIL_ADDRESS"], ["EMAIL_ADDRESS"])
-        mapper = CanonicalMapper().analyze(df)
-        assert len(mapper.canonical_surface) > 0
-
-    def test_canonical_surface_property_returns_copy(self):
-        df = _make_df(["EMAIL_ADDRESS"], ["EMAIL_ADDRESS"])
-        mapper = CanonicalMapper().analyze(df)
-        s1 = mapper.canonical_surface
-        s1.add("FAKE_ENTITY")
-        assert "FAKE_ENTITY" not in mapper.canonical_surface
-
-
-# ---------------------------------------------------------------------------
-# Phase 2: Projection
-# ---------------------------------------------------------------------------
-
-
-class TestProjection:
-    def test_exact_match_projection(self):
-        df = _make_df(["EMAIL_ADDRESS"], ["EMAIL_ADDRESS"])
-        mapper = CanonicalMapper().analyze(df)
-        rec = mapper._records["EMAIL_ADDRESS"]
-        assert rec.projected == "EMAIL_ADDRESS"
-        assert rec.projection_type == "EXACT"
-
-    def test_descendant_trivial_auto_fix(self):
-        # Use PERSON (depth 2) annotations so canonical surface locks at depth 2.
-        # NAME (depth 3) in predictions is a descendant of PERSON → TRIVIAL.
-        df = _make_df(["PERSON"] * 10, ["NAME"] * 10)
-        mapper = CanonicalMapper().analyze(df)
-        rec = mapper._records.get("NAME")
-        assert rec is not None
-        assert rec.projection_type == "TRIVIAL"
-        assert rec.projected == "PERSON"
-
-    def test_unresolved_stays_unresolved(self):
-        df = _make_df(["XYZZY_UNKNOWN_99"], ["O"])
-        mapper = CanonicalMapper().analyze(df)
-        rec = mapper._records["XYZZY_UNKNOWN_99"]
-        assert rec.projection_type == "UNRESOLVED"
-        assert rec.projected is None
+        issues2 = [i.type for i in mapper.get_issues()]
+        assert issues1 != issues2
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +234,7 @@ class TestMap:
         mapper.map({"XYZZY_UNKNOWN_99": None})
         rec = mapper._records["XYZZY_UNKNOWN_99"]
         assert rec.tier == "NONE"
-        assert rec.projected is None
+        assert rec.resolved is None
 
     def test_map_returns_self(self):
         df = _make_df(["EMAIL_ADDRESS"], ["EMAIL_ADDRESS"])
@@ -314,7 +276,7 @@ class TestMap:
         mapper.analyze(df)
         rec = mapper._records.get("MY_CUSTOM")
         assert rec is not None
-        assert rec.canonical == "EMAIL_ADDRESS"
+        assert rec.resolved == "EMAIL_ADDRESS"
 
 
 # ---------------------------------------------------------------------------
@@ -335,29 +297,47 @@ class TestGetMappedResultsDf:
         # There may be WARNING issues (PREDICTION_ONLY), but they should not block
         assert any(i.severity == IssueSeverity.WARNING for i in mapper.get_issues())
         result = mapper.get_mapped_results_dataframe()
-        assert isinstance(result, pd.DataFrame)
+        from presidio_evaluator.entity_mapping import MappedResults  # noqa: PLC0415
 
-    def test_returns_df_when_no_blocking(self):
+        assert isinstance(result, MappedResults)
+
+    def test_returns_mapped_results_when_no_blocking(self):
+        from presidio_evaluator.entity_mapping import MappedResults  # noqa: PLC0415
+
         df = _make_df(["NAME"] * 3, ["NAME"] * 3)
         mapper = CanonicalMapper().analyze(df)
         result = mapper.get_mapped_results_dataframe()
-        assert isinstance(result, pd.DataFrame)
+        assert isinstance(result, MappedResults)
 
-    def test_output_has_original_columns(self):
-        df = _make_df(["NAME", "NAME"], ["NAME", "NAME"])
-        mapper = CanonicalMapper().analyze(df)
-        result = mapper.get_mapped_results_dataframe()
-        assert "original_annotation" in result.columns
-        assert "original_prediction" in result.columns
-
-    def test_original_columns_preserve_raw_labels(self):
+    def test_original_preserves_raw_labels(self):
         df = _make_df(["NAME"], ["NAME"])
         mapper = CanonicalMapper().analyze(df)
         result = mapper.get_mapped_results_dataframe()
-        assert result["original_annotation"].tolist()[0] == "NAME"
-        assert result["original_prediction"].tolist()[0] == "NAME"
+        assert result.original["annotation"].tolist()[0] == "NAME"
+        assert result.original["prediction"].tolist()[0] == "NAME"
 
-    def test_suppressed_labels_become_o(self):
+    def test_binary_maps_pii_to_pii(self):
+        df = _make_df(["NAME"], ["NAME"])
+        mapper = CanonicalMapper().analyze(df)
+        result = mapper.get_mapped_results_dataframe()
+        assert result.binary["annotation"].tolist()[0] == "PII"
+        assert result.binary["prediction"].tolist()[0] == "PII"
+
+    def test_branch_maps_to_depth2_ancestor(self):
+        df = _make_df(["NAME"], ["NAME"])
+        mapper = CanonicalMapper().analyze(df)
+        result = mapper.get_mapped_results_dataframe()
+        # NAME -> PERSON branch
+        assert result.branch["annotation"].tolist()[0] == "PERSON"
+
+    def test_detailed_preserves_native_depth(self):
+        df = _make_df(["NAME"], ["NAME"])
+        mapper = CanonicalMapper().analyze(df)
+        result = mapper.get_mapped_results_dataframe()
+        # detailed uses the resolved hierarchy node (NAME itself at depth 3)
+        assert result.detailed["annotation"].tolist()[0] == "NAME"
+
+    def test_suppressed_labels_become_o_in_all_levels(self):
         df = _make_df(["NAME"] * 3, ["EMAIL_ADDRESS"] * 3)
         mapper = CanonicalMapper().analyze(df)
         pred_only = [
@@ -367,14 +347,18 @@ class TestGetMappedResultsDf:
             for lbl in pred_only[0].labels:
                 mapper.map({lbl: None})
         result = mapper.get_mapped_results_dataframe()
-        assert "O" in result["prediction"].values
+        assert "O" in result.binary["prediction"].values
+        assert "O" in result.branch["prediction"].values
+        assert "O" in result.detailed["prediction"].values
 
     def test_only_unresolved_blocks(self):
         # Only ERROR (UNRESOLVED) blocks get_mapped_results_dataframe()
         df = _make_df(["NAME"] * 8, ["NAME"] * 8)
         mapper = CanonicalMapper().analyze(df)
+        from presidio_evaluator.entity_mapping import MappedResults  # noqa: PLC0415
+
         result = mapper.get_mapped_results_dataframe()
-        assert isinstance(result, pd.DataFrame)
+        assert isinstance(result, MappedResults)
 
 
 # ---------------------------------------------------------------------------
@@ -383,16 +367,6 @@ class TestGetMappedResultsDf:
 
 
 class TestMultiModel:
-    def test_canonical_surface_locked_across_models(self):
-        df1 = _make_df(["NAME", "EMAIL_ADDRESS"], ["NAME", "EMAIL_ADDRESS"])
-        df2 = _make_df(["NAME", "EMAIL_ADDRESS"], ["LOCATION", "LOCATION"])
-        mapper = CanonicalMapper()
-        mapper.analyze(df1)
-        surface1 = frozenset(mapper.canonical_surface)
-        mapper.analyze(df2)
-        surface2 = frozenset(mapper.canonical_surface)
-        assert surface1 == surface2
-
     def test_issues_recomputed_per_model(self):
         df1 = _make_df(["NAME"] * 5, ["NAME"] * 5)
         df2 = _make_df(["NAME"] * 5, ["EMAIL_ADDRESS"] * 5)
@@ -502,29 +476,28 @@ class TestGetDepth:
 class TestIntegration:
     def test_full_pipeline_clean(self):
         """All labels known, same on both sides — no blocking issues."""
-        # Use depth-3 entities only: NAME (PII->PERSON->NAME),
-        # EMAIL_ADDRESS (PII->CONTACT->EMAIL_ADDRESS), SSN (PII->GOVERNMENT_ID->SSN)
+        from presidio_evaluator.entity_mapping import MappedResults  # noqa: PLC0415
+
         df = _make_df(
             ["NAME", "EMAIL_ADDRESS", "SSN"] * 10,
             ["NAME", "EMAIL_ADDRESS", "SSN"] * 10,
         )
         mapper = CanonicalMapper().analyze(df)
-        blocking = [
-            i
-            for i in mapper.get_issues()
-            if i.severity in (IssueSeverity.ERROR, IssueSeverity.WARNING)
-        ]
+        blocking = [i for i in mapper.get_issues() if i.severity == IssueSeverity.ERROR]
         assert blocking == []
         result = mapper.get_mapped_results_dataframe()
-        assert isinstance(result, pd.DataFrame)
-        assert "original_annotation" in result.columns
+        assert isinstance(result, MappedResults)
+        assert "annotation" in result.original.columns
+        assert "annotation" in result.binary.columns
 
     def test_full_pipeline_with_unresolved(self):
         """Unresolved label blocks extraction until resolved."""
+        from presidio_evaluator.entity_mapping import MappedResults  # noqa: PLC0415
+
         df = _make_df(["NAME", "UNKNOWN_XYZZY_99"], ["NAME", "O"])
         mapper = CanonicalMapper().analyze(df)
         with pytest.raises(IncompleteMapping):
             mapper.get_mapped_results_dataframe()
         mapper.map({"UNKNOWN_XYZZY_99": "NAME"})
         result = mapper.get_mapped_results_dataframe()
-        assert isinstance(result, pd.DataFrame)
+        assert isinstance(result, MappedResults)

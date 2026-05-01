@@ -1,0 +1,114 @@
+## Codebase Patterns
+- Branch: ralph/dataset-anchored-mapper (created from ralph/presidio-evaluator-redesign)
+- Tests run with: pytest tests/entity_mapping/ (fast); full suite: pytest
+- Linting: ruff check presidio_evaluator/entity_mapping/
+- EntityHierarchy._strip_bio() is a static method used both in hierarchy.py and mapper.py
+- canonical_to_branch[entity] gives the full branch path list; len() gives depth
+- all_canonical_entities is the set of nodes at canonical_depth
+- _rebuild() recomputes raw_to_canonical, all_canonical_entities, canonical_to_branch
+- _build_branch_map uses canonical_depth but also records intermediate nodes with their path
+- The full hierarchy tree is in presidio_evaluator/entity_mapping/definitions.py (HIERARCHY dict)
+- DO NOT add overlap_counts to MappingIssue as a positional field - use field(default_factory=...)
+- pre-commit runs: ruff format (THEN ruff check, THEN pytest unit tests). Always run ruff format before committing.
+- LOCATION is depth-2 (PII->LOCATION), so it becomes COLLISION_AMBIGUOUS at eval_depth=3. Use LOC (depth-3) instead.
+- US_PASSPORT resolves via EXACT (it's in the alias map), not COUNTRY tier. Use GERMANY_PASSPORT_NUMBER to test COUNTRY tier.
+- Presidio outputs depth-2 labels (PERSON, LOCATION, DATE_TIME, ORGANIZATION). These need .map() to depth-3 before get_mapped_results_dataframe() at eval_depth=3.
+- get_mapped_results_dataframe() returns 7 columns (adds original_annotation, original_prediction). Shape assertions must compare row count only.
+- eval_depth computed from annotation labels ONLY (self._label_annotation_counts), not predictions.
+
+## 2025-01-XX - US-001 through US-017
+- What was implemented: Complete rewrite of entity_mapping package as two-phase CanonicalMapper
+  - data_objects.py: new IssueType enum (UNRESOLVED, COLLISION_TRIVIAL, COLLISION_AMBIGUOUS, COLLISION_CROSS_BRANCH, PREDICTION_ONLY, DATASET_ONLY), overlap_counts field on MappingIssue
+  - hierarchy.py: added get_depth() method
+  - mapper.py: completely rewritten — _Resolution dataclass, two-phase analyze() (Identify→Project), eval_surface locking, majority-vote eval_depth from annotations only, issue detection, map(), get_mapped_results_dataframe(), render_html()
+  - test_canonical_mapper.py: completely rewritten for new API
+  - tests/integration/test_notebook.py: updated to resolve COLLISION_AMBIGUOUS Presidio labels before extraction
+- Files changed: presidio_evaluator/entity_mapping/data_objects.py, hierarchy.py, mapper.py, __init__.py; tests/entity_mapping/test_canonical_mapper.py; tests/integration/test_notebook.py; progress.txt
+- **Learnings for future iterations:**
+  - pre-commit enforces ruff format — always run it before committing
+  - LOCATION is depth-2, causes COLLISION_AMBIGUOUS. Standard fix: map LOCATION→LOC
+  - Presidio's depth-2 labels (PERSON, LOCATION, DATE_TIME, ORGANIZATION) must be mapped to depth-3 before calling get_mapped_results_dataframe() when dataset uses depth-3 annotations
+  - get_mapped_results_dataframe() adds 2 extra columns; old shape == checks break
+  - Integration tests now resolve all blocking issues before extraction using a standard _PRESIDIO_LABEL_MAP helper
+  - IssueType.PREDICTION_ONLY and IssueType.UNRESOLVED should be suppressed (mapped to None) in integration tests
+---
+
+
+## 2026-04-27 - US-018
+- What was implemented: Updated notebooks/4_Evaluate_Presidio_Analyzer.ipynb for new two-phase API
+  - Cell 2 (imports): Added IncompleteMapping to imports
+  - Cell 15 (markdown): Rewrote workflow description with issue type table and two-phase explanation
+  - Cell 16 (code): Replaced CanonicalMapper(canonical_depth=3) with CanonicalMapper(), added render_html()
+  - Cell 17 (code): Added IncompleteMapping demo (try/except before resolving)
+  - Added markdown cell 18: Resolve issues explanation
+  - Added code cell 19: map() calls for PERSON->NAME, DATE_TIME->DATE, LOCATION->LOC, ORGANIZATION->ORG, plus dynamic suppression of remaining blocking labels
+  - Added code cell 20: get_mapped_results_dataframe() + experiment.log_parameter + mapped_df.head()
+  - Removed old cells: standalone mapped_df.head(50) and experiment.log_parameter (merged into cell 20)
+- Files changed: notebooks/4_Evaluate_Presidio_Analyzer.ipynb, ralph/update_nb4.py, ralph/cleanup_nb4.py
+- **Learnings for future iterations:**
+  - edit_notebook_file tool updates VSCode in-memory state but may not persist to disk reliably; use direct JSON editing via Python scripts instead
+  - When editing notebooks with Python scripts, always run ruff format on the helper .py files before committing
+  - The helper scripts (update_nb4.py etc.) go in ralph/ — they're needed for the commit but can stay there
+  - edit_notebook_file + Python script double-writes cause duplicate cells; always check and clean up with a cleanup script
+  - Cell index arithmetic: when inserting N cells and deleting M cells, compute final indices after all insertions before deletions
+---
+
+## 2025-01-01 - US-019 through US-023
+- What was implemented:
+  - US-019: Fixed notebook 5 cells 23 and 25 to use new two-phase API. Removed pre-mapping before analyze(), removed redundant re-analyze() after map(). Shows batch resolution pattern (build resolutions dict from get_issues(), then map() once).
+  - US-020: Verified notebook 6 was already clean from prior session. No changes needed.
+  - US-021: Updated docs/entity_hierarchy.md — added two-phase description (5 ID tiers + projection), changed depth section to explain data-driven majority-vote, rewrote typical workflow code, added issue type table with severities, updated scenario 2 to use map() not hierarchy=2, updated scenario 5 to explain eval surface locking.
+  - US-022: Created docs/mapping_scenarios.md (was new file) — updated scenarios 1/2/5/7/8/10/17 to reference new issue types, removed canonical_depth/SUPPRESSED_WITH_ANNOTATIONS references, added COUNTRY/COUNTRY_FALLBACK tier notes, added PREDICTION_ONLY resolution options.
+  - US-023: Updated docs/why_canonical_entity_mapping.md — extended "Why depth 3" section with data-driven majority-vote explanation.
+  - Also fixed ruff.toml: restored PLC0415 to ignore list (removed by prior iteration), removed duplicate PLC select entry.
+- Files changed:
+  - notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb
+  - docs/entity_hierarchy.md
+  - docs/mapping_scenarios.md (new)
+  - docs/why_canonical_entity_mapping.md (new)
+  - ruff.toml
+  - ralph/inspect_nb5.py, ralph/update_nb5.py, ralph/update_nb6.py (new helper scripts)
+- **Learnings for future iterations:**
+  - ruff.toml had PLC0415 in ignore for a reason — removing it broke CI. Always check per-file-ignores when changing select/ignore lists.
+  - docs/mapping_scenarios.md and docs/why_canonical_entity_mapping.md were NEW files (untracked). git stash doesn't touch untracked files, so they survived stash operations.
+  - The `find /Users -name "pytest"` search is SLOW (>15s). Use `.venv/bin/pytest` directly or `uv run pytest` instead.
+  - `uv run pytest` is the correct way to run tests in this project (uses pyproject.toml deps, not conda).
+  - ruff format should be run on ralph/ scripts before committing — they're not in the notebooks exclude pattern.
+---
+
+## 2026-04-29 - US-024
+- What was implemented: Hierarchical multi-level evaluation convenience wrapper
+  - New file: presidio_evaluator/entity_mapping/hierarchical_evaluation.py
+    - `calculate_hierarchical_scores(mapped_df, hierarchy=None, beta=2.0)` function
+    - Accepts output of `get_mapped_results_dataframe()`
+    - Produces L0 (PII vs O), L1 (branch-level depth-2), L2 (canonical surface depth-3) scores
+    - Uses SpanEvaluator for each level — no changes to SpanEvaluator
+    - Returns dict[str, EvaluationResult] with keys "L0", "L1", "L2"
+    - Documented with reference to ADR-003
+  - Updated: presidio_evaluator/entity_mapping/__init__.py — exported calculate_hierarchical_scores
+  - New file: tests/entity_mapping/test_hierarchical_evaluation.py — 13 tests
+- Files changed:
+  - presidio_evaluator/entity_mapping/hierarchical_evaluation.py (new)
+  - presidio_evaluator/entity_mapping/__init__.py
+  - tests/entity_mapping/test_hierarchical_evaluation.py (new)
+- **Learnings for future iterations:**
+  - SpanEvaluator.pii_recall/pii_precision/pii_f measures span-level PII detection regardless of entity type — tests checking granularity differences must use per_type metrics instead (results["L2"].per_type["NAME"].recall)
+  - _to_l1(): canonical_to_branch[entity][1] gives depth-2 ancestor for depth-3 entities; for depth-2 entities [1] IS the entity itself; for depth-1 (PII), use branch[0]
+  - SpanEvaluator.calculate_score_on_df() expects "annotation" and "prediction" column names; rename level-specific columns before passing
+  - All 643 tests pass (including 13 new)
+---
+
+## 2025-01-28 - US-006/US-012/US-014/US-015/US-024
+- Implemented COLLISION_AMBIGUOUS severity change from WARNING to INFO (non-blocking) per ADR-003
+- US-006: mapper.py — changed severity to INFO, updated message to reference calculate_hierarchical_scores(), updated _ISSUE_TYPE_ORDER to sort COLLISION_AMBIGUOUS after WARNING issues, removed dead fix_part variable
+- US-012: auto-fixed by US-006 (get_mapped_results_dataframe blocks on ERROR/WARNING only — INFO excluded)
+- US-014: auto-fixed by US-006 (resolve_interactively iterates ERROR/WARNING only — INFO excluded)  
+- US-015: rendering.py — added type_style_override dict with teal badge (#2aa198) for COLLISION_AMBIGUOUS; badge and row color now teal instead of yellow; updated gap_why text to say "non-blocking, use evaluator.calculate_hierarchical_scores()"
+- US-024: Moved calculate_hierarchical_scores from standalone module (evaluation/hierarchical_evaluation.py) to concrete method on BaseEvaluator. Module-level _to_l1/_to_l0 helpers added to base_evaluator.py. EntityHierarchy imported lazily inside method (TYPE_CHECKING guard at module level). Deleted standalone file. Updated evaluation/__init__.py to remove standalone import. Updated tests to use evaluator instance method.
+- Files changed: mapper.py, rendering.py, base_evaluator.py, evaluation/__init__.py, hierarchical_evaluation.py (deleted), test_hierarchical_evaluation.py, test_canonical_mapper.py (staged unstaged fix for _canonical_depth→canonical_surface)
+- **Learnings for future iterations:**
+  - US-012 and US-014 were auto-fixed by the severity change — no additional code changes needed when a type changes from WARNING to INFO
+  - Pre-commit stashes unstaged files before running pytest — if you have related unstaged test fixes, stage them before committing or pre-commit will fail
+  - type_style_override pattern: add a per-type dict alongside sev_style in rendering.py, apply with .get(issue.type, sev_style[issue.severity])
+  - TYPE_CHECKING guard pattern for lazy imports in base_evaluator.py: use `if TYPE_CHECKING:` at module level and string annotations in function signatures
+---
