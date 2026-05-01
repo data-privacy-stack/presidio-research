@@ -81,7 +81,7 @@
         "Typecheck passes."
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on US-003 (rec.resolved rename must be in place before reading from _records)."
     },
     {

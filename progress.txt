@@ -21,3 +21,8 @@
   - _SEVERITY_ORDER dict enables numeric severity comparison for filtering
   - Default min_severity stored on self._min_severity; initialized to WARNING in __init__
 ---
+
+## 2025-05-01 - US-005
+- What was implemented: Updated get_mapping() to exclude UNRESOLVED labels from the returned dict. Added tests for unresolved exclusion, plain copy behavior, and suppressed (None) labels.
+- Files changed: presidio_evaluator/entity_mapping/mapper.py, tests/entity_mapping/test_canonical_mapper.py, ralph/prd.json
+---

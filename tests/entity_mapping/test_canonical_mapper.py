@@ -450,6 +450,27 @@ class TestGetMapping:
         assert isinstance(result, dict)
         assert "EMAIL_ADDRESS" in result
 
+    def test_unresolved_labels_excluded(self):
+        df = _make_df(["XYZZY_UNKNOWN_99"], ["O"])
+        mapper = CanonicalMapper().analyze(df)
+        result = mapper.get_mapping()
+        assert "XYZZY_UNKNOWN_99" not in result
+
+    def test_returns_plain_copy(self):
+        df = _make_df(["NAME"], ["NAME"])
+        mapper = CanonicalMapper().analyze(df)
+        result = mapper.get_mapping()
+        result["INJECTED"] = "FAKE"
+        assert "INJECTED" not in mapper.get_mapping()
+
+    def test_suppressed_label_is_none(self):
+        df = _make_df(["XYZZY_UNKNOWN_99"], ["O"])
+        mapper = CanonicalMapper().analyze(df)
+        mapper.map({"XYZZY_UNKNOWN_99": None})
+        result = mapper.get_mapping()
+        assert "XYZZY_UNKNOWN_99" in result
+        assert result["XYZZY_UNKNOWN_99"] is None
+
     def test_unknown_entity_raises(self):
         mapper = CanonicalMapper()
         with pytest.raises(ValueError, match="Cannot resolve"):

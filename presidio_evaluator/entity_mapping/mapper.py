@@ -698,7 +698,11 @@ class CanonicalMapper:
                     f"Use mapper.map({{{entity!r}: 'CANONICAL'}}) to map it."
                 ) from None
 
-        return {lbl: rec.resolved for lbl, rec in self._records.items()}
+        return {
+            lbl: rec.resolved
+            for lbl, rec in self._records.items()
+            if rec.tier != "UNRESOLVED"
+        }
 
     def get_mapped_results_dataframe(self) -> MappedResults:
         """Return a MappedResults object with four pre-projected DataFrames.
