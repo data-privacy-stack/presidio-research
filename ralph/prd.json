@@ -116,7 +116,7 @@
         "Typecheck passes."
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on US-001 (MappedResults type) and US-003 (mapper emitting MappedResults)."
     },
     {

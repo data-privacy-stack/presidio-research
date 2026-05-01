@@ -83,7 +83,7 @@ def test_notebook(dataset: list[InputSample], analyzer_engine: AnalyzerEngine):
         """Resolve all blocking issues: remap known depth-2, suppress unknowns."""
         resolutions = {}
         for issue in m.get_issues():
-            if issue.type in (IssueType.COLLISION_AMBIGUOUS,):
+            if issue.type in (IssueType.COLLISION_CROSS_BRANCH,):
                 for lbl in issue.labels:
                     resolutions[lbl] = _PRESIDIO_LABEL_MAP.get(lbl)
             elif issue.type in (IssueType.UNRESOLVED, IssueType.PREDICTION_ONLY):
@@ -95,22 +95,20 @@ def test_notebook(dataset: list[InputSample], analyzer_engine: AnalyzerEngine):
     mapper = CanonicalMapper()
     mapper.analyze(results_df)
     _resolve_blocking(mapper)
-    mapped_df = mapper.get_mapped_results_dataframe()
+    mapped_results = mapper.get_mapped_results_dataframe()
 
     # Apply overrides (mirrors notebook cell 20)
     mapper.map({"ORGANIZATION": None})
     mapper.analyze(results_df)
     _resolve_blocking(mapper)
-    mapped_df = mapper.get_mapped_results_dataframe()
-    assert (
-        mapped_df.shape[0] == results_df.shape[0]
-    )  # same row count; 2 extra original_ columns added
+    mapped_results = mapper.get_mapped_results_dataframe()
+    assert mapped_results.detailed.shape[0] == results_df.shape[0]  # same row count
 
     experiment.log_parameter("entity_mappings", json.dumps(mapper.get_mapping()))
 
     # --- 7. Evaluate ---
     evaluator = SpanEvaluator(iou_threshold=0.75)
-    results = evaluator.calculate_score_on_df(results_df=mapped_df)
+    results = evaluator.calculate_score_on_df(results_df=mapped_results.detailed)
 
     assert results.pii_precision is not None
     assert results.pii_recall is not None
@@ -189,7 +187,7 @@ def test_full_pipeline_integration(
     mapper.analyze(results_df)
     resolutions = {}
     for issue in mapper.get_issues():
-        if issue.type == IssueType.COLLISION_AMBIGUOUS:
+        if issue.type == IssueType.COLLISION_CROSS_BRANCH:
             for lbl in issue.labels:
                 resolutions[lbl] = _PRESIDIO_LABEL_MAP.get(lbl)
         elif issue.type in (IssueType.UNRESOLVED, IssueType.PREDICTION_ONLY):
@@ -197,10 +195,8 @@ def test_full_pipeline_integration(
                 resolutions[lbl] = None
     if resolutions:
         mapper.map(resolutions)
-    mapped_df = mapper.get_mapped_results_dataframe()
-    assert (
-        mapped_df.shape[0] == results_df.shape[0]
-    )  # same row count; 2 extra original_ columns added
+    mapped_results = mapper.get_mapped_results_dataframe()
+    assert mapped_results.detailed.shape[0] == results_df.shape[0]  # same row count
     span_evaluator = SpanEvaluator(skip_words=[])
     token_evaluator = TokenEvaluator(skip_words=[])
     evaluators = [span_evaluator, token_evaluator]
@@ -208,7 +204,7 @@ def test_full_pipeline_integration(
     # PERSON maps to NAME after projection
     for evaluator in evaluators:
         result_global = evaluator.calculate_score_on_df(
-            results_df=mapped_df, level="both"
+            results_df=mapped_results.detailed, level="both"
         )
         assert result_global.pii_recall >= 0.1
         assert result_global.pii_precision >= 0.1

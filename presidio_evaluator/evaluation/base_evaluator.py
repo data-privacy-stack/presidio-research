@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,9 @@ from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
 from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.evaluation.skipwords import get_skip_words
 from presidio_evaluator.models import BaseModel
+
+if TYPE_CHECKING:
+    from presidio_evaluator.entity_mapping.data_objects import MappedResults
 
 logger = logging.getLogger(__name__)
 
@@ -268,8 +271,7 @@ class BaseEvaluator(ABC):
 
     def calculate_hierarchical_scores(
         self,
-        mapped_df: pd.DataFrame,
-        hierarchy: EntityHierarchy | None = None,
+        results: "MappedResults",
         beta: float = 2.0,
     ) -> dict[str, EvaluationResult]:
         """Evaluate model performance at three granularity levels simultaneously.
@@ -277,38 +279,28 @@ class BaseEvaluator(ABC):
         Accepts the output of :meth:`CanonicalMapper.get_mapped_results_dataframe`
         and produces scores at:
 
-        - **L0**: PII vs. O — privacy-critical binary detection signal.
-        - **L1**: Branch-level (PERSON, LOCATION, …) — category accuracy.
-        - **L2**: Canonical surface (NAME, STREET_ADDRESS, …) — granularity accuracy.
+        - **binary**: PII vs. O — privacy-critical binary detection signal.
+        - **branch**: Branch-level (PERSON, LOCATION, …) — category accuracy.
+        - **detailed**: Canonical surface (NAME, STREET_ADDRESS, …) — granularity accuracy.
 
-        :param mapped_df: DataFrame as returned by
-            ``CanonicalMapper.get_mapped_results_dataframe()``.
-        :param hierarchy: :class:`EntityHierarchy` instance used for branch
-            lookups.  Defaults to the standard :func:`EntityHierarchy` built from
-            :data:`HIERARCHY`.
+        :param results: :class:`~presidio_evaluator.entity_mapping.MappedResults`
+            as returned by ``CanonicalMapper.get_mapped_results_dataframe()``.
         :param beta: F-beta parameter (default ``2.0``).
-        :return: ``dict[str, EvaluationResult]`` with keys ``"L0"``, ``"L1"``,
-            ``"L2"``.
-
+        :return: ``dict[str, EvaluationResult]`` with keys ``"binary"``,
+            ``"branch"``, ``"detailed"``.
         """
-        if hierarchy is None:
-            hierarchy = EntityHierarchy()
+        from presidio_evaluator.entity_mapping.data_objects import (
+            MappedResults,  # noqa: PLC0415
+        )
 
-        results: dict[str, EvaluationResult] = {}
+        if not isinstance(results, MappedResults):
+            raise TypeError(
+                f"results must be a MappedResults instance, got {type(results).__name__}. "
+                "Use CanonicalMapper.get_mapped_results_dataframe() to produce it."
+            )
 
-        # --- L2: canonical surface — use mapped_df as-is ---
-        results["L2"] = self.calculate_score_on_df(mapped_df, beta=beta)
-
-        # --- L1: branch-level (depth-2 ancestors) ---
-        l1_df = mapped_df.copy()
-        l1_df["annotation"] = l1_df["annotation"].apply(lambda e: _to_l1(e, hierarchy))
-        l1_df["prediction"] = l1_df["prediction"].apply(lambda e: _to_l1(e, hierarchy))
-        results["L1"] = self.calculate_score_on_df(l1_df, beta=beta)
-
-        # --- L0: PII vs. O (binary) ---
-        l0_df = mapped_df.copy()
-        l0_df["annotation"] = l0_df["annotation"].apply(_to_l0)
-        l0_df["prediction"] = l0_df["prediction"].apply(_to_l0)
-        results["L0"] = self.calculate_score_on_df(l0_df, beta=beta)
-
-        return results
+        return {
+            "binary": self.calculate_score_on_df(results.binary, beta=beta),
+            "branch": self.calculate_score_on_df(results.branch, beta=beta),
+            "detailed": self.calculate_score_on_df(results.detailed, beta=beta),
+        }

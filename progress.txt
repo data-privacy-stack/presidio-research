@@ -31,3 +31,11 @@
 - What was implemented: Updated HTML audit table for new issue taxonomy. Added per-issue-type summary bar with colour-coded pills (red/orange/grey/amber/blue). Added blue INFO badge style for COLLISION_SAME_BRANCH. Added COLLISION_SAME_BRANCH to gap_why descriptions. Gap cards now show INFO-level issues when min_severity='INFO'. Detail table respects min_severity via get_issues() filtering.
 - Files changed: presidio_evaluator/entity_mapping/rendering.py, tests/entity_mapping/test_canonical_mapper.py, ralph/prd.json
 ---
+
+## 2025-05-01 - US-007
+- What was implemented: Rewrote calculate_hierarchical_scores() to accept MappedResults instead of a DataFrame. Returns dict with keys 'binary'/'branch'/'detailed' instead of 'L0'/'L1'/'L2'. Removed internal _to_l0/_to_l1 projection calls. Rewrote test_hierarchical_evaluation.py to use _make_results() via CanonicalMapper.
+- Files changed: presidio_evaluator/evaluation/base_evaluator.py, tests/entity_mapping/test_hierarchical_evaluation.py, tests/integration/test_notebook.py, ralph/prd.json
+- **Learnings for future iterations:**
+  - Integration tests (test_notebook.py) referenced old IssueType.COLLISION_AMBIGUOUS and mapped_df as DataFrame — updated to COLLISION_CROSS_BRANCH and mapped_results.detailed
+  - base_evaluator.py uses TYPE_CHECKING import for MappedResults (to avoid circular dep), lazy import inside method body
+---
