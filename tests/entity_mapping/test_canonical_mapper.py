@@ -500,6 +500,30 @@ class TestRenderHtml:
         html = MapperRenderer(mapper).build_html()
         assert isinstance(html, str)
 
+    def test_summary_bar_present_in_html(self):
+        df = _make_df(["NAME"] * 5, ["NAME"] * 5)
+        mapper = CanonicalMapper().analyze(df)
+        html = MapperRenderer(mapper).build_html()
+        # Summary bar should contain the five issue type names
+        assert "Unresolved" in html
+        assert "Cross-branch" in html
+        assert "Pred-only" in html
+        assert "Dataset-only" in html
+        assert "Same-branch" in html
+
+    def test_collision_same_branch_card_shown_at_info(self):
+        df = _make_df(["NAME"] * 8, ["PERSON"] * 8)
+        mapper = CanonicalMapper().analyze(df, min_severity="INFO")
+        html = MapperRenderer(mapper).build_html()
+        assert "Same-branch depth mismatch" in html
+
+    def test_collision_same_branch_card_hidden_at_warning(self):
+        df = _make_df(["NAME"] * 8, ["PERSON"] * 8)
+        mapper = CanonicalMapper().analyze(df, min_severity="WARNING")
+        html = MapperRenderer(mapper).build_html()
+        # The gap card text for COLLISION_SAME_BRANCH should NOT appear in gap_cards
+        assert "Handled automatically" not in html
+
 
 # ---------------------------------------------------------------------------
 # EntityHierarchy.get_depth

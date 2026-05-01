@@ -26,3 +26,8 @@
 - What was implemented: Updated get_mapping() to exclude UNRESOLVED labels from the returned dict. Added tests for unresolved exclusion, plain copy behavior, and suppressed (None) labels.
 - Files changed: presidio_evaluator/entity_mapping/mapper.py, tests/entity_mapping/test_canonical_mapper.py, ralph/prd.json
 ---
+
+## 2025-05-01 - US-006
+- What was implemented: Updated HTML audit table for new issue taxonomy. Added per-issue-type summary bar with colour-coded pills (red/orange/grey/amber/blue). Added blue INFO badge style for COLLISION_SAME_BRANCH. Added COLLISION_SAME_BRANCH to gap_why descriptions. Gap cards now show INFO-level issues when min_severity='INFO'. Detail table respects min_severity via get_issues() filtering.
+- Files changed: presidio_evaluator/entity_mapping/rendering.py, tests/entity_mapping/test_canonical_mapper.py, ralph/prd.json
+---

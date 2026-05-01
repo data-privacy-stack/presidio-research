@@ -99,7 +99,7 @@
         "Typecheck passes."
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on US-002 (new issue types) and US-004 (min_severity stored on mapper after analyze())."
     },
     {

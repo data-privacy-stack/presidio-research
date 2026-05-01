@@ -236,6 +236,13 @@ class MapperRenderer:
                 "make precision zero and recall undefined. Consider ignoring this label "
                 "if you don't want it to affect your metrics."
             ),
+            IssueType.COLLISION_SAME_BRANCH: (
+                "Same-branch depth mismatch — both labels resolve to the same hierarchy "
+                "branch but at different depths (e.g. model predicts <code>PERSON</code> "
+                "depth-2, dataset annotates <code>NAME</code> depth-3). "
+                "<strong>Handled automatically</strong> by hierarchical evaluation "
+                "(branch/detailed projection). No action required."
+            ),
         }
 
         # ── Short descriptions for INFO issues merged into label tables ───
@@ -337,7 +344,7 @@ class MapperRenderer:
                 "<tbody>" + "".join(rows) + "</tbody></table>"
             )
 
-        # ── Gap cards (ERROR / WARNING only) ─────────────────────────────
+        # ── Gap cards (ERROR / WARNING / INFO) ───────────────────────────
         sev_style = {
             IssueSeverity.ERROR: {
                 "bg": "#ffebe9",
@@ -351,12 +358,16 @@ class MapperRenderer:
                 "badge_bg": "#b76e00",
                 "label": "WARNING",
             },
+            IssueSeverity.INFO: {
+                "bg": "#ddf4ff",
+                "border": "#0969da",
+                "badge_bg": "#0969da",
+                "label": "INFO",
+            },
         }
 
         gap_cards = []
         for issue in m.get_issues():
-            if issue.severity == IssueSeverity.INFO:
-                continue
             sty = sev_style[issue.severity]
             why = gap_why.get(issue.type, "")
             lbl_tags = " ".join(
@@ -394,6 +405,61 @@ class MapperRenderer:
         # ── Summary header ────────────────────────────────────────────────
         n_labels = len(records)
         depth_info = f"{n_labels} labels identified" if n_labels else "Not analyzed"
+
+        # Count issues per type (across all issues, not filtered by min_severity)
+        issue_counts: dict[IssueType, int] = {}
+        for issue in m._issues:
+            issue_counts[issue.type] = issue_counts.get(issue.type, 0) + len(
+                issue.labels
+            )
+
+        _issue_badge_style: dict[IssueType, tuple[str, str]] = {
+            IssueType.UNRESOLVED: ("#cf222e", "white"),
+            IssueType.COLLISION_CROSS_BRANCH: ("#d4492a", "white"),
+            IssueType.PREDICTION_ONLY: ("#57606a", "white"),
+            IssueType.DATASET_ONLY: ("#b76e00", "white"),
+            IssueType.COLLISION_SAME_BRANCH: ("#0969da", "white"),
+        }
+        _issue_short_name: dict[IssueType, str] = {
+            IssueType.UNRESOLVED: "Unresolved",
+            IssueType.COLLISION_CROSS_BRANCH: "Cross-branch",
+            IssueType.PREDICTION_ONLY: "Pred-only",
+            IssueType.DATASET_ONLY: "Dataset-only",
+            IssueType.COLLISION_SAME_BRANCH: "Same-branch",
+        }
+
+        summary_pills = []
+        for issue_type in [
+            IssueType.UNRESOLVED,
+            IssueType.COLLISION_CROSS_BRANCH,
+            IssueType.PREDICTION_ONLY,
+            IssueType.DATASET_ONLY,
+            IssueType.COLLISION_SAME_BRANCH,
+        ]:
+            count = issue_counts.get(issue_type, 0)
+            bg, fg = _issue_badge_style[issue_type]
+            name = _issue_short_name[issue_type]
+            if count > 0:
+                summary_pills.append(
+                    f'<span style="background:{bg};color:{fg};'
+                    f"padding:2px 10px;border-radius:12px;font-size:12px;"
+                    f'font-weight:600;margin-right:6px">'
+                    f"{name}: {count}</span>"
+                )
+            else:
+                summary_pills.append(
+                    f'<span style="background:#f6f8fa;color:#57606a;'
+                    f"border:1px solid #d0d7de;"
+                    f"padding:2px 10px;border-radius:12px;font-size:12px;"
+                    f'margin-right:6px">'
+                    f"{name}: 0</span>"
+                )
+        summary_bar = (
+            '<div style="margin:8px 0 12px;display:flex;flex-wrap:wrap;gap:4px">'
+            + "".join(summary_pills)
+            + "</div>"
+        )
+
         n_blocking = sum(1 for i in m.get_issues() if i.severity == IssueSeverity.ERROR)
         status_msg = (
             f'<span style="color:#cf222e;font-weight:600">'
@@ -412,6 +478,7 @@ class MapperRenderer:
             f'&nbsp;<span style="font-size:13px;font-weight:normal;color:#57606a">'
             f"{depth_info}</span></h3>"
             f'<div style="margin-bottom:4px">{status_msg}</div>'
+            + summary_bar
             + _section_heading(
                 "1. Blocking issues",
                 f"{n_blocking} requiring action" if n_blocking else "none",
