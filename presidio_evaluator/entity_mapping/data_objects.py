@@ -3,8 +3,16 @@
 # ---------------------------------------------------------------------------
 
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
+
+import pandas as pd
+
+if TYPE_CHECKING:
+    pass
 
 
 class IssueType(Enum):
@@ -61,3 +69,31 @@ class MappingIssue:
     prediction_count: int | None = None
     resolution_options: list[ResolutionOption] = field(default_factory=list)
     overlap_counts: dict[str, int] | None = None
+
+
+# ---------------------------------------------------------------------------
+# MappedResults — output of CanonicalMapper.get_mapped_results_dataframe()
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MappedResults:
+    """Four DataFrames produced by the single-phase CanonicalMapper.
+
+    Each DataFrame has ``annotation`` and ``prediction`` columns
+    (plus all original non-label columns such as ``sentence_id``,
+    ``token``, ``start_indices``) projected to the appropriate level.
+
+    Attributes:
+        original:  Raw input labels, unmodified.
+        binary:    Labels resolved to ``"PII"`` (any non-O) or ``"O"``.
+        branch:    Labels resolved to the depth-2 branch ancestor
+                   (e.g. ``FIRST_NAME`` → ``PERSON``).
+        detailed:  Labels resolved to the hierarchy node at native depth
+                   (e.g. ``FIRST_NAME`` → ``NAME``).  Suppressed → ``"O"``.
+    """
+
+    original: pd.DataFrame
+    binary: pd.DataFrame
+    branch: pd.DataFrame
+    detailed: pd.DataFrame

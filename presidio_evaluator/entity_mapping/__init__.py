@@ -3,6 +3,7 @@
 from presidio_evaluator.entity_mapping.data_objects import (
     IssueSeverity,
     IssueType,
+    MappedResults,
     MappingIssue,
     ResolutionOption,
 )
@@ -29,6 +30,8 @@ __all__ = [
     "IssueSeverity",
     "MappingIssue",
     "ResolutionOption",
+    # MappedResults
+    "MappedResults",
     # Entity hierarchy
     "COUNTRIES",
     "HIERARCHY",
