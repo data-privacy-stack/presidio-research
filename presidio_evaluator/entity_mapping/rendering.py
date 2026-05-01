@@ -181,129 +181,25 @@ class MapperRenderer:
 
         # ── Shared helpers ────────────────────────────────────────────────
 
-        def _status_badge(pt: str) -> str:
-            _, color = self._PROJ_COLORS.get(pt, ("#f6f8fa", "#57606a"))
-            label = {
-                "EXACT": "mapped",
-                "TRIVIAL": "auto-mapped",
-                "MANUAL": "manual",
-                "AMBIGUOUS": "&#9888; needs decision",
-                "CROSS_BRANCH": "&#9888; wrong branch",
-                "UNRESOLVED": "&#10007; not found",
-                "NONE": "",
-            }.get(pt, pt)
-            return (
-                f'<span style="background:{color};color:white;padding:1px 7px;'
-                f"border-radius:10px;font-size:11px;white-space:nowrap"
-                f'">{label}</span>'
-            )
-
-        def _why_note(rec) -> str:  # noqa: ANN001, PLR0911
-            """One-liner explaining why this label was mapped the way it was."""
-            tier = rec.tier
-            pt = rec.projection_type or "NONE"
-            canonical = rec.canonical
-            projected = rec.projected
-
-            if tier == "MANUAL":
-                return f"Manually mapped to <code>{projected}</code>."
-            if pt == "EXACT":
-                if tier in ("EXACT",):
-                    return "Exact alias match in the entity hierarchy."
-                if tier == "FUZZY":
-                    return f"Fuzzy-matched to <code>{canonical}</code> in the entity hierarchy."
-                if tier in ("COUNTRY", "COUNTRY_FALLBACK"):
-                    return f"Matched via country-prefix to <code>{canonical}</code>."
-            if pt == "TRIVIAL":
-                if canonical != projected:
-                    return (
-                        f"<code>{canonical}</code> is a depth-4+ node; auto-projected "
-                        f"up to its depth-3 canonical representative <code>{projected}</code>."
-                    )
-                return f"Descendant of <code>{projected}</code>; auto-projected to the canonical surface."
-            if pt == "AMBIGUOUS":
-                return "Broad parent label — maps to multiple sub-types on the canonical surface."
-            if pt == "CROSS_BRANCH":
-                return "Mapped to a different hierarchy branch; cannot auto-resolve."
-            if pt == "UNRESOLVED":
-                return "Not found in the entity hierarchy."
-            return ""
-
-        def _label_table(pairs: list, token_col: dict) -> str:  # noqa: ANN001
-            if not pairs:
-                return (
-                    '<p style="color:#57606a;font-size:13px;font-style:italic;'
-                    'margin:4px 0">None</p>'
-                )
-            rows = []
-            for lbl, rec in pairs:
-                pt = rec.projection_type or "NONE"
-                row_bg, _ = self._PROJ_COLORS.get(pt, ("#ffffff", "#666"))
-                if rec.projected:
-                    proj_cell = f'<code style="font-size:12px">{rec.projected}</code>'
-                    if pt == "TRIVIAL" and rec.canonical != rec.projected:
-                        proj_cell += (
-                            f' <span style="color:#57606a;font-size:11px">'
-                            f"(via {rec.canonical})</span>"
-                        )
-                    note = _why_note(rec)
-                    if note:
-                        proj_cell += (
-                            f'<br><span style="color:#57606a;font-size:11px;'
-                            f'font-style:italic">{note}</span>'
-                        )
-                else:
-                    proj_cell = (
-                        '<em style="color:#cf222e;font-size:12px">unresolved</em>'
-                    )
-                rows.append(
-                    f'<tr style="background:{row_bg}">'
-                    f'<td style="padding:6px 10px;border:1px solid #d0d7de;'
-                    f'font-family:monospace;font-weight:600">{lbl}</td>'
-                    f'<td style="padding:6px 10px;border:1px solid #d0d7de">'
-                    f"{proj_cell}</td>"
-                    f'<td style="padding:6px 10px;border:1px solid #d0d7de">'
-                    f"{_status_badge(pt)}</td>"
-                    f'<td style="padding:6px 10px;border:1px solid #d0d7de;'
-                    f'text-align:right;color:#57606a;font-size:12px">'
-                    f"{token_col.get(lbl, 0)}</td>"
-                    f"</tr>"
-                )
-            return (
-                '<table style="width:100%;border-collapse:collapse;'
-                'font-size:13px;margin-top:8px">'
-                '<thead><tr style="background:#f6f8fa">'
-                '<th style="padding:6px 10px;border:1px solid #d0d7de;'
-                'text-align:left">Label</th>'
-                '<th style="padding:6px 10px;border:1px solid #d0d7de;'
-                'text-align:left">Canonical representation</th>'
-                '<th style="padding:6px 10px;border:1px solid #d0d7de;'
-                'text-align:left">Status</th>'
-                '<th style="padding:6px 10px;border:1px solid #d0d7de;'
-                'text-align:right">Tokens</th>'
-                "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
-            )
-
         def _render_resolution_options(issue) -> str:  # noqa: ANN001
             opts = issue.resolution_options
             if not opts:
                 return ""
             top = opts[0]
             top_html = (
-                f'<div style="margin-top:10px;font-size:12px">'
-                f"<strong>Suggested fix:</strong>&nbsp;"
+                f'<div style="font-size:12px">'
                 f'<code style="background:#f6f8fa;padding:2px 5px;'
                 f'border-radius:3px;font-size:11px">'
                 f"mapper.map({top.mapper_call!r})"
                 f"</code>"
-                f'&nbsp;<span style="color:#57606a">- {top.description}</span>'
+                f'&nbsp;<span style="color:#57606a">— {top.description}</span>'
                 f"</div>"
             )
             if len(opts) > 1:
                 other_items = "".join(
                     f"<li>"
                     f'<code style="font-size:11px">mapper.map({o.mapper_call!r})</code>'
-                    f'&nbsp;<span style="color:#57606a">- {o.description}</span>'
+                    f'&nbsp;<span style="color:#57606a">— {o.description}</span>'
                     f"</li>"
                     for o in opts[1:]
                 )
@@ -329,34 +225,8 @@ class MapperRenderer:
                 f"{title}{sub}</h4>"
             )
 
-        # ── Section 1: Annotation labels ──────────────────────────────────
-        ann_pairs = sorted(
-            [(lbl, rec) for lbl, rec in records.items() if ann_counts.get(lbl, 0) > 0],
-            key=lambda x: (
-                proj_priority.get(x[1].projection_type or "NONE", 9),
-                -ann_counts.get(x[0], 0),
-            ),
-        )
-
-        # ── Section 2: Prediction labels ──────────────────────────────────
-        pred_pairs = sorted(
-            [(lbl, rec) for lbl, rec in records.items() if pred_counts.get(lbl, 0) > 0],
-            key=lambda x: (
-                proj_priority.get(x[1].projection_type or "NONE", 9),
-                -pred_counts.get(x[0], 0),
-            ),
-        )
-
-        # ── Section 3: Gap cards ──────────────────────────────────────────
+        # ── Issue descriptions for gap cards (blocking issues) ────────────
         gap_why = {
-            IssueType.COLLISION_AMBIGUOUS: (
-                "This label maps to a hierarchy entity that is a "
-                "<strong>coarser-grained ancestor</strong> of multiple canonical "
-                "surface entities. This is <strong>non-blocking</strong> — use "
-                "<code>evaluator.calculate_hierarchical_scores(mapped_df)</code> to "
-                "score at each granularity level automatically. Alternatively, use "
-                "<code>mapper.map()</code> to manually remap to a specific sub-type."
-            ),
             IssueType.UNRESOLVED: (
                 "This label <strong>doesn't appear in the entity hierarchy</strong>, "
                 "so the mapper has no basis for matching it to a canonical "
@@ -376,21 +246,108 @@ class MapperRenderer:
                 "make precision zero and recall undefined. Consider ignoring this label "
                 "if you don't want it to affect your metrics."
             ),
-            IssueType.DATASET_ONLY: (
-                "The dataset annotates this entity type, but the model "
-                "<strong>never predicts it</strong>. All annotations will count as "
-                "false negatives. This is a model coverage gap, not a mapping "
-                "problem unless you think some other model entity should "
-                "be considered here."
+        }
+
+        # ── Short descriptions for INFO issues merged into label tables ───
+        table_issue_desc = {
+            IssueType.COLLISION_SAME_BRANCH: (
+                "Same-branch depth mismatch — handled automatically by hierarchical evaluation "
+                "(branch/detailed projection)."
             ),
-            IssueType.COLLISION_TRIVIAL: (
-                "This label was <strong>automatically projected</strong> to the "
-                "nearest canonical representative on the same branch. "
-                "Evaluation will use the projected canonical entity."
-                "No action is required unless you wish to manually change this"
+            IssueType.DATASET_ONLY: (
+                "The dataset annotates this entity type, but the model never predicts it "
+                "(model coverage gap)."
             ),
         }
 
+        # ── Build label → INFO-issue map for merging into label tables ────
+        info_issue_map: dict = {}
+        for issue in m.get_issues():
+            if issue.severity == IssueSeverity.INFO:
+                for lbl in issue.labels:
+                    info_issue_map[lbl] = issue
+
+        # ── Section pairs ─────────────────────────────────────────────────
+        ann_pairs = sorted(
+            [(lbl, rec) for lbl, rec in records.items() if ann_counts.get(lbl, 0) > 0],
+            key=lambda x: (
+                proj_priority.get(x[1].projection_type or "NONE", 9),
+                -ann_counts.get(x[0], 0),
+            ),
+        )
+
+        pred_pairs = sorted(
+            [(lbl, rec) for lbl, rec in records.items() if pred_counts.get(lbl, 0) > 0],
+            key=lambda x: (
+                proj_priority.get(x[1].projection_type or "NONE", 9),
+                -pred_counts.get(x[0], 0),
+            ),
+        )
+
+        # ── Label table (with grouped INFO-issue rows) ────────────────────
+        def _label_table(pairs: list, token_col: dict) -> str:  # noqa: ANN001
+            if not pairs:
+                return (
+                    '<p style="color:#57606a;font-size:13px;font-style:italic;'
+                    'margin:4px 0">None</p>'
+                )
+
+            has_issues = any(lbl in info_issue_map for lbl, _ in pairs)
+            _td = 'style="padding:6px 10px;border:1px solid #d0d7de'
+            rows = []
+
+            for lbl, rec in pairs:
+                pt = rec.projection_type or "NONE"
+                row_bg, _ = self._PROJ_COLORS.get(pt, ("#ffffff", "#666"))
+                display_entity = rec.projected or rec.canonical
+                projected_cell = (
+                    f'<code style="font-size:12px">{display_entity}</code>'
+                    if display_entity
+                    else '<em style="color:#cf222e;font-size:12px">unresolved</em>'
+                )
+                tokens = token_col.get(lbl, 0)
+                row = (
+                    f'<tr style="background:{row_bg}">'
+                    f'<td {_td};font-family:monospace;font-weight:600">{lbl}</td>'
+                    f'<td {_td}">{projected_cell}</td>'
+                    f'<td {_td};text-align:right;color:#57606a;font-size:12px">'
+                    f"{tokens if tokens else '—'}</td>"
+                )
+                if has_issues:
+                    issue = info_issue_map.get(lbl)
+                    issue_desc = table_issue_desc.get(issue.type, "") if issue else ""
+                    fix_html = (
+                        _render_resolution_options(issue)
+                        if issue and issue.resolution_options
+                        else ("—" if issue else "")
+                    )
+                    row += (
+                        f'<td {_td};font-size:12px;color:#24292f;line-height:1.5">'
+                        f"{issue_desc}</td>"
+                        f'<td {_td};font-size:12px">{fix_html}</td>'
+                    )
+                row += "</tr>"
+                rows.append(row)
+
+            _th = 'style="padding:6px 10px;border:1px solid #d0d7de'
+            header_cells = (
+                f'<th {_th};text-align:left">Label</th>'
+                f'<th {_th};text-align:left">Mapped to</th>'
+                f'<th {_th};text-align:right">Tokens</th>'
+            )
+            if has_issues:
+                header_cells += (
+                    f'<th {_th};text-align:left">Issue</th>'
+                    f'<th {_th};text-align:left">Suggested fix</th>'
+                )
+            return (
+                '<table style="width:100%;border-collapse:collapse;'
+                'font-size:13px;margin-top:8px">'
+                f'<thead><tr style="background:#f6f8fa">{header_cells}</tr></thead>'
+                "<tbody>" + "".join(rows) + "</tbody></table>"
+            )
+
+        # ── Gap cards (ERROR / WARNING only) ─────────────────────────────
         sev_style = {
             IssueSeverity.ERROR: {
                 "bg": "#ffebe9",
@@ -404,26 +361,13 @@ class MapperRenderer:
                 "badge_bg": "#b76e00",
                 "label": "WARNING",
             },
-            IssueSeverity.INFO: {
-                "bg": "#ddf4ff",
-                "border": "#54aeff",
-                "badge_bg": "#0969da",
-                "label": "INFO",
-            },
-        }
-        # Per-type style overrides (applied after severity defaults)
-        type_style_override = {
-            IssueType.COLLISION_AMBIGUOUS: {
-                "bg": "#e6f6f6",
-                "border": "#2aa198",
-                "badge_bg": "#2aa198",
-                "label": "INFO",
-            },
         }
 
         gap_cards = []
         for issue in m.get_issues():
-            sty = type_style_override.get(issue.type, sev_style[issue.severity])
+            if issue.severity == IssueSeverity.INFO:
+                continue
+            sty = sev_style[issue.severity]
             why = gap_why.get(issue.type, "")
             lbl_tags = " ".join(
                 f'<code style="background:#f6f8fa;padding:1px 5px;'
@@ -435,23 +379,6 @@ class MapperRenderer:
                 f'padding:1px 8px;border-radius:10px;font-size:11px">'
                 f"{sty['label']}</span>"
             )
-            # Token co-occurrence detail for AMBIGUOUS
-            extra = ""
-            if issue.type == IssueType.COLLISION_AMBIGUOUS and issue.overlap_counts:
-                sorted_ovl = sorted(
-                    ((e, cnt) for e, cnt in issue.overlap_counts.items() if cnt > 0),
-                    key=lambda x: -x[1],
-                )
-                if sorted_ovl:
-                    ovl_items = " &nbsp;&middot;&nbsp; ".join(
-                        f"<code>{e}</code>: {cnt}" for e, cnt in sorted_ovl
-                    )
-                    extra = (
-                        f'<div style="margin-top:8px;font-size:12px;color:#57606a">'
-                        f"<strong>Token co-occurrences (annotation &harr; prediction):"
-                        f"</strong> {ovl_items}"
-                        f"</div>"
-                    )
             fix_html = _render_resolution_options(issue)
             gap_cards.append(
                 f'<div style="background:{sty["bg"]};border:1px solid {sty["border"]};'
@@ -461,7 +388,6 @@ class MapperRenderer:
                 f"</div>"
                 f'<div style="font-size:13px;color:#24292f;line-height:1.6">'
                 f"{why}</div>"
-                f"{extra}"
                 f"{fix_html}"
                 f"</div>"
             )
@@ -471,7 +397,7 @@ class MapperRenderer:
             if gap_cards
             else (
                 '<p style="color:#2da44e;font-size:13px;margin:6px 0">'
-                "&#10003; No gaps. All labels are fully resolved.</p>"
+                "&#10003; No blocking issues. All labels are fully resolved.</p>"
             )
         )
 
@@ -505,12 +431,12 @@ class MapperRenderer:
             f"{depth_info}</span></h3>"
             f'<div style="margin-bottom:4px">{status_msg}</div>'
             + _section_heading(
-                "1. Gaps",
+                "1. Blocking issues",
                 f"{n_blocking} requiring action" if n_blocking else "none",
             )
             + '<p style="font-size:12px;color:#57606a;margin:2px 0 4px">'
-            "Labels that could not be mapped automatically. Resolve these before "
-            "calling <code>mapper.get_mapped_results_dataframe()</code>.</p>"
+            "Labels that could not be mapped automatically (ERROR / WARNING). "
+            "Resolve these before calling <code>mapper.get_mapped_results_dataframe()</code>.</p>"
             + gaps_section
             + _section_heading(
                 "2. Annotation labels",
@@ -518,7 +444,7 @@ class MapperRenderer:
             )
             + '<p style="font-size:12px;color:#57606a;margin:2px 0 4px">'
             "The entity labels in your ground-truth annotations. "
-            "Each must map to exactly one canonical representation to be scored.</p>"
+            "Non-blocking issues (INFO) are shown inline.</p>"
             + _label_table(ann_pairs, ann_counts)
             + _section_heading(
                 "3. Prediction labels",
@@ -526,7 +452,7 @@ class MapperRenderer:
             )
             + '<p style="font-size:12px;color:#57606a;margin:2px 0 4px">'
             "The entity labels your model outputs. "
-            "Each must map to a canonical representation to be scored.</p>"
+            "Non-blocking issues (INFO) are shown inline.</p>"
             + _label_table(pred_pairs, pred_counts)
             + "</div>"
         )

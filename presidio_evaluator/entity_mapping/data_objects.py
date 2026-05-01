@@ -18,20 +18,20 @@ if TYPE_CHECKING:
 class IssueType(Enum):
     """Category of mapping issue detected during analysis.
 
-    UNRESOLVED:          Label could not be matched to any canonical entity. Blocks extraction.
-    COLLISION_TRIVIAL:   Label was auto-projected to the correct eval-surface entity (same branch). Non-blocking.
-    COLLISION_AMBIGUOUS: Label is an ancestor of multiple eval-surface entities (e.g. LOCATION at depth 3). Blocks extraction.
-    COLLISION_CROSS_BRANCH: Label is on a different hierarchy branch from all eval-surface entities. Blocks extraction.
-    PREDICTION_ONLY:     Label appears in predictions but not in dataset annotations (all occurrences are FP). Blocks extraction.
-    DATASET_ONLY:        Entity has annotations but no prediction maps to it (all annotations are FN). Non-blocking.
+    UNRESOLVED:             Label could not be matched to any canonical entity. Blocks extraction.
+    COLLISION_CROSS_BRANCH: Label is on a different hierarchy branch from all annotation entities.
+    PREDICTION_ONLY:        Label appears in predictions but not in dataset annotations.
+    DATASET_ONLY:           Entity has annotations but no prediction maps to it.
+    COLLISION_SAME_BRANCH:  Label and co-occurring annotation share the same hierarchy branch
+                            at different depths (e.g. model predicts PERSON, dataset uses NAME).
+                            Informational — handled automatically by hierarchical evaluation.
     """
 
     UNRESOLVED = "unresolved"
-    COLLISION_TRIVIAL = "collision_trivial"
-    COLLISION_AMBIGUOUS = "collision_ambiguous"
     COLLISION_CROSS_BRANCH = "collision_cross_branch"
     PREDICTION_ONLY = "prediction_only"
     DATASET_ONLY = "dataset_only"
+    COLLISION_SAME_BRANCH = "collision_same_branch"
 
 
 class IssueSeverity(Enum):

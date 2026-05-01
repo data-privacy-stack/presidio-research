@@ -41,9 +41,8 @@ _ISSUE_TYPE_ORDER = {
     IssueType.UNRESOLVED: 0,
     IssueType.COLLISION_CROSS_BRANCH: 1,
     IssueType.PREDICTION_ONLY: 2,
-    IssueType.COLLISION_AMBIGUOUS: 3,
-    IssueType.COLLISION_TRIVIAL: 4,
-    IssueType.DATASET_ONLY: 5,
+    IssueType.DATASET_ONLY: 3,
+    IssueType.COLLISION_SAME_BRANCH: 4,
 }
 
 
@@ -534,99 +533,63 @@ class CanonicalMapper:
                 )
             )
 
-        # COLLISION_TRIVIAL (INFO)
-        for lbl, rec in self._records.items():
-            if rec.projection_type != "TRIVIAL":
+        # COLLISION_SAME_BRANCH (INFO)
+        # Fires when a prediction label co-occurs on the same tokens with an
+        # annotation label and both resolve to the same depth-2 branch ancestor
+        # but at different depths (e.g. prediction=PERSON depth-2, annotation=NAME depth-3).
+        for pred_lbl, rec_pred in self._records.items():
+            if self._label_prediction_counts.get(pred_lbl, 0) == 0:
                 continue
-            n_ann = self._label_annotation_counts.get(lbl, 0)
-            n_pred = self._label_prediction_counts.get(lbl, 0)
+            if rec_pred.canonical is None or rec_pred.tier == "UNRESOLVED":
+                continue
+            pred_branch = h_full.canonical_to_branch.get(rec_pred.canonical, [])
+            if len(pred_branch) < 2:
+                continue
+            pred_branch_key = pred_branch[1]
+            pred_depth = len(pred_branch)
+
+            same_branch_overlap: dict[str, int] = {}
+            for ann_lbl, rec_ann in self._records.items():
+                if self._label_annotation_counts.get(ann_lbl, 0) == 0:
+                    continue
+                if rec_ann.canonical is None or rec_ann.tier == "UNRESOLVED":
+                    continue
+                ann_branch = h_full.canonical_to_branch.get(rec_ann.canonical, [])
+                if len(ann_branch) < 2 or ann_branch[1] != pred_branch_key:
+                    continue
+                if len(ann_branch) == pred_depth:
+                    continue  # same depth — not a mismatch
+                if self._results_df is not None:
+                    mask = (self._results_df["prediction"] == pred_lbl) & (
+                        self._results_df["annotation"] == ann_lbl
+                    )
+                    count = int(mask.sum())
+                    if count > 0:
+                        same_branch_overlap[ann_lbl] = count
+
+            if not same_branch_overlap:
+                continue
+
+            n_pred = self._label_prediction_counts.get(pred_lbl, 0)
+            ann_str = ", ".join(
+                f"{a!r} ({c})"
+                for a, c in sorted(same_branch_overlap.items(), key=lambda x: -x[1])
+            )
             self._issues.append(
                 MappingIssue(
-                    type=IssueType.COLLISION_TRIVIAL,
+                    type=IssueType.COLLISION_SAME_BRANCH,
                     severity=IssueSeverity.INFO,
                     message=(
-                        f"[AUTO-FIX] {lbl!r} -> {rec.projected!r} "
-                        f"(same-branch projection, {n_ann + n_pred} tokens)"
+                        f"{pred_lbl!r} (→ {rec_pred.canonical!r}, depth {pred_depth}) "
+                        f"co-occurs with same-branch annotation(s) at different "
+                        f"depth: {ann_str}. "
+                        f"Handled automatically by hierarchical evaluation "
+                        f"(branch/detailed projection)."
                     ),
-                    labels=[lbl],
-                    annotation_count=n_ann,
+                    labels=[pred_lbl],
+                    annotation_count=0,
                     prediction_count=n_pred,
-                )
-            )
-
-        # COLLISION_AMBIGUOUS (INFO — non-blocking; hierarchical evaluation handles this level)
-        for lbl, rec in self._records.items():
-            if rec.projection_type != "AMBIGUOUS":
-                continue
-            canonical = rec.canonical
-            n_ann = self._label_annotation_counts.get(lbl, 0)
-            n_pred = self._label_prediction_counts.get(lbl, 0)
-            descendants = [
-                e
-                for e in self._canonical_surface
-                if canonical in (h_full.canonical_to_branch.get(e) or [])
-            ]
-            overlap_counts = self._compute_overlap(lbl, descendants)
-            sorted_candidates = sorted(
-                descendants, key=lambda e: overlap_counts.get(e, 0), reverse=True
-            )
-            options = [
-                ResolutionOption(
-                    action="map_to_canonical",
-                    description=f"Map {lbl!r} to {cand!r} ({overlap_counts.get(cand, 0)} token co-occurrences)",
-                    mapper_call={lbl: cand},
-                )
-                for cand in sorted_candidates
-            ]
-            # Build a human-readable message that explains the two-phase process.
-            # Phase 1 (Identify): the raw label was matched to a canonical hierarchy node.
-            # Phase 2 (Project): that node sits *above* multiple per-branch canonical
-            # representatives — so the mapper cannot project automatically.
-            try:
-                canon_depth = h_full.get_depth(canonical)
-            except Exception:
-                canon_depth = None
-
-            # Derive the dominant depth for this branch from the candidates themselves.
-            cand_depths = set()
-            for cand in sorted_candidates:
-                try:
-                    cand_depths.add(h_full.get_depth(cand))
-                except EntityNotMappedError:
-                    logger.debug("get_depth failed for candidate %r", cand)
-            branch_depth = min(cand_depths) if cand_depths else None
-
-            if lbl == canonical:
-                id_part = f"'{lbl}' is a recognized hierarchy entity"
-            else:
-                id_part = f"'{lbl}' was matched to hierarchy entity '{canonical}'"
-
-            depth_part = ""
-            if canon_depth is not None and branch_depth is not None:
-                depth_part = (
-                    f" (depth {canon_depth}) is too coarse for this dataset,"
-                    f" which uses depth-{branch_depth} sub-types in this group"
-                )
-
-            sub_types_str = ", ".join(sorted_candidates)
-            top_cand = sorted_candidates[0] if sorted_candidates else "TARGET"
-            top_cnt = overlap_counts.get(top_cand, 0)  # noqa: F841 — used in message below
-
-            self._issues.append(
-                MappingIssue(
-                    type=IssueType.COLLISION_AMBIGUOUS,
-                    severity=IssueSeverity.INFO,
-                    message=(
-                        f"{id_part}{depth_part}. "
-                        f"Operates at a coarser level than [{sub_types_str}]. "
-                        f"Use calculate_hierarchical_scores() to score each level "
-                        f"automatically, or remap manually: mapper.map({{{lbl!r}: {top_cand!r}}})."
-                    ),
-                    labels=[lbl],
-                    annotation_count=n_ann,
-                    prediction_count=n_pred,
-                    resolution_options=options,
-                    overlap_counts=overlap_counts,
+                    overlap_counts=same_branch_overlap,
                 )
             )
 
@@ -729,14 +692,31 @@ class CanonicalMapper:
                 )
             )
 
-        # DATASET_ONLY (INFO)
+        # DATASET_ONLY (WARNING)
         # Entities that ARE annotated (in annotated_projected) but have NO predictions
         # projecting to them. Intersect with canonical_surface to exclude manual off-surface
         # projections from the count.
         dataset_only_entities = (
             annotated_projected - predicted_projected
         ) & self._canonical_surface
+
+        # Build the set of canonicals appearing in predictions (to detect same-branch coverage).
+        # If a predicted label maps to an ancestor of a DATASET_ONLY entity (e.g. PERSON is
+        # predicted while NAME is dataset-only), hierarchical evaluation already scores that
+        # branch at L1 — no need to surface a DATASET_ONLY issue.
+        predicted_canonicals = {
+            rec.canonical
+            for lbl, rec in self._records.items()
+            if self._label_prediction_counts.get(lbl, 0) > 0
+            and rec.canonical is not None
+        }
+
         for entity in sorted(dataset_only_entities):
+            # Skip if a same-branch prediction canonical exists (ancestor of entity)
+            entity_branch = set(h_full.canonical_to_branch.get(entity, [entity]))
+            ancestors = entity_branch - {entity}
+            if ancestors & predicted_canonicals:
+                continue
             raw_labels = [
                 lbl
                 for lbl, rec in self._records.items()
@@ -747,7 +727,7 @@ class CanonicalMapper:
             self._issues.append(
                 MappingIssue(
                     type=IssueType.DATASET_ONLY,
-                    severity=IssueSeverity.INFO,
+                    severity=IssueSeverity.WARNING,
                     message=(
                         f"{entity!r} is in the canonical surface but no prediction maps to it. "
                         f"{n_ann} annotation tokens -- all will count as false negatives."
@@ -922,17 +902,13 @@ class CanonicalMapper:
         """Return the analyzed DataFrame with annotation/prediction remapped.
 
         :raises RuntimeError: if analyze() has not been called.
-        :raises IncompleteMapping: if any ERROR or WARNING issues remain.
+        :raises IncompleteMapping: if any UNRESOLVED (ERROR) issues remain.
         """
         if self._results_df is None:
             raise RuntimeError(
                 "No DataFrame available. Call analyze(results_df) first."
             )
-        blocking = [
-            i
-            for i in self._issues
-            if i.severity in (IssueSeverity.ERROR, IssueSeverity.WARNING)
-        ]
+        blocking = [i for i in self._issues if i.severity == IssueSeverity.ERROR]
         if blocking:
             raise IncompleteMapping(blocking)
 

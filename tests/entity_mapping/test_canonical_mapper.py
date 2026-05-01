@@ -219,8 +219,8 @@ class TestIssues:
         assert len(pred_only) > 0
         assert pred_only[0].severity == IssueSeverity.WARNING
 
-    def test_dataset_only_info(self):
-        # EMAIL_ADDRESS in annotations but no EMAIL_ADDRESS predictions
+    def test_dataset_only_warning(self):
+        # EMAIL_ADDRESS in annotations but no EMAIL_ADDRESS predictions → DATASET_ONLY WARNING
         df = _make_df(["NAME"] * 5 + ["EMAIL_ADDRESS"] * 5, ["NAME"] * 10)
         mapper = CanonicalMapper().analyze(df)
         issues = mapper.get_issues()
@@ -228,22 +228,21 @@ class TestIssues:
         assert len(ds_only) > 0, "Expected at least one DATASET_ONLY issue"
         assert any("EMAIL_ADDRESS" in i.labels for i in ds_only)
         for issue in ds_only:
-            assert issue.severity == IssueSeverity.INFO
+            assert issue.severity == IssueSeverity.WARNING
             assert issue.annotation_count > 0
             assert issue.prediction_count == 0
 
-    def test_collision_trivial_info(self):
-        # Lock surface with NAME at depth 3, then analyze FIRST_NAME
-        df_lock = _make_df(["NAME"] * 10, ["NAME"] * 10)
-        mapper = CanonicalMapper()
-        mapper.analyze(df_lock)
-        df_with_fn = _make_df(["NAME"] * 8, ["FIRST_NAME"] * 8)
-        mapper.analyze(df_with_fn)
-        trivial = [
-            i for i in mapper.get_issues() if i.type == IssueType.COLLISION_TRIVIAL
+    def test_collision_same_branch_info(self):
+        # PERSON prediction co-occurs with NAME annotation — same branch (PERSON), different depth
+        df = _make_df(["NAME"] * 8, ["PERSON"] * 8)
+        mapper = CanonicalMapper().analyze(df)
+        same_branch = [
+            i for i in mapper.get_issues() if i.type == IssueType.COLLISION_SAME_BRANCH
         ]
-        for issue in trivial:
+        assert len(same_branch) > 0
+        for issue in same_branch:
             assert issue.severity == IssueSeverity.INFO
+            assert issue.overlap_counts is not None
 
     def test_issues_have_token_counts(self):
         df = _make_df(["UNKNOWN_99"], ["O"])
@@ -329,12 +328,14 @@ class TestGetMappedResultsDf:
         with pytest.raises(RuntimeError, match="analyze"):
             mapper.get_mapped_results_dataframe()
 
-    def test_raises_with_unresolved_warning(self):
+    def test_raises_only_for_unresolved_not_warning(self):
+        # WARNING issues (PREDICTION_ONLY, DATASET_ONLY, COLLISION_CROSS_BRANCH) do NOT block
         df = _make_df(["NAME"] * 5, ["EMAIL_ADDRESS"] * 5)
         mapper = CanonicalMapper().analyze(df)
-        if any(i.severity == IssueSeverity.WARNING for i in mapper.get_issues()):
-            with pytest.raises(IncompleteMapping):
-                mapper.get_mapped_results_dataframe()
+        # There may be WARNING issues (PREDICTION_ONLY), but they should not block
+        assert any(i.severity == IssueSeverity.WARNING for i in mapper.get_issues())
+        result = mapper.get_mapped_results_dataframe()
+        assert isinstance(result, pd.DataFrame)
 
     def test_returns_df_when_no_blocking(self):
         df = _make_df(["NAME"] * 3, ["NAME"] * 3)
@@ -368,8 +369,8 @@ class TestGetMappedResultsDf:
         result = mapper.get_mapped_results_dataframe()
         assert "O" in result["prediction"].values
 
-    def test_info_issues_do_not_block(self):
-        # DATASET_ONLY and COLLISION_TRIVIAL are INFO — should not block
+    def test_only_unresolved_blocks(self):
+        # Only ERROR (UNRESOLVED) blocks get_mapped_results_dataframe()
         df = _make_df(["NAME"] * 8, ["NAME"] * 8)
         mapper = CanonicalMapper().analyze(df)
         result = mapper.get_mapped_results_dataframe()
