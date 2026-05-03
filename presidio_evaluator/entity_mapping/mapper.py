@@ -363,7 +363,8 @@ class CanonicalMapper:
 
         # ── COLLISION_CROSS_BRANCH (WARNING) ────────────────────────────────
         # Prediction label co-occurs on the same tokens with annotation label(s)
-        # from a different hierarchy branch.
+        # from a different hierarchy branch — AND cross-branch co-occurrences
+        # dominate over same-branch ones (otherwise it's a COLLISION_SAME_BRANCH).
         for pred_lbl, rec_pred in self._records.items():
             if self._label_prediction_counts.get(pred_lbl, 0) == 0:
                 continue
@@ -374,22 +375,31 @@ class CanonicalMapper:
                 continue
 
             cross_overlap: dict[str, int] = {}
+            same_branch_count = 0
             for ann_lbl, rec_ann in self._records.items():
                 if self._label_annotation_counts.get(ann_lbl, 0) == 0:
                     continue
                 if rec_ann.resolved is None or rec_ann.tier in ("UNRESOLVED", "NONE"):
                     continue
-                if _branch_key(rec_ann.resolved) == pred_bk:
-                    continue  # same branch
                 if self._results_df is not None:
                     mask = (self._results_df["prediction"] == pred_lbl) & (
                         self._results_df["annotation"] == ann_lbl
                     )
                     count = int(mask.sum())
-                    if count > 0:
+                    if count == 0:
+                        continue
+                    if _branch_key(rec_ann.resolved) == pred_bk:
+                        same_branch_count += count  # same branch — tally but skip
+                    else:
                         cross_overlap[ann_lbl] = count
 
             if not cross_overlap:
+                continue
+
+            # Skip if same-branch co-occurrences dominate: the label is mostly
+            # correctly branched; the cross-branch tokens are incidental FPs.
+            cross_total = sum(cross_overlap.values())
+            if same_branch_count >= cross_total:
                 continue
 
             n_pred = self._label_prediction_counts.get(pred_lbl, 0)

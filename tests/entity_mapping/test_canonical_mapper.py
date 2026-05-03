@@ -206,6 +206,36 @@ class TestIssues:
             assert issue.severity == IssueSeverity.INFO
             assert issue.overlap_counts is not None
 
+    def test_cross_branch_dominant_same_branch_suppressed(self):
+        # LOCATION (depth-2, LOCATION branch) predicted on mostly STREET_ADDRESS tokens
+        # (depth-4, also LOCATION branch) — same-branch dominates → no CROSS_BRANCH warning.
+        # A few tokens are annotated with NAME (PERSON branch) → cross-branch but minority.
+        annotations = ["STREET_ADDRESS"] * 10 + ["NAME"] * 2
+        predictions = ["LOCATION"] * 12
+        df = _make_df(annotations, predictions)
+        mapper = CanonicalMapper().analyze(df)
+        cross = [
+            i for i in mapper.get_issues() if i.type == IssueType.COLLISION_CROSS_BRANCH
+        ]
+        assert cross == [], (
+            "LOCATION should not be COLLISION_CROSS_BRANCH when same-branch "
+            "co-occurrences (STREET_ADDRESS) dominate over cross-branch ones (NAME)"
+        )
+
+    def test_cross_branch_fires_when_cross_dominates(self):
+        # LOCATION predicted mostly on NAME (PERSON branch) tokens → cross dominates → warning.
+        annotations = ["NAME"] * 8 + ["STREET_ADDRESS"] * 2
+        predictions = ["LOCATION"] * 10
+        df = _make_df(annotations, predictions)
+        mapper = CanonicalMapper().analyze(df)
+        cross = [
+            i for i in mapper.get_issues() if i.type == IssueType.COLLISION_CROSS_BRANCH
+        ]
+        assert len(cross) > 0, (
+            "LOCATION predicted mostly on NAME (PERSON branch) tokens should "
+            "still produce COLLISION_CROSS_BRANCH"
+        )
+
     def test_issues_have_token_counts(self):
         df = _make_df(["UNKNOWN_99"], ["O"])
         mapper = CanonicalMapper().analyze(df)
