@@ -125,7 +125,7 @@ class CanonicalMapper:
         self,
         results_df: pd.DataFrame,
         min_severity: str | IssueSeverity = "WARNING",
-    ) -> CanonicalMapper:
+    ) -> None:
         """Identify all labels in the hierarchy (single-phase, no projection).
 
         Resolves every raw label via
@@ -136,7 +136,6 @@ class CanonicalMapper:
             render_html(). Accepts 'ERROR', 'WARNING', 'INFO' (or IssueSeverity
             enum values). Default is 'WARNING'. COLLISION_SAME_BRANCH (INFO)
             is only shown when min_severity='INFO'.
-        :return: self (for chaining).
         :raises ValueError: If min_severity is an unrecognised string.
         """
         # Validate min_severity
@@ -212,8 +211,6 @@ class CanonicalMapper:
             len(self._records),
             n_warn,
         )
-
-        return self
 
     # -- Identification -------------------------------------------------------
 
@@ -608,11 +605,10 @@ class CanonicalMapper:
 
     # -- Mutation -------------------------------------------------------------
 
-    def map(self, mappings: dict[str, str | None]) -> CanonicalMapper:
+    def map(self, mappings: dict[str, str | None]) -> None:
         """Assign resolved entities (or None) to one or more labels.
 
         Validates all entries atomically before applying any.
-        Returns self for chaining.
         """
         valid_canonicals = set(self._hierarchy.all_canonical_entities) | set(
             self._hierarchy.raw_to_canonical.values()
@@ -641,17 +637,13 @@ class CanonicalMapper:
         if self._results_df is not None:
             self._detect_issues()
 
-        return self
-
-    def suppress_prediction_only(self) -> CanonicalMapper:
+    def suppress_prediction_only(self) -> None:
         """Suppress all PREDICTION_ONLY labels by mapping them to None.
 
         Automatically maps every raw label from every PREDICTION_ONLY issue to
-        ``None`` (excluded from evaluation).  Useful as a quick one-liner when
-        prediction-only labels should simply be ignored rather than remapped.
+        ``None`` (excluded from evaluation).
 
         :raises RuntimeError: if called before :meth:`analyze`.
-        :return: self for chaining.
         """
         if self._results_df is None:
             raise RuntimeError("Call analyze() before suppress_prediction_only().")
@@ -663,13 +655,11 @@ class CanonicalMapper:
         }
         if labels_to_suppress:
             self.map(dict.fromkeys(labels_to_suppress))
-        return self
 
-    def resolve_interactively(self, prompt_fn=input) -> CanonicalMapper:
+    def resolve_interactively(self, prompt_fn=input) -> None:
         """Prompt the user to resolve all WARNING+ issues interactively.
 
         :param prompt_fn: callable(prompt_str) -> str. Defaults to built-in input.
-        :return: self for chaining.
         """
         blocking = [
             i
@@ -677,7 +667,7 @@ class CanonicalMapper:
             if i.severity in (IssueSeverity.ERROR, IssueSeverity.WARNING)
         ]
         if not blocking:
-            return self
+            return
 
         for issue in list(blocking):
             print(f"\n[{issue.severity.value.upper()}] {issue.type.value}")
@@ -714,8 +704,6 @@ class CanonicalMapper:
                     break
                 except ValueError as e:
                     print(f"  Invalid: {e}")
-
-        return self
 
     # -- Output ---------------------------------------------------------------
 

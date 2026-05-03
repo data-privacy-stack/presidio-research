@@ -1,7 +1,7 @@
 {
   "project": "presidio-evaluator",
   "branchName": "ralph/canonical-mapper-single-phase",
-  "description": "Replace the two-phase CanonicalMapper (Identify+Project) with a single-phase design. The mapper emits MappedResults \u2014 a frozen dataclass with four pre-projected DataFrames (.original/.binary/.branch/.detailed) \u2014 and calculate_hierarchical_scores() is updated to accept it directly, eliminating internal column projection. Issue taxonomy is simplified to five types (UNRESOLVED/COLLISION_CROSS_BRANCH/PREDICTION_ONLY/DATASET_ONLY/COLLISION_SAME_BRANCH). No changes to SpanEvaluator, TokenEvaluator, EvaluationResult, or Plotter.",
+  "description": "Replace the two-phase CanonicalMapper (Identify+Project) with a single-phase design. The mapper is a mutable object — analyze(), map(), suppress_prediction_only(), and resolve_interactively() all return None and modify the mapper in-place. The mapper emits MappedResults — a frozen dataclass with four pre-projected DataFrames (.original/.binary/.branch/.detailed) — and calculate_hierarchical_scores() is updated to accept it directly, eliminating internal column projection. Issue taxonomy is simplified to five types (UNRESOLVED/COLLISION_CROSS_BRANCH/PREDICTION_ONLY/DATASET_ONLY/COLLISION_SAME_BRANCH). No changes to SpanEvaluator, TokenEvaluator, EvaluationResult, or Plotter.",
   "userStories": [
     {
       "id": "US-001",
@@ -183,9 +183,9 @@
       "description": "As a user, I want a single call to automatically suppress all PREDICTION_ONLY labels so I don't have to manually map each one to None.",
       "acceptanceCriteria": [
         "mapper.suppress_prediction_only() collects all raw labels from PREDICTION_ONLY issues and calls map({lbl: None}) for each.",
-        "Returns self for chaining (e.g. mapper.analyze(df).suppress_prediction_only().get_mapped_results_dataframe()).",
+        "Returns None (mutates mapper in-place, consistent with analyze() and map()).",
         "After calling suppress_prediction_only(), get_issues() no longer contains any PREDICTION_ONLY issues.",
-        "If there are no PREDICTION_ONLY issues, the method is a no-op and returns self.",
+        "If there are no PREDICTION_ONLY issues, the method is a no-op and returns None.",
         "Raises RuntimeError if called before analyze().",
         "A unit test verifies that after suppress_prediction_only(), no PREDICTION_ONLY issues remain and all affected labels are mapped to None in get_mapping().",
         "Typecheck passes."
