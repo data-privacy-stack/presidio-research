@@ -362,9 +362,15 @@ class CanonicalMapper:
                 prediction_branches.add(bk)
 
         # ── COLLISION_CROSS_BRANCH (WARNING) ────────────────────────────────
-        # Prediction label co-occurs on the same tokens with annotation label(s)
-        # from a different hierarchy branch — AND cross-branch co-occurrences
-        # dominate over same-branch ones (otherwise it's a COLLISION_SAME_BRANCH).
+        # Raised only when BOTH conditions hold:
+        #   1. The prediction label co-occurs with annotation labels from a
+        #      different hierarchy branch.
+        #   2. The model never predicts *any* label on the annotation's branch —
+        #      that branch is entirely absent from all prediction labels.
+        # If the model has any prediction label on the annotation's branch (even
+        # a different label than the one being examined), the cross-branch tokens
+        # are simply FPs; the model could have predicted correctly on that branch,
+        # so no warning is needed.
         for pred_lbl, rec_pred in self._records.items():
             if self._label_prediction_counts.get(pred_lbl, 0) == 0:
                 continue
@@ -375,36 +381,40 @@ class CanonicalMapper:
                 continue
 
             cross_overlap: dict[str, int] = {}
-            same_branch_count = 0
             for ann_lbl, rec_ann in self._records.items():
                 if self._label_annotation_counts.get(ann_lbl, 0) == 0:
                     continue
                 if rec_ann.resolved is None or rec_ann.tier in ("UNRESOLVED", "NONE"):
                     continue
+                if _branch_key(rec_ann.resolved) == pred_bk:
+                    continue  # same branch — not a cross-branch collision
                 if self._results_df is not None:
                     mask = (self._results_df["prediction"] == pred_lbl) & (
                         self._results_df["annotation"] == ann_lbl
                     )
                     count = int(mask.sum())
-                    if count == 0:
-                        continue
-                    if _branch_key(rec_ann.resolved) == pred_bk:
-                        same_branch_count += count  # same branch — tally but skip
-                    else:
+                    if count > 0:
                         cross_overlap[ann_lbl] = count
 
             if not cross_overlap:
                 continue
 
-            # Skip if same-branch co-occurrences dominate: the label is mostly
-            # correctly branched; the cross-branch tokens are incidental FPs.
-            cross_total = sum(cross_overlap.values())
-            if same_branch_count >= cross_total:
+            # Condition 2: only keep annotation labels whose branch the model
+            # never predicts at all (entirely absent from prediction_branches).
+            # If the model CAN predict on branch Y (via any prediction label),
+            # the cross-branch tokens are FPs — no structural issue.
+            unreachable_overlap = {
+                ann_lbl: cnt
+                for ann_lbl, cnt in cross_overlap.items()
+                if _branch_key(self._records[ann_lbl].resolved)
+                not in prediction_branches
+            }
+            if not unreachable_overlap:
                 continue
 
             n_pred = self._label_prediction_counts.get(pred_lbl, 0)
             top_overlap = sorted(
-                cross_overlap.items(), key=lambda x: x[1], reverse=True
+                unreachable_overlap.items(), key=lambda x: x[1], reverse=True
             )[:3]
             options = []
             for ann_lbl, cnt in top_overlap:
@@ -439,7 +449,7 @@ class CanonicalMapper:
                     severity=IssueSeverity.WARNING,
                     message=(
                         f"{pred_lbl!r} (→ {rec_pred.resolved!r}) co-occurs with "
-                        f"annotation(s) on a different hierarchy branch.{insight} "
+                        f"annotation(s) on a branch the model never covers.{insight} "
                         f"Call mapper.map({{{pred_lbl!r}: 'TARGET'}}) to remap or suppress."
                     ),
                     labels=[pred_lbl],

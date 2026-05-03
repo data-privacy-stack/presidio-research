@@ -15,7 +15,7 @@
 
 ## Five Issue Types (IssueType enum)
 - UNRESOLVED (ERROR, blocking)
-- COLLISION_CROSS_BRANCH (WARNING, blocking)
+- COLLISION_CROSS_BRANCH (WARNING, blocking) — only raised when cross-branch co-occurrences outnumber same-branch ones for the prediction label
 - PREDICTION_ONLY (WARNING, blocking)
 - DATASET_ONLY (WARNING, non-blocking)
 - COLLISION_SAME_BRANCH (INFO, non-blocking)
