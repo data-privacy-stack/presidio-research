@@ -62,7 +62,7 @@ class MapperRenderer:
     def build_summary_html(self) -> str:
         """Return a compact HTML table: one row per label with counts and match confidence.
 
-        Columns: Label | Canonical match | Projected to | Annotations | Predictions | Confidence
+        Columns: Label | Resolved as | Annotations | Predictions | Confidence
         """
         m = self._mapper
         records = m._records
@@ -137,7 +137,7 @@ class MapperRenderer:
             '<table style="width:100%;border-collapse:collapse;font-size:13px">'
             '<thead><tr style="background:#f6f8fa">'
             '<th style="padding:6px 10px;border:1px solid #d0d7de;text-align:left">Label</th>'
-            '<th style="padding:6px 10px;border:1px solid #d0d7de;text-align:left">Mapped to</th>'
+            '<th style="padding:6px 10px;border:1px solid #d0d7de;text-align:left">Resolved as</th>'
             '<th style="padding:6px 10px;border:1px solid #d0d7de;text-align:right">Annotations</th>'
             '<th style="padding:6px 10px;border:1px solid #d0d7de;text-align:right">Predictions</th>'
             '<th style="padding:6px 10px;border:1px solid #d0d7de;text-align:left">Confidence</th>'
@@ -146,10 +146,10 @@ class MapperRenderer:
         return (
             '<div style="font-family:-apple-system,BlinkMacSystemFont,'
             'Segoe UI,Helvetica,Arial,sans-serif;max-width:900px">'
-            '<h4 style="margin:0 0 6px;color:#24292f">Label mapping summary</h4>'
+            '<h4 style="margin:0 0 6px;color:#24292f">Label identification summary</h4>'
             '<p style="font-size:12px;color:#57606a;margin:0 0 8px">'
-            "One row per label. <em>Mapped to</em> is the resolved hierarchy entity. "
-            "Counts are pre-mapping token occurrences.</p>" + table + "</div>"
+            "One row per label. <em>Resolved as</em> is the hierarchy entity this label was identified as. "
+            "Counts are token occurrences in the dataset.</p>" + table + "</div>"
         )
 
     def build_html(self) -> str:
@@ -329,7 +329,7 @@ class MapperRenderer:
             _th = 'style="padding:6px 10px;border:1px solid #d0d7de'
             header_cells = (
                 f'<th {_th};text-align:left">Label</th>'
-                f'<th {_th};text-align:left">Mapped to</th>'
+                f'<th {_th};text-align:left">Resolved as</th>'
                 f'<th {_th};text-align:right">Tokens</th>'
             )
             if has_issues:
