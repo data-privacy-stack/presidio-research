@@ -36,8 +36,9 @@
 - `MappedResults` is in `presidio_evaluator/entity_mapping/data_objects.py`
 
 ## level_helpers
-- `to_binary(label)` and `to_branch(label, hierarchy)` are pure functions
-- `level_helpers.py` has no imports from `mapper.py` — no circular deps
+- `to_binary(label)` and `to_branch(label)` are now **instance methods on `EntityHierarchy`** (moved from the deleted `level_helpers.py`)
+- Call via `hierarchy_instance.to_binary(label)` / `hierarchy_instance.to_branch(label)`
+- `EntityHierarchy` has no imports from `mapper.py` — no circular deps
 - For branch lookups use `EntityHierarchy(canonical_depth=10)`
 
 ## Notebooks
