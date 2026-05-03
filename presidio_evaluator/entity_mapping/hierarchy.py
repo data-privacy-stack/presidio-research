@@ -296,6 +296,31 @@ class EntityHierarchy:
             return self.raw_to_canonical[matches[0]]
         return None
 
+    def to_binary(self, label: str | None) -> str:
+        """Project *label* to binary PII / O.
+
+        ``None`` and ``"O"`` → ``"O"``; anything else → ``"PII"``.
+        """
+        if label is None or label == "O":
+            return "O"
+        return "PII"
+
+    def to_branch(self, label: str | None) -> str:
+        """Project *label* to its depth-2 branch ancestor.
+
+        ``None`` and ``"O"`` → ``"O"``.  Any non-O label found in the
+        hierarchy is mapped to the path element at index 1 (the depth-2 node,
+        e.g. ``PERSON``, ``LOCATION``, …).  If the label is itself a depth-2
+        node it is returned unchanged.  Labels not found in the hierarchy are
+        returned as-is.
+        """
+        if label is None or label == "O":
+            return "O"
+        branch_path = self.canonical_to_branch.get(label)
+        if branch_path is None or len(branch_path) < 2:
+            return label
+        return branch_path[1]
+
     def _find_node(
         self,
         name: str,

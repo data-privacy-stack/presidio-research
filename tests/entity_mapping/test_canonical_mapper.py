@@ -379,6 +379,66 @@ class TestMap:
 
 
 # ---------------------------------------------------------------------------
+# suppress_prediction_only()
+# ---------------------------------------------------------------------------
+
+
+class TestSuppressPredictionOnly:
+    def test_clears_prediction_only_issues(self):
+        # EMAIL_ADDRESS in predictions only → PREDICTION_ONLY → suppressed
+        df = _make_df(["NAME"] * 5, ["EMAIL_ADDRESS"] * 5)
+        mapper = CanonicalMapper().analyze(df)
+        assert any(i.type == IssueType.PREDICTION_ONLY for i in mapper.get_issues())
+        mapper.suppress_prediction_only()
+        assert not any(i.type == IssueType.PREDICTION_ONLY for i in mapper.get_issues())
+
+    def test_suppressed_labels_mapped_to_none(self):
+        df = _make_df(["NAME"] * 5, ["EMAIL_ADDRESS"] * 5)
+        mapper = CanonicalMapper().analyze(df)
+        pred_only_labels = {
+            lbl
+            for i in mapper.get_issues()
+            if i.type == IssueType.PREDICTION_ONLY
+            for lbl in i.labels
+        }
+        mapper.suppress_prediction_only()
+        mapping = mapper.get_mapping()
+        for lbl in pred_only_labels:
+            assert mapping.get(lbl) is None, f"{lbl!r} should be suppressed (None)"
+
+    def test_returns_self_for_chaining(self):
+        df = _make_df(["NAME"] * 5, ["EMAIL_ADDRESS"] * 5)
+        mapper = CanonicalMapper().analyze(df)
+        result = mapper.suppress_prediction_only()
+        assert result is mapper
+
+    def test_noop_when_no_prediction_only(self):
+        df = _make_df(["NAME"] * 5, ["NAME"] * 5)
+        mapper = CanonicalMapper().analyze(df)
+        assert not any(i.type == IssueType.PREDICTION_ONLY for i in mapper.get_issues())
+        result = mapper.suppress_prediction_only()
+        assert result is mapper  # returns self, no error
+
+    def test_raises_before_analyze(self):
+        mapper = CanonicalMapper()
+        with pytest.raises(RuntimeError, match="analyze"):
+            mapper.suppress_prediction_only()
+
+    def test_chaining_with_get_mapped_results(self):
+        from presidio_evaluator.entity_mapping import MappedResults  # noqa: PLC0415
+
+        df = _make_df(["NAME"] * 5, ["NAME"] * 3 + ["EMAIL_ADDRESS"] * 2)
+        # EMAIL_ADDRESS is prediction-only; after suppression no blocking issues remain
+        result = (
+            CanonicalMapper()
+            .analyze(df)
+            .suppress_prediction_only()
+            .get_mapped_results_dataframe()
+        )
+        assert isinstance(result, MappedResults)
+
+
+# ---------------------------------------------------------------------------
 # get_mapped_results_dataframe()
 # ---------------------------------------------------------------------------
 

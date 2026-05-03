@@ -17,7 +17,6 @@ from presidio_evaluator.entity_mapping.data_objects import (
 )
 from presidio_evaluator.entity_mapping.definitions import EntityNotMappedError
 from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
-from presidio_evaluator.entity_mapping.level_helpers import to_binary, to_branch
 
 logger = logging.getLogger("presidio_evaluator.entity_mapping")
 
@@ -644,6 +643,28 @@ class CanonicalMapper:
 
         return self
 
+    def suppress_prediction_only(self) -> CanonicalMapper:
+        """Suppress all PREDICTION_ONLY labels by mapping them to None.
+
+        Automatically maps every raw label from every PREDICTION_ONLY issue to
+        ``None`` (excluded from evaluation).  Useful as a quick one-liner when
+        prediction-only labels should simply be ignored rather than remapped.
+
+        :raises RuntimeError: if called before :meth:`analyze`.
+        :return: self for chaining.
+        """
+        if self._results_df is None:
+            raise RuntimeError("Call analyze() before suppress_prediction_only().")
+        labels_to_suppress = {
+            lbl
+            for issue in self._issues
+            if issue.type == IssueType.PREDICTION_ONLY
+            for lbl in issue.labels
+        }
+        if labels_to_suppress:
+            self.map(dict.fromkeys(labels_to_suppress))
+        return self
+
     def resolve_interactively(self, prompt_fn=input) -> CanonicalMapper:
         """Prompt the user to resolve all WARNING+ issues interactively.
 
@@ -762,9 +783,9 @@ class CanonicalMapper:
             if resolved is None or resolved == "O":
                 return "O"
             if level == "binary":
-                return to_binary(resolved)
+                return _FULL_HIERARCHY.to_binary(resolved)
             if level == "branch":
-                return to_branch(resolved, _FULL_HIERARCHY)
+                return _FULL_HIERARCHY.to_branch(resolved)
             # detailed — hierarchy node at native depth
             return resolved
 

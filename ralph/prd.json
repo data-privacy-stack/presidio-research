@@ -176,6 +176,23 @@
       "priority": 10,
       "passes": true,
       "notes": "Depends on US-001 through US-007 all passing."
+    },
+    {
+      "id": "US-011",
+      "title": "Add suppress_prediction_only() convenience method",
+      "description": "As a user, I want a single call to automatically suppress all PREDICTION_ONLY labels so I don't have to manually map each one to None.",
+      "acceptanceCriteria": [
+        "mapper.suppress_prediction_only() collects all raw labels from PREDICTION_ONLY issues and calls map({lbl: None}) for each.",
+        "Returns self for chaining (e.g. mapper.analyze(df).suppress_prediction_only().get_mapped_results_dataframe()).",
+        "After calling suppress_prediction_only(), get_issues() no longer contains any PREDICTION_ONLY issues.",
+        "If there are no PREDICTION_ONLY issues, the method is a no-op and returns self.",
+        "Raises RuntimeError if called before analyze().",
+        "A unit test verifies that after suppress_prediction_only(), no PREDICTION_ONLY issues remain and all affected labels are mapped to None in get_mapping().",
+        "Typecheck passes."
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Depends on US-002 (PREDICTION_ONLY issue type) and US-003 (map() method)."
     }
   ]
 }
