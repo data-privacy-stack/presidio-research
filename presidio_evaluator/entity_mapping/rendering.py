@@ -224,10 +224,11 @@ class MapperRenderer:
                 "entirely new entity type."
             ),
             IssueType.COLLISION_CROSS_BRANCH: (
-                "This label maps to a hierarchy entity on a "
-                "<strong>different branch</strong> from all entities in your dataset. "
-                "Since there's no natural correspondence, the mapper can't resolve it "
-                "automatically."
+                "This prediction label co-occurs on the same tokens with annotation labels "
+                "from a <strong>different hierarchy branch that the model never covers</strong>. "
+                "The model predicts this label where a cross-branch entity is annotated, "
+                "and it never predicts <em>anything</em> on that annotation's branch — "
+                "so the conflict can't be resolved by hierarchical evaluation."
             ),
             IssueType.PREDICTION_ONLY: (
                 "The model predicts this entity type, but the dataset "

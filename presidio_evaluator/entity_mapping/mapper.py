@@ -376,44 +376,40 @@ class CanonicalMapper:
             if not pred_bk:
                 continue
 
+            # Single pass: collect same-branch hits and cross-branch co-occurrences.
             cross_overlap: dict[str, int] = {}
+            same_branch_count = 0
             for ann_lbl, rec_ann in self._records.items():
                 if self._label_annotation_counts.get(ann_lbl, 0) == 0:
                     continue
                 if rec_ann.resolved is None or rec_ann.tier in ("UNRESOLVED", "NONE"):
                     continue
-                if _branch_key(rec_ann.resolved) == pred_bk:
-                    continue  # same branch — not a cross-branch collision
                 if self._results_df is not None:
                     mask = (self._results_df["prediction"] == pred_lbl) & (
                         self._results_df["annotation"] == ann_lbl
                     )
                     count = int(mask.sum())
-                    if count > 0:
-                        cross_overlap[ann_lbl] = count
+                    if count == 0:
+                        continue
+                    if _branch_key(rec_ann.resolved) == pred_bk:
+                        same_branch_count += count  # legitimate hit — same branch
+                    else:
+                        cross_overlap[ann_lbl] = count  # cross-branch co-occurrence
+
+            # Case 1: pred_lbl has at least one same-branch co-occurrence → the
+            # cross-branch tokens are ordinary FPs, not a structural mapping issue.
+            if same_branch_count > 0:
+                continue
 
             if not cross_overlap:
                 continue
 
-            # Condition 2: only keep annotation labels whose branch the model
-            # never predicts at all (entirely absent from prediction_branches).
-            # If the model CAN predict on branch Y (via any prediction label),
-            # the cross-branch tokens are FPs — no structural issue.
-            unreachable_overlap = {
-                ann_lbl: cnt
-                for ann_lbl, cnt in cross_overlap.items()
-                if _branch_key(self._records[ann_lbl].resolved)
-                not in prediction_branches
-            }
-            if not unreachable_overlap:
-                continue
-
             n_pred = self._label_prediction_counts.get(pred_lbl, 0)
-            top_overlap = sorted(
-                unreachable_overlap.items(), key=lambda x: x[1], reverse=True
-            )[:3]
+            top_cross = sorted(cross_overlap.items(), key=lambda x: x[1], reverse=True)[
+                :3
+            ]
             options = []
-            for ann_lbl, cnt in top_overlap:
+            for ann_lbl, cnt in top_cross:
                 rec_ann = self._records.get(ann_lbl)
                 target = rec_ann.resolved if rec_ann and rec_ann.resolved else ann_lbl
                 options.append(
@@ -433,12 +429,80 @@ class CanonicalMapper:
                     mapper_call={pred_lbl: None},
                 )
             )
+
+            # Case 2: pred_lbl's own branch IS annotated, but the model never
+            # predicts it on same-branch tokens — all predictions fall on other
+            # branches. The label resolves correctly but is systematically displaced.
+            if pred_bk in annotation_branches:
+                insight = ""
+                if top_cross and top_cross[0][1] > 50:
+                    insight = (
+                        f" Systematic displacement: {pred_lbl!r} predicted on "
+                        f"{top_cross[0][1]} {top_cross[0][0]!r} tokens instead."
+                    )
+                self._issues.append(
+                    MappingIssue(
+                        type=IssueType.COLLISION_CROSS_BRANCH,
+                        severity=IssueSeverity.WARNING,
+                        message=(
+                            f"{pred_lbl!r} (→ {rec_pred.resolved!r}) is never predicted "
+                            f"on its own-branch annotations — all {n_pred} predictions "
+                            f"fall on other entity branches.{insight} "
+                            f"Call mapper.map({{{pred_lbl!r}: 'TARGET'}}) to remap or suppress."
+                        ),
+                        labels=[pred_lbl],
+                        annotation_count=0,
+                        prediction_count=n_pred,
+                        resolution_options=options,
+                        overlap_counts=dict(top_cross),
+                    )
+                )
+                continue
+
+            # Case 3: pred_lbl's branch is entirely absent from annotations.
+            # Only fire when the annotation's branch is also absent from all
+            # prediction labels (unreachable) — otherwise the FPs are covered
+            # by another prediction label on the same branch.
+            unreachable_overlap = {
+                ann_lbl: cnt
+                for ann_lbl, cnt in cross_overlap.items()
+                if _branch_key(self._records[ann_lbl].resolved)
+                not in prediction_branches
+            }
+            if not unreachable_overlap:
+                continue
+
+            top_overlap = sorted(
+                unreachable_overlap.items(), key=lambda x: x[1], reverse=True
+            )[:3]
             insight = ""
             if top_overlap and top_overlap[0][1] > 50:
                 insight = (
                     f" Systematic misprediction: {pred_lbl!r} predicted on "
                     f"{top_overlap[0][1]} {top_overlap[0][0]!r} tokens."
                 )
+            # reuse options already built from top_cross (same labels for case 3)
+            options_3 = []
+            for ann_lbl, cnt in top_overlap:
+                rec_ann = self._records.get(ann_lbl)
+                target = rec_ann.resolved if rec_ann and rec_ann.resolved else ann_lbl
+                options_3.append(
+                    ResolutionOption(
+                        action="map_to_canonical",
+                        description=(
+                            f"Remap {pred_lbl!r} to {target!r} "
+                            f"({cnt} token co-occurrences with {ann_lbl!r})"
+                        ),
+                        mapper_call={pred_lbl: target},
+                    )
+                )
+            options_3.append(
+                ResolutionOption(
+                    action="suppress",
+                    description=f"Suppress {pred_lbl!r} from evaluation",
+                    mapper_call={pred_lbl: None},
+                )
+            )
             self._issues.append(
                 MappingIssue(
                     type=IssueType.COLLISION_CROSS_BRANCH,
@@ -451,7 +515,7 @@ class CanonicalMapper:
                     labels=[pred_lbl],
                     annotation_count=0,
                     prediction_count=n_pred,
-                    resolution_options=options,
+                    resolution_options=options_3,
                     overlap_counts=dict(top_overlap),
                 )
             )

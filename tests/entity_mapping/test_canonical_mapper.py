@@ -219,12 +219,11 @@ class TestIssues:
             assert issue.severity == IssueSeverity.INFO
             assert issue.overlap_counts is not None
 
-    def test_cross_branch_dominant_same_branch_suppressed(self):
-        # LOCATION (LOCATION branch) predicted on mostly STREET_ADDRESS (LOCATION branch)
-        # tokens — same branch dominates. A few NAME (PERSON branch) tokens are incidental,
-        # but the model also predicts PERSON (same branch as NAME) → no CROSS_BRANCH warning.
-        annotations = ["STREET_ADDRESS"] * 10 + ["NAME"] * 2
-        predictions = ["LOCATION"] * 10 + ["PERSON"] * 2
+    def test_cross_branch_suppressed_when_same_branch_hit_exists(self):
+        # LOCATION has same-branch hits (predicted on STREET_ADDRESS tokens) AND
+        # cross-branch FPs (predicted on NAME tokens) → Case 1 → no warning.
+        annotations = ["STREET_ADDRESS"] * 5 + ["NAME"] * 5
+        predictions = ["LOCATION"] * 10
         df = _make_df(annotations, predictions)
         mapper = CanonicalMapper()
         mapper.analyze(df)
@@ -232,15 +231,17 @@ class TestIssues:
             i for i in mapper.get_issues() if i.type == IssueType.COLLISION_CROSS_BRANCH
         ]
         assert cross == [], (
-            "LOCATION should not be COLLISION_CROSS_BRANCH when the model also "
-            "predicts PERSON (same branch as the cross-branch annotation NAME)"
+            "LOCATION should not fire COLLISION_CROSS_BRANCH when it is also "
+            "predicted on same-branch tokens (STREET_ADDRESS)"
         )
 
-    def test_cross_branch_fires_when_model_never_predicts_annotation_branch(self):
-        # LOCATION predicted on NAME (PERSON branch) tokens, and the model NEVER predicts
-        # anything on the PERSON branch → true structural cross-branch issue → warning fires.
-        annotations = ["NAME"] * 8 + ["STREET_ADDRESS"] * 2
-        predictions = ["LOCATION"] * 10  # no PERSON/NAME predictions at all
+    def test_cross_branch_case2_displaced_prediction(self):
+        # LOCATION branch IS annotated (STREET_ADDRESS), but LOCATION is only ever
+        # predicted on NAME tokens — same_branch_count == 0 → Case 2 → warning fires.
+        # Row layout: annotation=NAME on first 5, annotation=STREET_ADDRESS on last 5
+        #             prediction=LOCATION on first 5 only (last 5 predict O)
+        annotations = ["NAME"] * 5 + ["STREET_ADDRESS"] * 5
+        predictions = ["LOCATION"] * 5 + ["O"] * 5
         df = _make_df(annotations, predictions)
         mapper = CanonicalMapper()
         mapper.analyze(df)
@@ -248,15 +249,33 @@ class TestIssues:
             i for i in mapper.get_issues() if i.type == IssueType.COLLISION_CROSS_BRANCH
         ]
         assert len(cross) > 0, (
-            "LOCATION predicted on NAME tokens with zero PERSON-branch predictions "
-            "should produce COLLISION_CROSS_BRANCH"
+            "LOCATION never predicted on LOCATION-branch (STREET_ADDRESS) tokens "
+            "but is predicted on NAME (PERSON-branch) tokens → should warn (Case 2)"
+        )
+        assert "never predicted" in cross[0].message or "all" in cross[0].message
+
+    def test_cross_branch_case3_branch_absent_from_annotations(self):
+        # DATE_TIME branch entirely absent from annotations (only NAME annotated).
+        # Model predicts DATE_TIME on NAME tokens and never predicts PERSON-branch labels.
+        # → Case 3 → COLLISION_CROSS_BRANCH fires.
+        annotations = ["NAME"] * 8
+        predictions = ["DATE_TIME"] * 8
+        df = _make_df(annotations, predictions)
+        mapper = CanonicalMapper()
+        mapper.analyze(df)
+        cross = [
+            i for i in mapper.get_issues() if i.type == IssueType.COLLISION_CROSS_BRANCH
+        ]
+        assert len(cross) > 0, (
+            "DATE_TIME (branch absent from annotations) predicted on NAME tokens "
+            "with no PERSON-branch predictions → Case 3 should fire"
         )
 
     def test_cross_branch_suppressed_when_model_covers_annotation_branch(self):
-        # LOCATION predicted on NAME tokens (cross-branch), but the model also predicts
-        # PERSON elsewhere (same branch as NAME) → model covers that branch → no warning.
+        # LOCATION is predicted on both STREET_ADDRESS (same-branch hit) and NAME
+        # tokens (cross-branch FP) → same_branch_count > 0 → Case 1 → no warning.
         annotations = ["NAME"] * 8 + ["STREET_ADDRESS"] * 2
-        predictions = ["LOCATION"] * 8 + ["PERSON"] * 2
+        predictions = ["LOCATION"] * 10  # LOCATION on STREET_ADDRESS = same-branch hit
         df = _make_df(annotations, predictions)
         mapper = CanonicalMapper()
         mapper.analyze(df)
@@ -264,8 +283,8 @@ class TestIssues:
             i for i in mapper.get_issues() if i.type == IssueType.COLLISION_CROSS_BRANCH
         ]
         assert cross == [], (
-            "LOCATION predicted on NAME tokens should not be COLLISION_CROSS_BRANCH "
-            "when the model also predicts PERSON (the NAME annotation's branch)"
+            "LOCATION should not be COLLISION_CROSS_BRANCH when it is also "
+            "predicted on same-branch (STREET_ADDRESS) tokens"
         )
 
     def test_issues_have_token_counts(self):
