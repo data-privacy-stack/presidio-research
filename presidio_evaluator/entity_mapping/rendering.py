@@ -244,26 +244,34 @@ class MapperRenderer:
                 "<strong>Handled automatically</strong> by hierarchical evaluation "
                 "(branch/detailed projection). No action required."
             ),
-        }
-
-        # ── Short descriptions for INFO issues merged into label tables ───
-        table_issue_desc = {
-            IssueType.COLLISION_SAME_BRANCH: (
-                "Same-branch depth mismatch — handled automatically by hierarchical evaluation "
-                "(branch/detailed projection)."
-            ),
             IssueType.DATASET_ONLY: (
-                "The dataset annotates this entity type, but the model never predicts it "
-                "(model coverage gap)."
+                "The dataset annotates this entity type, but the model "
+                "<strong>never predicts it</strong>. There are no predictions to evaluate, "
+                "so recall will be zero for this label. Consider whether the model is "
+                "expected to detect this entity type."
             ),
         }
 
-        # ── Build label → INFO-issue map for merging into label tables ────
-        info_issue_map: dict = {}
-        for issue in m.get_issues():
-            if issue.severity == IssueSeverity.INFO:
-                for lbl in issue.labels:
-                    info_issue_map[lbl] = issue
+        def _tier_legend() -> str:
+            items = [
+                ("#d1f4e0", "#2da44e", "Exact match"),
+                ("#ddf4ff", "#0969da", "Fuzzy / country match / manual"),
+                ("#fff8c5", "#d4a72c", "Country fallback (catch-all)"),
+                ("#ffebe9", "#cf222e", "Unresolved"),
+                ("#f6f8fa", "#57606a", "Suppressed"),
+            ]
+            swatches = "".join(
+                f'<span style="display:inline-flex;align-items:center;'
+                f'margin-right:14px;font-size:11px;color:#57606a">'
+                f'<span style="display:inline-block;width:12px;height:12px;'
+                f"border-radius:2px;background:{bg};border:1px solid {fg};"
+                f'margin-right:4px"></span>{label}</span>'
+                for bg, fg, label in items
+            )
+            return (
+                f'<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap">'
+                f"{swatches}</div>"
+            )
 
         # ── Section pairs ─────────────────────────────────────────────────
         ann_pairs = sorted(
@@ -282,7 +290,7 @@ class MapperRenderer:
             ),
         )
 
-        # ── Label table (with grouped INFO-issue rows) ────────────────────
+        # ── Label table ───────────────────────────────────────────────────
         def _label_table(pairs: list, token_col: dict) -> str:  # noqa: ANN001
             if not pairs:
                 return (
@@ -290,7 +298,6 @@ class MapperRenderer:
                     'margin:4px 0">None</p>'
                 )
 
-            has_issues = any(lbl in info_issue_map for lbl, _ in pairs)
             _td = 'style="padding:6px 10px;border:1px solid #d0d7de'
             rows = []
 
@@ -310,21 +317,8 @@ class MapperRenderer:
                     f'<td {_td}">{projected_cell}</td>'
                     f'<td {_td};text-align:right;color:#57606a;font-size:12px">'
                     f"{tokens if tokens else '—'}</td>"
+                    "</tr>"
                 )
-                if has_issues:
-                    issue = info_issue_map.get(lbl)
-                    issue_desc = table_issue_desc.get(issue.type, "") if issue else ""
-                    fix_html = (
-                        _render_resolution_options(issue)
-                        if issue and issue.resolution_options
-                        else ("—" if issue else "")
-                    )
-                    row += (
-                        f'<td {_td};font-size:12px;color:#24292f;line-height:1.5">'
-                        f"{issue_desc}</td>"
-                        f'<td {_td};font-size:12px">{fix_html}</td>'
-                    )
-                row += "</tr>"
                 rows.append(row)
 
             _th = 'style="padding:6px 10px;border:1px solid #d0d7de'
@@ -333,11 +327,6 @@ class MapperRenderer:
                 f'<th {_th};text-align:left">Resolved as</th>'
                 f'<th {_th};text-align:right">Tokens</th>'
             )
-            if has_issues:
-                header_cells += (
-                    f'<th {_th};text-align:left">Issue</th>'
-                    f'<th {_th};text-align:left">Suggested fix</th>'
-                )
             return (
                 '<table style="width:100%;border-collapse:collapse;'
                 'font-size:13px;margin-top:8px">'
@@ -367,7 +356,8 @@ class MapperRenderer:
             },
         }
 
-        gap_cards = []
+        error_cards = []
+        warning_cards = []
         for issue in m.get_issues():
             sty = sev_style[issue.severity]
             why = gap_why.get(issue.type, "")
@@ -382,7 +372,7 @@ class MapperRenderer:
                 f"{sty['label']}</span>"
             )
             fix_html = _render_resolution_options(issue)
-            gap_cards.append(
+            card = (
                 f'<div style="background:{sty["bg"]};border:1px solid {sty["border"]};'
                 f'border-radius:6px;padding:12px 16px;margin:10px 0">'
                 f'<div style="margin-bottom:6px">'
@@ -393,13 +383,27 @@ class MapperRenderer:
                 f"{fix_html}"
                 f"</div>"
             )
+            if issue.severity == IssueSeverity.ERROR:
+                error_cards.append(card)
+            else:
+                warning_cards.append(card)
 
-        gaps_section = (
-            "".join(gap_cards)
-            if gap_cards
+        blocking_section = (
+            "".join(error_cards)
+            if error_cards
             else (
                 '<p style="color:#2da44e;font-size:13px;margin:6px 0">'
                 "&#10003; No blocking issues. All labels are fully resolved.</p>"
+            )
+        )
+
+        n_warnings = len(warning_cards)
+        warnings_section = (
+            "".join(warning_cards)
+            if warning_cards
+            else (
+                '<p style="color:#57606a;font-size:13px;font-style:italic;margin:6px 0">'
+                "No warnings.</p>"
             )
         )
 
@@ -485,24 +489,31 @@ class MapperRenderer:
                 f"{n_blocking} requiring action" if n_blocking else "none",
             )
             + '<p style="font-size:12px;color:#57606a;margin:2px 0 4px">'
-            "Labels that could not be mapped automatically (ERROR / WARNING). "
+            "Labels that could not be mapped automatically (ERROR). "
             "Resolve these before calling <code>mapper.get_mapped_results_dataframe()</code>.</p>"
-            + gaps_section
+            + blocking_section
             + _section_heading(
-                "2. Annotation labels",
+                "2. Warnings",
+                f"{n_warnings} item(s)" if n_warnings else "none",
+            )
+            + '<p style="font-size:12px;color:#57606a;margin:2px 0 4px">'
+            "Non-blocking warnings (WARNING). These won't prevent evaluation but may affect results.</p>"
+            + warnings_section
+            + _section_heading(
+                "3. Annotation labels",
                 f"{len(ann_pairs)} label(s) from your dataset",
             )
             + '<p style="font-size:12px;color:#57606a;margin:2px 0 4px">'
-            "The entity labels in your ground-truth annotations. "
-            "Non-blocking issues (INFO) are shown inline.</p>"
+            "The entity labels in your ground-truth annotations.</p>"
+            + _tier_legend()
             + _label_table(ann_pairs, ann_counts)
             + _section_heading(
-                "3. Prediction labels",
+                "4. Prediction labels",
                 f"{len(pred_pairs)} label(s) from the model",
             )
             + '<p style="font-size:12px;color:#57606a;margin:2px 0 4px">'
-            "The entity labels your model outputs. "
-            "Non-blocking issues (INFO) are shown inline.</p>"
+            "The entity labels your model outputs.</p>"
+            + _tier_legend()
             + _label_table(pred_pairs, pred_counts)
             + "</div>"
         )

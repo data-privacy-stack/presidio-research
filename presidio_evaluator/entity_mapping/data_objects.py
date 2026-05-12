@@ -97,3 +97,28 @@ class MappedResults:
     binary: pd.DataFrame
     branch: pd.DataFrame
     detailed: pd.DataFrame
+
+    def get_level(self, level: str) -> pd.DataFrame:
+        """Get the DataFrame for the specified mapping level."""
+        if level == "original":
+            return self.original
+        elif level == "binary":
+            return self.binary
+        elif level == "branch":
+            return self.branch
+        elif level == "detailed":
+            return self.detailed
+        else:
+            raise ValueError(f"Invalid level: {level}")
+
+    def get_prediction_entities_list(self, level: str) -> list[str]:
+        """Get the list of unique entities present in the specified level."""
+        df = self.get_level(level)
+        entities = set(df["prediction"].unique())
+        return sorted(e for e in entities if e != "O")
+
+    def get_annotation_entities_list(self, level: str) -> list[str]:
+        """Get the list of unique entities present in the specified level."""
+        df = self.get_level(level)
+        entities = set(df["annotation"].unique())
+        return sorted(e for e in entities if e != "O")

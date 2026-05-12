@@ -87,6 +87,7 @@ class CanonicalMapper:
         *,
         hierarchy: dict | EntityHierarchy | None = None,
         fuzzy_threshold: float = 0.80,
+        min_collision_count: int = 1,
     ) -> None:
         if isinstance(hierarchy, dict):
             self._hierarchy = EntityHierarchy(hierarchy=hierarchy)
@@ -96,6 +97,7 @@ class CanonicalMapper:
             self._hierarchy = EntityHierarchy()
 
         self._fuzzy_threshold = fuzzy_threshold
+        self._min_collision_count = min_collision_count
 
         # Identification state
         self._stripped: dict[str, str] = {}
@@ -125,6 +127,7 @@ class CanonicalMapper:
         self,
         results_df: pd.DataFrame,
         min_severity: str | IssueSeverity = "WARNING",
+        min_collision_count: int | None = None,
     ) -> None:
         """Identify all labels in the hierarchy (single-phase, no projection).
 
@@ -136,8 +139,18 @@ class CanonicalMapper:
             render_html(). Accepts 'ERROR', 'WARNING', 'INFO' (or IssueSeverity
             enum values). Default is 'WARNING'. COLLISION_SAME_BRANCH (INFO)
             is only shown when min_severity='INFO'.
+        :param min_collision_count: Minimum number of cross-branch token
+            co-occurrences required to raise a COLLISION_CROSS_BRANCH warning.
+            Collisions with fewer co-occurrences than this threshold are silently
+            ignored. Defaults to the value set on the mapper at construction
+            time (1 — every collision is reported). Pass a higher value (e.g.
+            ``min_collision_count=5``) to suppress spurious warnings caused by
+            rare label co-occurrences.
         :raises ValueError: If min_severity is an unrecognised string.
         """
+        if min_collision_count is not None:
+            self._min_collision_count = min_collision_count
+
         # Validate min_severity
         if isinstance(min_severity, str):
             try:
@@ -434,6 +447,9 @@ class CanonicalMapper:
             # predicts it on same-branch tokens — all predictions fall on other
             # branches. The label resolves correctly but is systematically displaced.
             if pred_bk in annotation_branches:
+                total_cross = sum(cross_overlap.values())
+                if total_cross < self._min_collision_count:
+                    continue
                 insight = ""
                 if top_cross and top_cross[0][1] > 50:
                     insight = (
@@ -475,6 +491,9 @@ class CanonicalMapper:
             top_overlap = sorted(
                 unreachable_overlap.items(), key=lambda x: x[1], reverse=True
             )[:3]
+            total_overlap = sum(unreachable_overlap.values())
+            if total_overlap < self._min_collision_count:
+                continue
             insight = ""
             if top_overlap and top_overlap[0][1] > 50:
                 insight = (

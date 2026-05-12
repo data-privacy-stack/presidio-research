@@ -288,6 +288,7 @@ HIERARCHY: dict = {
                         "ACCOUNTNUM",
                         "ACC",
                         "BBAN",
+                        "BANK_NUMBER",
                     ],
                     "IBAN": ["IBAN_CODE"],
                     "SWIFT_BIC": ["BIC", "SWIFT_CODE"],

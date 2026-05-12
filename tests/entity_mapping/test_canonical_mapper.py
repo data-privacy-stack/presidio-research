@@ -577,6 +577,176 @@ class TestGetMappedResultsDf:
 
 
 # ---------------------------------------------------------------------------
+# get_mapped_results_dataframe() — projection scenarios
+#
+# These tests verify the actual annotation/prediction column values at each
+# level for the five scenarios described in the hierarchical-evaluation tests.
+#
+# Hierarchy depths used:
+#   1: PII
+#   2: PERSON, LOCATION
+#   3: NAME (under PERSON), GPE (under LOCATION)
+#   4: FIRST_NAME (→ resolves to NAME at default canonical_depth=3)
+# ---------------------------------------------------------------------------
+
+
+class TestMappedResultsProjectionScenarios:
+    """Validate column values in .original / .binary / .branch / .detailed."""
+
+    def _mapped(self, annotations, predictions):
+        df = _make_df(annotations, predictions)
+        mapper = CanonicalMapper()
+        mapper.analyze(df)
+        return mapper.get_mapped_results_dataframe()
+
+    # ------------------------------------------------------------------
+    # Scenario 1: dataset=depth-1 (PII), model=depths 2 & 3
+    # ------------------------------------------------------------------
+
+    def test_scenario1_original_preserves_raw_labels(self):
+        r = self._mapped(["PII", "PII"], ["PERSON", "NAME"])
+        assert r.original["annotation"].tolist() == ["PII", "PII"]
+        assert r.original["prediction"].tolist() == ["PERSON", "NAME"]
+
+    def test_scenario1_binary_both_sides_become_pii(self):
+        r = self._mapped(["PII", "PII"], ["PERSON", "NAME"])
+        assert set(r.binary["annotation"].unique()) == {"PII"}
+        assert set(r.binary["prediction"].unique()) == {"PII"}
+
+    def test_scenario1_branch_annotation_stays_pii_prediction_becomes_person(self):
+        """PII (depth-1) has no depth-2 ancestor; stays as PII. PERSON/NAME → PERSON."""
+        r = self._mapped(["PII", "PII"], ["PERSON", "NAME"])
+        assert r.branch["annotation"].tolist() == ["PII", "PII"]
+        assert r.branch["prediction"].tolist() == ["PERSON", "PERSON"]
+
+    def test_scenario1_detailed_annotation_stays_pii_prediction_uses_native_depth(self):
+        """PII stays PII; PERSON stays PERSON; NAME stays NAME at detailed level."""
+        r = self._mapped(["PII", "PII"], ["PERSON", "NAME"])
+        assert r.detailed["annotation"].tolist() == ["PII", "PII"]
+        assert r.detailed["prediction"].tolist() == ["PERSON", "NAME"]
+
+    # ------------------------------------------------------------------
+    # Scenario 2: dataset=depths 2 & 3, model=depth-1 (PII)
+    # ------------------------------------------------------------------
+
+    def test_scenario2_original_preserves_raw_labels(self):
+        r = self._mapped(["PERSON", "NAME"], ["PII", "PII"])
+        assert r.original["annotation"].tolist() == ["PERSON", "NAME"]
+        assert r.original["prediction"].tolist() == ["PII", "PII"]
+
+    def test_scenario2_binary_both_sides_become_pii(self):
+        r = self._mapped(["PERSON", "NAME"], ["PII", "PII"])
+        assert set(r.binary["annotation"].unique()) == {"PII"}
+        assert set(r.binary["prediction"].unique()) == {"PII"}
+
+    def test_scenario2_branch_annotation_becomes_person_prediction_stays_pii(self):
+        """PERSON → PERSON, NAME → PERSON at branch; PII stays PII."""
+        r = self._mapped(["PERSON", "NAME"], ["PII", "PII"])
+        assert r.branch["annotation"].tolist() == ["PERSON", "PERSON"]
+        assert r.branch["prediction"].tolist() == ["PII", "PII"]
+
+    def test_scenario2_detailed_annotation_native_prediction_stays_pii(self):
+        """PERSON stays PERSON, NAME stays NAME; PII stays PII at detailed."""
+        r = self._mapped(["PERSON", "NAME"], ["PII", "PII"])
+        assert r.detailed["annotation"].tolist() == ["PERSON", "NAME"]
+        assert r.detailed["prediction"].tolist() == ["PII", "PII"]
+
+    # ------------------------------------------------------------------
+    # Scenario 3: dataset=depth-2 + depth-3; model=depth-2 only
+    # Annotations: PERSON, NAME, LOCATION, GPE
+    # Predictions: PERSON, PERSON, LOCATION, LOCATION
+    # ------------------------------------------------------------------
+
+    def test_scenario3_binary_all_pii(self):
+        r = self._mapped(
+            ["PERSON", "NAME", "LOCATION", "GPE"],
+            ["PERSON", "PERSON", "LOCATION", "LOCATION"],
+        )
+        assert set(r.binary["annotation"].unique()) == {"PII"}
+        assert set(r.binary["prediction"].unique()) == {"PII"}
+
+    def test_scenario3_branch_depth3_annotations_fold_to_depth2(self):
+        """NAME→PERSON, GPE→LOCATION at branch; depth-2 annotations/predictions unchanged."""
+        r = self._mapped(
+            ["PERSON", "NAME", "LOCATION", "GPE"],
+            ["PERSON", "PERSON", "LOCATION", "LOCATION"],
+        )
+        assert r.branch["annotation"].tolist() == [
+            "PERSON",
+            "PERSON",
+            "LOCATION",
+            "LOCATION",
+        ]
+        assert r.branch["prediction"].tolist() == [
+            "PERSON",
+            "PERSON",
+            "LOCATION",
+            "LOCATION",
+        ]
+
+    def test_scenario3_detailed_depth2_annotations_stay_depth3_annotations_stay(self):
+        """At detailed: PERSON stays PERSON, NAME stays NAME, GPE stays GPE; predictions stay depth-2."""
+        r = self._mapped(
+            ["PERSON", "NAME", "LOCATION", "GPE"],
+            ["PERSON", "PERSON", "LOCATION", "LOCATION"],
+        )
+        assert r.detailed["annotation"].tolist() == [
+            "PERSON",
+            "NAME",
+            "LOCATION",
+            "GPE",
+        ]
+        assert r.detailed["prediction"].tolist() == [
+            "PERSON",
+            "PERSON",
+            "LOCATION",
+            "LOCATION",
+        ]
+
+    # ------------------------------------------------------------------
+    # Scenario 4: dataset=depth-4 (FIRST_NAME → NAME), model=depth-2 (PERSON)
+    # ------------------------------------------------------------------
+
+    def test_scenario4_binary_both_pii(self):
+        r = self._mapped(["FIRST_NAME"], ["PERSON"])
+        assert r.binary["annotation"].tolist() == ["PII"]
+        assert r.binary["prediction"].tolist() == ["PII"]
+
+    def test_scenario4_branch_both_become_person(self):
+        """FIRST_NAME resolves to NAME (depth-3) → PERSON branch; PERSON also → PERSON."""
+        r = self._mapped(["FIRST_NAME"], ["PERSON"])
+        assert r.branch["annotation"].tolist() == ["PERSON"]
+        assert r.branch["prediction"].tolist() == ["PERSON"]
+
+    def test_scenario4_detailed_annotation_is_name_prediction_is_person(self):
+        """FIRST_NAME resolves to NAME at canonical_depth=3; PERSON stays PERSON."""
+        r = self._mapped(["FIRST_NAME"], ["PERSON"])
+        assert r.detailed["annotation"].tolist() == ["NAME"]
+        assert r.detailed["prediction"].tolist() == ["PERSON"]
+
+    # ------------------------------------------------------------------
+    # Scenario 5: dataset=depth-2 (PERSON), model=depth-4 (FIRST_NAME → NAME)
+    # ------------------------------------------------------------------
+
+    def test_scenario5_binary_both_pii(self):
+        r = self._mapped(["PERSON"], ["FIRST_NAME"])
+        assert r.binary["annotation"].tolist() == ["PII"]
+        assert r.binary["prediction"].tolist() == ["PII"]
+
+    def test_scenario5_branch_both_become_person(self):
+        """PERSON → PERSON; FIRST_NAME → NAME → PERSON branch."""
+        r = self._mapped(["PERSON"], ["FIRST_NAME"])
+        assert r.branch["annotation"].tolist() == ["PERSON"]
+        assert r.branch["prediction"].tolist() == ["PERSON"]
+
+    def test_scenario5_detailed_annotation_is_person_prediction_is_name(self):
+        """PERSON stays PERSON; FIRST_NAME resolves to NAME at canonical_depth=3."""
+        r = self._mapped(["PERSON"], ["FIRST_NAME"])
+        assert r.detailed["annotation"].tolist() == ["PERSON"]
+        assert r.detailed["prediction"].tolist() == ["NAME"]
+
+
+# ---------------------------------------------------------------------------
 # Multi-model comparison
 # ---------------------------------------------------------------------------
 

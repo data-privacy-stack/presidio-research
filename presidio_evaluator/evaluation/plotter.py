@@ -60,21 +60,54 @@ class Plotter:
         if display_mode not in ["interactive", "static", "none"]:
             raise ValueError("display_mode must be 'interactive', 'static', or 'none'")
 
-    def plot_scores(self, output_folder: Path | str | None = None) -> None:
+    def plot_scores(
+        self,
+        output_folder: Path | str | None = None,
+        include_pii_aggregate: bool = True,
+        annotation_entities_only: bool = False,
+    ) -> None:
         """
         Plots per-entity recall, precision, or F2 score for evaluated model.
         Parameters:
             output_folder (Path): The folder where the plots will be saved.
+            include_pii_aggregate (bool): If True (default), appends a global
+                "PII" row (binary PII vs O aggregate). Set to False when plotting
+                branch- or detailed-level results where the aggregate row would
+                be redundant or misleading.
+            annotation_entities_only (bool): If True, only shows entities where
+                the dataset has annotations (num_annotated > 0) AND the model
+                made at least one prediction (num_predicted > 0). This excludes
+                both pure model-invented entities and dataset entities the model
+                completely ignores (e.g. labels suppressed during mapping).
+                Defaults to False.
         """
         scores = {}
 
         entity_recall_dict = copy.deepcopy(self.results.entity_recall_dict)
         entity_precision_dict = copy.deepcopy(self.results.entity_precision_dict)
 
+        if annotation_entities_only and self.results.per_type:
+            visible = {
+                ent
+                for ent, m in self.results.per_type.items()
+                if m.num_annotated > 0 and m.num_predicted > 0
+            }
+            entity_recall_dict = {
+                k: v for k, v in entity_recall_dict.items() if k in visible
+            }
+            entity_precision_dict = {
+                k: v for k, v in entity_precision_dict.items() if k in visible
+            }
+
         scores["entity"] = list(entity_recall_dict.keys())
         scores["recall"] = list(entity_recall_dict.values())
         scores["precision"] = list(entity_precision_dict.values())
-        scores["count"] = list(self.results.n_dict.values())
+        scores["count"] = [
+            self.results.per_type[ent].num_annotated
+            if annotation_entities_only and self.results.per_type
+            else self.results.n_dict.get(ent, 0)
+            for ent in scores["entity"]
+        ]
 
         scores[f"f{self.beta}_score"] = [
             BaseEvaluator.f_beta(precision=precision, recall=recall, beta=self.beta)
@@ -83,14 +116,15 @@ class Plotter:
             )
         ]
 
-        # Add PII detection rates
         f_beta_score = f"f{self.beta}_score"
 
-        scores["entity"].append("PII")
-        scores["recall"].append(self.results.pii_recall)
-        scores["precision"].append(self.results.pii_precision)
-        scores["count"].append(self.results.n)
-        scores[f_beta_score].append(self.results.pii_f)
+        if include_pii_aggregate:
+            # Add global PII detection aggregate row
+            scores["entity"].append("PII")
+            scores["recall"].append(self.results.pii_recall)
+            scores["precision"].append(self.results.pii_precision)
+            scores["count"].append(self.results.n)
+            scores[f_beta_score].append(self.results.pii_f)
 
         df = pd.DataFrame(scores)
         df["model"] = self.model_name
