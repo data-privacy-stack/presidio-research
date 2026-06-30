@@ -1,0 +1,72 @@
+line-length = 88
+indent-width = 4
+target-version = "py312"
+exclude = [".git", "__pycache__", "build", "dist", "notebooks"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+
+[lint]
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "I",     # isort
+    "UP",    # pyupgrade
+    "C4",    # flake8-comprehensions
+    "B",     # flake8-bugbear
+    "A",     # flake8-builtins
+    "COM",   # flake8-commas
+    "N",     # pep8-naming
+    "ANN",   # flake8-annotations
+    "ASYNC", # flake8-async
+    "S",     # bandit (security)
+    "PLC",   # pylint-convention
+    "PLE",   # pylint-error
+    "PLR",   # pylint-refactor
+    "PLW",   # pylint-warning
+]
+
+ignore = [
+    # --- Type annotations: too invasive to add retroactively to entire codebase ---
+    "ANN001",  # Missing type annotation for function argument
+    "ANN002",  # Missing type annotation for *args
+    "ANN003",  # Missing type annotation for **kwargs
+    "ANN201",  # Missing return type annotation for public function
+    "ANN202",  # Missing return type annotation for private function
+    "ANN204",  # Missing return type annotation for __init__ / special methods
+    "ANN205",  # Missing return type annotation for static method
+    "ANN206",  # Missing return type annotation for classmethod
+    "ANN401",  # Use of typing.Any — sometimes necessary for generic utilities
+
+    # --- Line length: existing docstrings/comments exceed 88 chars ---
+    "E501",    # Line too long (formatting long prose is risky)
+
+    # --- Complexity: these would require significant API changes ---
+    "PLR0913",  # Too many arguments (several public methods have many params)
+    "PLR0912",  # Too many branches
+    "PLR0915",  # Too many statements
+
+    # --- Magic values: too noisy in numeric evaluation / threshold code ---
+    "PLR2004",  # Magic value used in comparison
+
+    # --- Security: intentional patterns ---
+    "S311",    # Pseudo-random not suitable for crypto — used for fake data generation
+
+    # --- Import style: valid pattern in data_generator __init__ ---
+    "PLC0415",  # Import outside top-level
+    # --- zip strict: acceptable in production evaluation code ---
+    "B905",    # zip() without explicit strict= parameter
+    # --- Formatter conflict: COM812 may produce conflicting results with ruff format ---
+    "COM812",  # missing trailing comma — disabled to avoid formatter conflicts
+]
+
+[lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",    # Use of assert — expected and required in pytest tests
+    "S105",    # Hardcoded passwords — fake data in test fixtures
+    "S106",    # Hardcoded passwords as arguments — fake data in test fixtures
+    "ANN",     # No type annotations needed in test helpers
+    "N",       # Naming conventions differ in test fixtures/parametrize
+    "PLR",     # Magic values / complexity OK in tests
+]

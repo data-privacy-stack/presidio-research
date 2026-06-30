@@ -351,7 +351,7 @@ tqdm
 
 `tqdm` is a product of collaborative work.
 Unless otherwise stated, all authors (see commit logs) retain copyright
-for their respective work, and release the work under the MIT licence
+for their respective work, and release the work under the MIT license
 (text below).
 
 Exceptions or notable authors are listed below
@@ -368,7 +368,7 @@ in reverse chronological order:
 [PR #96]: https://github.com/tqdm/tqdm/pull/96
 
 
-Mozilla Public Licence (MPL) v. 2.0 - Exhibit A
+Mozilla Public license (MPL) v. 2.0 - Exhibit A
 -----------------------------------------------
 
 This Source Code Form is subject to the terms of the

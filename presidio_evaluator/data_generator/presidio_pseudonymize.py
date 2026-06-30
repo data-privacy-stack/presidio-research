@@ -1,5 +1,3 @@
-from typing import List
-
 from presidio_analyzer import RecognizerResult
 from presidio_anonymizer import AnonymizerEngine
 
@@ -7,7 +5,7 @@ from presidio_evaluator.data_generator.faker_extensions import SentenceFaker
 
 
 class PresidioPseudonymization(SentenceFaker):
-    def __init__(self, map_to_presidio_entities: bool = True, **kwargs):
+    def __init__(self, map_to_presidio_entities: bool = True, **kwargs) -> None:
         """
         Create pseudoanoymized data using Presidio by identifying real entities
         and replacing them with fake ones.
@@ -33,7 +31,7 @@ class PresidioPseudonymization(SentenceFaker):
     def pseudonymize(
         self,
         original_text: str,
-        presidio_response: List[RecognizerResult],
+        presidio_response: list[RecognizerResult],
         count: int,
     ):
         """
@@ -48,7 +46,8 @@ class PresidioPseudonymization(SentenceFaker):
 
         anonymizer_engine = AnonymizerEngine()
         anonymized_result = anonymizer_engine.anonymize(
-            text=original_text, analyzer_results=presidio_response
+            text=original_text,
+            analyzer_results=presidio_response,
         )
 
         templated_text = anonymized_result.text

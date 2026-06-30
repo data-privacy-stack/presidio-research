@@ -191,3 +191,11 @@ datasets/
 *.spacy
 *.pickle
 /poetry.lock
+
+
+*.xml
+*.json
+*.html
+*.svg
+!synth_dataset_v2.json
+test_us002.py

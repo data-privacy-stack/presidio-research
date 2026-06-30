@@ -2,15 +2,14 @@ import pytest
 
 from presidio_evaluator import InputSample
 from presidio_evaluator.validation import (
-    split_by_template,
     get_samples_by_pattern,
+    split_by_template,
     split_dataset,
 )
 
 
 @pytest.fixture(scope="session")
 def mock_4_samples():
-
     samples = []
     for i in range(4):
         sample = InputSample(
@@ -65,9 +64,9 @@ def test_get_samples_by_pattern(mock_8_samples):
     train_samples = get_samples_by_pattern(mock_8_samples, train_templates)
     test_samples = get_samples_by_pattern(mock_8_samples, test_templates)
 
-    dataset_templates = set([sample.template_id for sample in mock_8_samples])
-    train_samples_templates = set([sample.template_id for sample in train_samples])
-    test_samples_templates = set([sample.template_id for sample in test_samples])
+    dataset_templates = {sample.template_id for sample in mock_8_samples}
+    train_samples_templates = {sample.template_id for sample in train_samples}
+    test_samples_templates = {sample.template_id for sample in test_samples}
 
     assert len(train_samples) + len(test_samples) == len(mock_8_samples)
     assert dataset_templates == train_samples_templates | test_samples_templates
@@ -95,7 +94,6 @@ def test_split_dataset_two_sets():
 
 
 def test_split_dataset_four_sets(mock_4_samples):
-
     train, test, val, dev = split_dataset(mock_4_samples, [0.25, 0.25, 0.25, 0.25])
     assert len(train) == 1
     assert len(test) == 1
@@ -104,11 +102,11 @@ def test_split_dataset_four_sets(mock_4_samples):
 
     # make sure all original template IDs are in the new sets
 
-    original_keys = set([1, 2, 3, 4])
-    t1 = set([sample.template_id for sample in train])
-    t2 = set([sample.template_id for sample in test])
-    t3 = set([sample.template_id for sample in dev])
-    t4 = set([sample.template_id for sample in val])
+    original_keys = {1, 2, 3, 4}
+    t1 = {sample.template_id for sample in train}
+    t2 = {sample.template_id for sample in test}
+    t3 = {sample.template_id for sample in dev}
+    t4 = {sample.template_id for sample in val}
 
     assert original_keys == t1 | t2 | t3 | t4
 

@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: uv run ruff format --check
+        types: [python]
+        pass_filenames: false
+
+      - id: ruff-check
+        name: ruff check
+        language: system
+        entry: uv run ruff check
+        types: [python]
+        pass_filenames: false
+
+      - id: pytest
+        name: pytest (unit tests only)
+        language: system
+        entry: uv run pytest -m "not slow and not integration" --ignore=tests/integration -q
+        pass_filenames: false
+        always_run: true

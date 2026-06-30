@@ -1,14 +1,12 @@
 import random
 import warnings
 from collections import OrderedDict
-from pathlib import Path
-import socket
-from typing import Union, List
-import yaml
-import requests
 from functools import reduce
+from pathlib import Path
 
 import pandas as pd
+import requests
+import yaml
 from faker.providers import BaseProvider
 from faker.providers.address.en_US import Provider as AddressProvider
 from faker.providers.phone_number.en_US import Provider as PhoneNumberProvider
@@ -17,7 +15,7 @@ from presidio_evaluator.data_generator import raw_data_dir
 
 
 class NationalityProvider(BaseProvider):
-    def __init__(self, generator, nationality_file: Union[str, Path] = None):
+    def __init__(self, generator, nationality_file: str | Path = None) -> None:
         super().__init__(generator=generator)
         if not nationality_file:
             nationality_file = (raw_data_dir / "nationalities.csv").resolve()
@@ -28,7 +26,7 @@ class NationalityProvider(BaseProvider):
     def load_nationalities(self):
         return pd.read_csv(self.nationality_file)
 
-    def country(self):
+    def country(self) -> None:
         self.random_element(self.nationalities["country"].tolist())
 
     def nationality(self):
@@ -48,8 +46,8 @@ class OrganizationProvider(BaseProvider):
     def __init__(
         self,
         generator,
-        organizations_file: Union[str, Path] = None,
-    ):
+        organizations_file: str | Path = None,
+    ) -> None:
         super().__init__(generator=generator)
         if not organizations_file:
             # company names assembled from stock exchange listings (aex, bse, cnq, ger, lse, nasdaq, nse, nyse, par, tyo),
@@ -73,10 +71,12 @@ class OrganizationProvider(BaseProvider):
 
 
 class UsDriverLicenseProvider(BaseProvider):
-    def __init__(self, generator):
+    def __init__(self, generator) -> None:
         super().__init__(generator=generator)
         us_driver_license_file = Path(
-            Path(__file__).parent.parent, "raw_data", "us_driver_license_format.yaml"
+            Path(__file__).parent.parent,
+            "raw_data",
+            "us_driver_license_format.yaml",
         ).resolve()
         formats = yaml.safe_load(open(us_driver_license_file))
         self.formats = formats["en"]["faker"]["driving_license"]["usa"]
@@ -92,12 +92,14 @@ class ReligionProvider(BaseProvider):
     def __init__(
         self,
         generator,
-        religions_file: Union[str, Path] = None,
-    ):
+        religions_file: str | Path = None,
+    ) -> None:
         super().__init__(generator=generator)
         if not religions_file:
             religions_file = Path(
-                Path(__file__).parent.parent, "raw_data", "religions.csv"
+                Path(__file__).parent.parent,
+                "raw_data",
+                "religions.csv",
             ).resolve()
         self.religions_file = religions_file
         self.religions = self.load_religions()
@@ -131,12 +133,14 @@ class AgeProvider(BaseProvider):
             ("101", 0.01),
             ("104", 0.01),
             ("0.%", 0.02),
-        ]
+        ],
     )
 
     def age(self):
         return self.numerify(
-            self.random_elements(elements=self.formats, length=1, use_weighting=True)[0]
+            self.random_elements(elements=self.formats, length=1, use_weighting=True)[
+                0
+            ],
         )
 
 
@@ -191,7 +195,7 @@ class AddressProviderNew(AddressProvider):
                 1.0,
             ),
             ("{{military_dpo}}\nDPO {{military_state}} {{postcode}}", 1.0),
-        )
+        ),
     )
 
 
@@ -267,7 +271,7 @@ class PhoneNumberProviderNew(PhoneNumberProvider):
 
 
 class HospitalProvider(BaseProvider):
-    def __init__(self, generator, hospital_file: str = None):
+    def __init__(self, generator, hospital_file: str = None) -> None:
         """Load hospital data from file or wiki.
 
         :param hospital_file: Path to static file containing hospital names
@@ -283,7 +287,7 @@ class HospitalProvider(BaseProvider):
         ]
         self.hospitals = self.load_hospitals(hospital_file)
 
-    def load_hospitals(self, hospital_file: str) -> List[str]:
+    def load_hospitals(self, hospital_file: str) -> list[str]:
         """Loads a list of hospital names based in the US.
         If a static file with hospital names is provided,
         the hospital names should be under a column named "name".
@@ -297,7 +301,7 @@ class HospitalProvider(BaseProvider):
             if "name" not in self.hospitals:
                 print(
                     "Unable to retrieve hospital names, "
-                    "file is missing column named 'name'"
+                    "file is missing column named 'name'",
                 )
                 return self.default_list
             return hospitals["name"].to_list()
@@ -323,7 +327,7 @@ class HospitalProvider(BaseProvider):
 
         """
         try:
-            r = requests.get(url, params={"format": "json", "query": query})
+            r = requests.get(url, params={"format": "json", "query": query}, timeout=10)
             if r.status_code != 200:
                 print("Unable to read hospitals from WikiData, returning an empty list")
                 return self.default_list
@@ -332,11 +336,13 @@ class HospitalProvider(BaseProvider):
             hospitals = [self.deep_get(x, ["label_en", "value"]) for x in bindings]
             hospitals = [x for x in hospitals if "no key" not in x]
             return hospitals
-        except socket.error:
-            warnings.warn("Can't download hospitals data. Returning default list")
+        except OSError:
+            warnings.warn(
+                "Can't download hospitals data. Returning default list", stacklevel=2
+            )
             return self.default_list
 
-    def deep_get(self, dictionary: dict, keys: List[str]):
+    def deep_get(self, dictionary: dict, keys: list[str]):
         """Retrieve values from a nested dictionary for specific nested keys
         > example:
         > d = {"key_a":1, "key_b":{"key_c":2}}
@@ -353,9 +359,11 @@ class HospitalProvider(BaseProvider):
         """
 
         return reduce(
-            lambda dictionary, key: dictionary.get(key, f"no key {key}")
-            if isinstance(dictionary, dict)
-            else f"no key {key}",
+            lambda dictionary, key: (
+                dictionary.get(key, f"no key {key}")
+                if isinstance(dictionary, dict)
+                else f"no key {key}"
+            ),
             keys,
             dictionary,
         )

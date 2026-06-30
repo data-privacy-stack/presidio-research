@@ -1,37 +1,40 @@
 import json
-from pathlib import Path
-from typing import List, Optional, Union, Dict, Any, Tuple
+import logging
 from collections import Counter
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import spacy
-from spacy import Language
+from spacy.language import Language
 from spacy.tokens import Doc, DocBin
 from spacy.training import iob_to_biluo
 from tqdm import tqdm
 
 from presidio_evaluator import span_to_tag, tokenize
 
-SPACY_PRESIDIO_ENTITIES = dict(
-    ORG="ORGANIZATION",
-    NORP="NRP",
-    GPE="LOCATION",
-    LOC="LOCATION",
-    FAC="LOCATION",
-    PERSON="PERSON",
-    LOCATION="LOCATION",
-    ORGANIZATION="ORGANIZATION",
-    DATE="DATE_TIME",
-    TIME="DATE_TIME",
-)
-PRESIDIO_SPACY_ENTITIES = dict(
-    PERSON="PERSON",
-    LOCATION="LOC",
-    GPE="GPE",
-    ORGANIZATION="ORG",
-    DATE_TIME="DATE",
-    NRP="NORP",
-)
+logger = logging.getLogger("presidio-evaluator")
+
+SPACY_PRESIDIO_ENTITIES = {
+    "ORG": "ORGANIZATION",
+    "NORP": "NRP",
+    "GPE": "LOCATION",
+    "LOC": "LOCATION",
+    "FAC": "LOCATION",
+    "PERSON": "PERSON",
+    "LOCATION": "LOCATION",
+    "ORGANIZATION": "ORGANIZATION",
+    "DATE": "DATE_TIME",
+    "TIME": "DATE_TIME",
+}
+PRESIDIO_SPACY_ENTITIES = {
+    "PERSON": "PERSON",
+    "LOCATION": "LOC",
+    "GPE": "GPE",
+    "ORGANIZATION": "ORG",
+    "DATE_TIME": "DATE",
+    "NRP": "NORP",
+}
 
 
 class Span:
@@ -56,12 +59,12 @@ class Span:
         entity_value: str,
         start_position: int,
         end_position: int,
-        token_start: Optional[int] = None,
-        token_end: Optional[int] = None,
-        normalized_tokens: Optional[List[str]] = None,
-        normalized_start_index: Optional[int] = None,
-        normalized_end_index: Optional[int] = None,
-    ):
+        token_start: int | None = None,
+        token_end: int | None = None,
+        normalized_tokens: list[str] | None = None,
+        normalized_start_index: int | None = None,
+        normalized_end_index: int | None = None,
+    ) -> None:
         self.entity_type = entity_type
         self.entity_value = entity_value
         self.start_position = start_position
@@ -89,10 +92,10 @@ class Span:
         """
 
         if use_normalized_indices:
-            first_start = self.normalized_start_index
-            first_end = self.normalized_end_index
-            second_start = other.normalized_start_index
-            second_end = other.normalized_end_index
+            first_start = self.normalized_start_index or 0
+            first_end = self.normalized_end_index or 0
+            second_start = other.normalized_start_index or 0
+            second_end = other.normalized_end_index or 0
         else:
             first_start = self.start_position
             first_end = self.end_position
@@ -111,7 +114,10 @@ class Span:
         return min(first_end, second_end) - max(first_start, second_start)
 
     def union(
-        self, other, ignore_entity_type: bool, use_normalized_indices: bool = False
+        self,
+        other,
+        ignore_entity_type: bool,
+        use_normalized_indices: bool = False,
     ) -> int:
         """
         Calculates the character based union of two spans.
@@ -122,10 +128,10 @@ class Span:
         """
 
         if use_normalized_indices:
-            first_start = self.normalized_start_index
-            first_end = self.normalized_end_index
-            second_start = other.normalized_start_index
-            second_end = other.normalized_end_index
+            first_start = self.normalized_start_index or 0
+            first_end = self.normalized_end_index or 0
+            second_start = other.normalized_start_index or 0
+            second_end = other.normalized_end_index or 0
         else:
             first_start = self.start_position
             first_end = self.end_position
@@ -134,14 +140,16 @@ class Span:
 
         if ignore_entity_type:
             return max(first_end, second_end) - min(first_start, second_start)
+        elif self.entity_type == other.entity_type:
+            return max(first_end, second_end) - min(first_start, second_start)
         else:
-            if self.entity_type == other.entity_type:
-                return max(first_end, second_end) - min(first_start, second_start)
-            else:
-                return 0
+            return 0
 
     def iou(
-        self, other, ignore_entity_type: bool, use_normalized_indices: bool = False
+        self,
+        other,
+        ignore_entity_type: bool,
+        use_normalized_indices: bool = False,
     ) -> float:
         """
         Calculates the character based Intersection over Union (IoU) between two spans.
@@ -158,7 +166,7 @@ class Span:
         union = self.union(other, ignore_entity_type, use_normalized_indices)
         return intersection / union if union != 0 else 0.0
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"Span(type: {self.entity_type}, "
             f"value: {self.entity_value}, "
@@ -184,7 +192,7 @@ class Span:
                 self.start_position,
                 "end_position",
                 self.end_position,
-            )
+            ),
         )
 
     @classmethod
@@ -192,22 +200,22 @@ class Span:
         return cls(**data)
 
 
-class InputSample(object):
+class InputSample:
     def __init__(
         self,
         full_text: str,
-        spans: Optional[List[Span]] = None,
-        masked: Optional[str] = None,
-        tokens: Optional[Doc] = None,
-        tags: Optional[List[str]] = None,
+        spans: list[Span] | None = None,
+        masked: str | None = None,
+        tokens: Doc | list | None = None,
+        tags: list[str] | None = None,
         create_tags_from_span=False,
-        token_model_version="en_core_web_sm",
+        token_model_version="en_core_web_sm",  # noqa: S107
         scheme: str = "IO",
-        metadata: Dict = None,
-        sample_id: int = None,
-        template_id: int = None,
-        start_indices: Optional[List[int]] = None,
-    ):
+        metadata: dict | None = None,
+        sample_id: int | None = None,
+        template_id: int | None = None,
+        start_indices: list[int] | None = None,
+    ) -> None:
         """
         Hold all the information needed for evaluation in the
         presidio-evaluator framework.
@@ -254,8 +262,8 @@ class InputSample(object):
             self.tokens = tokens
             self.tags = tags
 
-    def __repr__(self):
-        return f"Full text: {self.full_text}\n" f"Spans: {self.spans}\n"
+    def __repr__(self) -> str:
+        return f"Full text: {self.full_text}\nSpans: {self.spans}\n"
 
     def to_dict(self):
         return {
@@ -273,8 +281,10 @@ class InputSample(object):
         return cls(**data, create_tags_from_span=True, **kwargs)
 
     def get_tags(
-        self, scheme: str = "IOB", model_version: str = "en_core_web_sm"
-    ) -> Tuple[Doc, List[str], List[int]]:
+        self,
+        scheme: str = "IOB",
+        model_version: str = "en_core_web_sm",
+    ) -> tuple[Doc, list[str], list[int]]:
         """Extract the tokens, tags, and start_indices from the spans.
 
         :param scheme: IO, BIO or BILUO
@@ -300,8 +310,10 @@ class InputSample(object):
         return tokens, labels, start_indices
 
     def to_conll(
-        self, translate_tags: bool, tokenizer: str = "en_core_web_sm"
-    ) -> List[Dict[str, Any]]:
+        self,
+        translate_tags: bool,
+        tokenizer: str = "en_core_web_sm",
+    ) -> list[dict[str, Any]]:
         """
         Turns a list of InputSample objects to a dictionary
         containing text, pos, tag, template_id and label.
@@ -313,12 +325,16 @@ class InputSample(object):
         conll = []
 
         if len(self.tokens) == 0:
-            self.tokens, self.tags = self.get_tags(model_version=tokenizer)
+            self.tokens, self.tags, self.start_indices = self.get_tags(
+                model_version=tokenizer
+            )
 
         for i, token in enumerate(self.tokens):
             if translate_tags:
                 label = self.translate_tag(
-                    self.tags[i], PRESIDIO_SPACY_ENTITIES, ignore_unknown=True
+                    self.tags[i],
+                    PRESIDIO_SPACY_ENTITIES,
+                    ignore_unknown=True,
                 )
             else:
                 label = self.tags[i]
@@ -335,12 +351,43 @@ class InputSample(object):
         return conll
 
     def get_template_id(self):
-        if not self.template_id:
+        if not self.template_id and self.metadata:
             return self.metadata.get("template_id")
 
     @staticmethod
+    def extract_entity_types(dataset: list["InputSample"]) -> set[str]:
+        """Extract all unique entity types from a dataset.
+
+        Handles both span-based and token-based annotations, stripping BIO/BILUO prefixes.
+
+        :param dataset: List of InputSample objects
+        :return: Set of unique entity type strings found in the dataset
+        """
+        entity_types = set()
+
+        for sample in dataset:
+            # Extract from spans
+            if sample.spans:
+                for span in sample.spans:
+                    entity_types.add(span.entity_type)
+
+            # Extract from tags (tokens)
+            if sample.tags:
+                for tag in sample.tags:
+                    # Strip BIO/BILUO prefixes
+                    if tag.startswith(("B-", "I-", "U-", "L-")):
+                        entity_type = tag[2:]
+                    else:
+                        entity_type = tag
+
+                    if entity_type and entity_type != "O":
+                        entity_types.add(entity_type)
+
+        return entity_types
+
+    @staticmethod
     def create_conll_dataset(
-        dataset: List["InputSample"],
+        dataset: list["InputSample"],
         translate_tags=False,
         to_bio=True,
         tokenizer: str = "en_core_web_sm",
@@ -362,8 +409,10 @@ class InputSample(object):
         return pd.DataFrame(conlls)
 
     def to_spacy(
-        self, entities=None, translate_tags=True
-    ) -> Tuple[str, Dict[str, List]]:
+        self,
+        entities=None,
+        translate_tags=True,
+    ) -> tuple[str, dict[str, list]]:
         """
         Translates an input sample into a format which can be consumed by spaCy during training.
         :param entities: Specific entities to focus on.
@@ -380,7 +429,9 @@ class InputSample(object):
         if translate_tags:
             for entity in entities:
                 new_tag = self.translate_tag(
-                    entity[2], PRESIDIO_SPACY_ENTITIES, ignore_unknown=True
+                    entity[2],
+                    PRESIDIO_SPACY_ENTITIES,
+                    ignore_unknown=True,
                 )
                 new_entities.append((entity[0], entity[1], new_tag))
         else:
@@ -389,7 +440,10 @@ class InputSample(object):
 
     @classmethod
     def from_spacy_doc(
-        cls, doc: Doc, translate_tags: bool = True, scheme: str = "BILUO"
+        cls,
+        doc: Doc,
+        translate_tags: bool = True,
+        scheme: str = "BILUO",
     ) -> "InputSample":
         if scheme not in ("BILUO", "BILOU", "BIO", "IOB"):
             raise ValueError('scheme should be one of "BILUO","BILOU","BIO","IOB"')
@@ -426,14 +480,14 @@ class InputSample(object):
 
     @staticmethod
     def create_spacy_dataset(
-        dataset: List["InputSample"],
-        output_path: Optional[str] = None,
-        entities: List[str] = None,
+        dataset: list["InputSample"],
+        output_path: str | None = None,
+        entities: list[str] | None = None,
         sort_by_template_id: bool = False,
         translate_tags: bool = True,
-        spacy_pipeline: Optional[Language] = None,
+        spacy_pipeline: Language | None = None,
         alignment_mode: str = "expand",
-    ) -> List[Tuple[str, Dict]]:
+    ) -> list[tuple[str, dict]]:
         """
         Creates a dataset which can be used to train spaCy models.
         If output_path is provided, it also saves the dataset in a spacy format.
@@ -479,19 +533,27 @@ class InputSample(object):
                 ents = []
                 for start, end, label in annotations["entities"]:
                     if start >= end:
-                        print(
-                            f"Span has zero or negative size, skipping. {(start, end, label)} in text={text}"
+                        logger.warning(
+                            "Span has zero or negative size, skipping. %s in text=%s",
+                            (start, end, label),
+                            text,
                         )
                         continue
                     if label == "O" or not label:
-                        print("Skipping missing or non-entity ('O') spans")
+                        logger.warning("Skipping missing or non-entity ('O') spans")
                         continue
                     span = doc.char_span(
-                        start, end, label=label, alignment_mode=alignment_mode
+                        start,
+                        end,
+                        label=label,
+                        alignment_mode=alignment_mode,
                     )
                     if not span:
-                        print(
-                            f"Skipping illegal span {(start, end, label)}, text={text[start:end]}, full text={text}"
+                        logger.warning(
+                            "Skipping illegal span %s, text=%s, full text=%s",
+                            (start, end, label),
+                            text[start:end],
+                            text,
                         )
                         continue
                     ents.append(span)
@@ -502,7 +564,7 @@ class InputSample(object):
         return spacy_dataset
 
     @staticmethod
-    def to_json(dataset: List["InputSample"], output_file: Union[str, Path]):
+    def to_json(dataset: list["InputSample"], output_file: str | Path) -> None:
         """
         Save the InputSample dataset to json.
         :param dataset: list of InputSample objects
@@ -511,7 +573,7 @@ class InputSample(object):
 
         examples_json = [example.to_dict() for example in dataset]
 
-        with open("{}".format(output_file), "w+", encoding="utf-8") as f:
+        with open(f"{output_file}", "w+", encoding="utf-8") as f:
             json.dump(examples_json, f, ensure_ascii=False, indent=4)
 
     def to_spacy_doc(self):
@@ -526,28 +588,30 @@ class InputSample(object):
                 for token in self.tokens
                 if token.idx + len(token.text) == span.end_position
             ][0] + 1
-            spacy_span = spacy.tokens.span.Span(
-                doc, start=start_token, end=end_token, label=span.entity_type
+            spacy_span = spacy.tokens.span.Span(  # type: ignore[attr-defined]
+                doc,
+                start=start_token,
+                end=end_token,
+                label=span.entity_type,
             )
             spacy_spans.append(spacy_span)
-        doc.ents = spacy_spans
+        doc.ents = spacy_spans  # type: ignore[assignment]
         return doc
 
     @staticmethod
-    def translate_tag(tag: str, dictionary: Dict[str, str], ignore_unknown: bool):
+    def translate_tag(tag: str, dictionary: dict[str, str], ignore_unknown: bool):
         has_prefix = len(tag) > 2 and tag[1] == "-"
         no_prefix = tag[2:] if has_prefix else tag
         if no_prefix in dictionary.keys():
             return (
                 tag[:2] + dictionary[no_prefix] if has_prefix else dictionary[no_prefix]
             )
+        elif ignore_unknown:
+            return "O"
         else:
-            if ignore_unknown:
-                return "O"
-            else:
-                return tag
+            return tag
 
-    def biluo_to_bio(self):
+    def biluo_to_bio(self) -> None:
         new_tags = []
         for tag in self.tags:
             new_tag = tag
@@ -564,20 +628,25 @@ class InputSample(object):
     @staticmethod
     def rename_from_spacy_tag(spacy_tag, ignore_unknown=False):
         return InputSample.translate_tag(
-            spacy_tag, SPACY_PRESIDIO_ENTITIES, ignore_unknown=ignore_unknown
+            spacy_tag,
+            SPACY_PRESIDIO_ENTITIES,
+            ignore_unknown=ignore_unknown,
         )
 
     @staticmethod
     def rename_to_spacy_tags(tag, ignore_unknown=True):
         return InputSample.translate_tag(
-            tag, PRESIDIO_SPACY_ENTITIES, ignore_unknown=ignore_unknown
+            tag,
+            PRESIDIO_SPACY_ENTITIES,
+            ignore_unknown=ignore_unknown,
         )
 
-    def to_flair(self):
+    def to_flair(self) -> str:
         for i, token in enumerate(self.tokens):
             return f"{token} {token.pos_} {self.tags[i]}"
+        return ""
 
-    def translate_input_sample_tags(self, dictionary=None, ignore_unknown=True):
+    def translate_input_sample_tags(self, dictionary=None, ignore_unknown=True) -> None:
         if dictionary is None:
             dictionary = PRESIDIO_SPACY_ENTITIES
 
@@ -598,7 +667,7 @@ class InputSample(object):
         self.spans = [span for span in self.spans if span.entity_type != "O"]
 
     @staticmethod
-    def create_flair_dataset(dataset: List["InputSample"]) -> List[str]:
+    def create_flair_dataset(dataset: list["InputSample"]) -> list[str]:
         flair_samples = []
         for sample in dataset:
             flair_samples.append(sample.to_flair())
@@ -607,15 +676,19 @@ class InputSample(object):
 
     @staticmethod
     def read_dataset_json(
-        filepath: Union[Path, str] = None, length: Optional[int] = None, **kwargs
-    ) -> List["InputSample"]:
+        filepath: Path | str | None = None,
+        length: int | None = None,
+        **kwargs,
+    ) -> list["InputSample"]:
         """
         Reads an existing dataset, stored in json into a list of InputSample objects
         :param filepath: Path to json file
         :param length: Number of records to return (would return 0-length)
         :return: List[InputSample]
         """
-        with open(filepath, "r", encoding="utf-8") as f:
+        if filepath is None:
+            raise ValueError("filepath must be provided")
+        with open(filepath, encoding="utf-8") as f:
             dataset = json.load(f)
 
         if length:
@@ -629,7 +702,7 @@ class InputSample(object):
         return input_samples
 
     @classmethod
-    def count_entities(cls, input_samples: List["InputSample"]) -> List[Tuple]:
+    def count_entities(cls, input_samples: list["InputSample"]) -> list[tuple]:
         """Count frequency of entities in a list of InputSample objects"""
         count_per_entity_new = Counter()
         for record in input_samples:
@@ -639,8 +712,10 @@ class InputSample(object):
 
     @classmethod
     def remove_unsupported_entities(
-        cls, dataset: List["InputSample"], entity_mapping: Dict[str, str]
-    ) -> List["InputSample"]:
+        cls,
+        dataset: list["InputSample"],
+        entity_mapping: dict[str, str],
+    ) -> list["InputSample"]:
         """Remove records with unsupported entities using passed in entity mapping translator."""
         filtered_records = []
         excluded_entities = set()
@@ -650,7 +725,10 @@ class InputSample(object):
                 if span.entity_type not in entity_mapping.keys():
                     supported = False
                     if span.entity_type not in excluded_entities:
-                        print(f"Filtering out unsupported entity {span.entity_type}")
+                        logger.warning(
+                            "Filtering out unsupported entity %s",
+                            span.entity_type,
+                        )
                     excluded_entities.add(span.entity_type)
             if supported:
                 filtered_records.append(sample)

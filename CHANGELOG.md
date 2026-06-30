@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## Unreleased
+
+> **Migration guide:** See [docs/migration-guide.md](docs/migration-guide.md) for step-by-step upgrade instructions.
+
+### Breaking Changes
+
+- **`evaluate_all()` removed** — raises `DeprecationError` at runtime. Replace with the three-step pipeline: `predict_dataset()` → `CanonicalMapper.get_mapped_results_dataframe()` → `calculate_score_on_df()`.
+- **`entity_mapping` parameter removed** from `SpanEvaluator`, `TokenEvaluator`, and `BaseEvaluator` — entity mapping is now the responsibility of `CanonicalMapper`.
+- **`compare_by_io` parameter removed** from evaluator constructors — BIO/BILUO prefix stripping is now performed by `CanonicalMapper`.
+- **`BaseEvaluator.from_dataset()` removed** — use `model.predict_dataset(dataset)` directly.
+- **Non-Presidio model wrappers removed**: `FlairModel`, `SpacyModel`, `StanzaModel`, `AzureAITextAnalyticsWrapper`. Add models directly through Presidio to evaluate them.
+- **Minimum Python version raised to 3.11** (was 3.10) — required by `numpy >= 2.4.0`.
+- **Package manager changed from Poetry to uv** — install with `uv sync`, run with `uv run`.
+
+### New Features
+
+- **`BaseModel.predict_dataset(dataset)`** — runs the model on a list of `InputSample` objects and returns a 5-column DataFrame (`sentence_id`, `token`, `annotation`, `prediction`, `start_indices`).
+- **`CanonicalMapper`** — replaces `EntityMappingHelper` with an improved four-tier auto-resolution strategy (`EXACT`, `COUNTRY`, `FUZZY`, `PENDING`). Key methods:
+  - `CanonicalMapper.from_dataset(dataset)` — builds a mapper from dataset labels.
+  - `mapper.get_mapped_results_dataframe(results_df)` — applies entity mapping to a predictions DataFrame.
+  - `mapper.get_mapping(mode='html' | 'text')` — returns the final `{raw_label: canonical | None}` dict.
+  - `mapper.map({"LABEL": "CANONICAL"})` — manually resolve pending labels.
+  - `mapper.render_html()` — display the resolution audit table in Jupyter.
+- **`TokenEvaluator.calculate_score_on_df(results_df)`** — score token-level predictions from a DataFrame.
+- **`SpanEvaluator.calculate_score_on_df(per_type, results_df)`** — score span-level predictions from a DataFrame.
+- **Ruff** — added as the project linter and formatter (`ruff.toml` at project root).
+- **Pre-commit hooks** — `ruff format`, `ruff check`, and `pytest` run automatically before every commit (`.pre-commit-config.yaml`).
+- **Test reorganisation** — tests are now grouped by topic (`tests/data_generator/`, `tests/entity_mapping/`, `tests/evaluation/`, `tests/models/`, `tests/integration/`). Integration tests are tagged with `pytest.mark.integration`.
+
+### Deprecations
+
+- **`evaluator.get_results_dataframe()`** — soft `DeprecationWarning` emitted at runtime. Replace with `model.predict_dataset(dataset)`.
+
+
+
 ## Version 0.2.5
 
 ### Improvements

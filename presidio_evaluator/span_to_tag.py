@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 import spacy
 from spacy.tokens import Doc
 
@@ -8,7 +6,7 @@ loaded_spacy = {}
 
 def get_spacy(loaded_spacy=loaded_spacy, model_version="en_core_web_sm"):
     if model_version not in loaded_spacy:
-        print("loading model {}".format(model_version))
+        print(f"loading model {model_version}")
         loaded_spacy[model_version] = spacy.load(model_version)
     return loaded_spacy[model_version]
 
@@ -17,12 +15,12 @@ def tokenize(text, model_version="en_core_web_sm") -> Doc:
     return get_spacy(model_version=model_version)(text)
 
 
-def _get_detailed_tags_for_span(scheme: str, cur_tags: List[str]) -> List[str]:
+def _get_detailed_tags_for_span(scheme: str, cur_tags: list[str]) -> list[str]:
     """
     Replace IO tags (e.g. O PERSON PERSON) with BIO/BILUO tags.
     """
 
-    if all([tag == "O" for tag in cur_tags]):
+    if all(tag == "O" for tag in cur_tags):
         return cur_tags
 
     return_tags = []
@@ -51,7 +49,8 @@ def _sort_spans(start, end, tag, score):
         tpl = [
             (a, b, c, d)
             for a, b, c, d in sorted(
-                zip(start, end, tag, score), key=lambda pair: pair[0]
+                zip(start, end, tag, score, strict=False),
+                key=lambda pair: pair[0],
             )
         ]
         start, end, tag, score = [[x[i] for x in tpl] for i in range(len(tpl[0]))]
@@ -77,20 +76,19 @@ def _handle_overlaps(start, end, tag, score):
                     else:
                         start[j] = end[i] + 1
                 # j's score is higher, break i
+                # If i finishes after j ended, split i
+                elif end[j] < end[i]:
+                    # create new span at the end
+                    start.append(end[j] + 1)
+                    end.append(end[i])
+                    score.append(score[i])
+                    tag.append(tag[i])
+                    number_of_spans += 1
+                    # truncate the current i to end at start(j)
+                    end[i] = start[j] - 1
+                # else, i finishes before j ended. truncate i
                 else:
-                    # If i finishes after j ended, split i
-                    if end[j] < end[i]:
-                        # create new span at the end
-                        start.append(end[j] + 1)
-                        end.append(end[i])
-                        score.append(score[i])
-                        tag.append(tag[i])
-                        number_of_spans += 1
-                        # truncate the current i to end at start(j)
-                        end[i] = start[j] - 1
-                    # else, i finishes before j ended. truncate i
-                    else:
-                        end[i] = start[j] - 1
+                    end[i] = start[j] - 1
 
         i += 1
     start, end, tag, score = _sort_spans(start, end, tag, score)
@@ -100,13 +98,13 @@ def _handle_overlaps(start, end, tag, score):
 def span_to_tag(
     scheme: str,
     text: str,
-    starts: List[int],
-    ends: List[int],
-    tags: List[str],
-    scores: Optional[List[float]] = None,
-    tokens: Optional[Doc] = None,
-    token_model_version: str = "en_core_web_sm",
-) -> List[str]:
+    starts: list[int],
+    ends: list[int],
+    tags: list[str],
+    scores: list[float] | None = None,
+    tokens: Doc | None = None,
+    token_model_version: str = "en_core_web_sm",  # noqa: S107
+) -> list[str]:
     """
     Turns a list of start and end values with corresponding labels, into a NER
     tagging (BILUO,BIO/IOB)
@@ -162,7 +160,7 @@ def span_to_tag(
         return io_to_scheme(io_tags, scheme)
 
 
-def io_to_scheme(io_tags: List[str], scheme: str) -> List[str]:
+def io_to_scheme(io_tags: list[str], scheme: str) -> list[str]:
     """Set tagging based on scheme (BIO or BILUO).
     :param io_tags: List of tags in IO (e.g. O O O PERSON PERSON O)
     :param scheme: Requested scheme (IO, BILUO or BIO)
@@ -187,7 +185,8 @@ def io_to_scheme(io_tags: List[str], scheme: str) -> List[str]:
     for i in range(len(changes) - 1):
         new_return_tags.extend(
             _get_detailed_tags_for_span(
-                scheme=scheme, cur_tags=io_tags[changes[i] : changes[i + 1]]
-            )
+                scheme=scheme,
+                cur_tags=io_tags[changes[i] : changes[i + 1]],
+            ),
         )
     return new_return_tags

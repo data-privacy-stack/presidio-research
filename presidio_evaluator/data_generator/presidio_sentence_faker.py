@@ -1,8 +1,7 @@
 import json
 import random
-from pathlib import Path
-from typing import List, Optional, Tuple, Union, Dict
 import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -14,15 +13,15 @@ from tqdm import tqdm
 from presidio_evaluator import InputSample
 from presidio_evaluator.data_generator import raw_data_dir
 from presidio_evaluator.data_generator.faker_extensions import (
+    AddressProviderNew,
+    AgeProvider,
+    HospitalProvider,
+    IpAddressProvider,
     NationalityProvider,
     OrganizationProvider,
-    UsDriverLicenseProvider,
-    IpAddressProvider,
-    AddressProviderNew,
     PhoneNumberProviderNew,
-    AgeProvider,
     ReligionProvider,
-    HospitalProvider,
+    UsDriverLicenseProvider,
 )
 from presidio_evaluator.data_generator.faker_extensions.datasets import (
     load_fake_person_df,
@@ -64,63 +63,63 @@ class PresidioSentenceFaker:
         ("credit_card_number", "credit_card"),
         ("date_of_birth", "birthday"),
     ]
-    ENTITY_TYPE_MAPPING = dict(
-        person="PERSON",
-        ip_address="IP_ADDRESS",
-        us_driver_license="US_DRIVER_LICENSE",
-        organization="ORGANIZATION",
-        name_female="PERSON",
-        address="STREET_ADDRESS",
-        country="GPE",
-        state="GPE",
-        credit_card_number="CREDIT_CARD",
-        city="GPE",
-        street_name="STREET_ADDRESS",
-        building_number="STREET_ADDRESS",
-        name="PERSON",
-        iban="IBAN_CODE",
-        last_name="PERSON",
-        last_name_male="PERSON",
-        last_name_female="PERSON",
-        first_name="PERSON",
-        first_name_male="PERSON",
-        first_name_female="PERSON",
-        phone_number="PHONE_NUMBER",
-        url="DOMAIN_NAME",
-        ssn="US_SSN",
-        email="EMAIL_ADDRESS",
-        date_time="DATE_TIME",
-        date_of_birth="DATE_TIME",
-        day_of_week="DATE_TIME",
-        year="DATE_TIME",
-        name_male="PERSON",
-        prefix_male="TITLE",
-        prefix_female="TITLE",
-        prefix="TITLE",
-        nationality="NRP",
-        nation_woman="NRP",
-        nation_man="NRP",
-        nation_plural="NRP",
-        first_name_nonbinary="PERSON",
-        postcode="STREET_ADDRESS",
-        secondary_address="STREET_ADDRESS",
-        job="TITLE",
-        zipcode="ZIP_CODE",
-        state_abbr="GPE",
-        age="AGE",
-    )
+    ENTITY_TYPE_MAPPING = {
+        "person": "PERSON",
+        "ip_address": "IP_ADDRESS",
+        "us_driver_license": "US_DRIVER_LICENSE",
+        "organization": "ORGANIZATION",
+        "name_female": "PERSON",
+        "address": "STREET_ADDRESS",
+        "country": "GPE",
+        "state": "GPE",
+        "credit_card_number": "CREDIT_CARD",
+        "city": "GPE",
+        "street_name": "STREET_ADDRESS",
+        "building_number": "STREET_ADDRESS",
+        "name": "PERSON",
+        "iban": "IBAN_CODE",
+        "last_name": "PERSON",
+        "last_name_male": "PERSON",
+        "last_name_female": "PERSON",
+        "first_name": "PERSON",
+        "first_name_male": "PERSON",
+        "first_name_female": "PERSON",
+        "phone_number": "PHONE_NUMBER",
+        "url": "DOMAIN_NAME",
+        "ssn": "US_SSN",
+        "email": "EMAIL_ADDRESS",
+        "date_time": "DATE_TIME",
+        "date_of_birth": "DATE_TIME",
+        "day_of_week": "DATE_TIME",
+        "year": "DATE_TIME",
+        "name_male": "PERSON",
+        "prefix_male": "TITLE",
+        "prefix_female": "TITLE",
+        "prefix": "TITLE",
+        "nationality": "NRP",
+        "nation_woman": "NRP",
+        "nation_man": "NRP",
+        "nation_plural": "NRP",
+        "first_name_nonbinary": "PERSON",
+        "postcode": "STREET_ADDRESS",
+        "secondary_address": "STREET_ADDRESS",
+        "job": "TITLE",
+        "zipcode": "ZIP_CODE",
+        "state_abbr": "GPE",
+        "age": "AGE",
+    }
 
     def __init__(
         self,
         locale: str,
         lower_case_ratio: float,
-        sentence_templates: Optional[List[str]] = None,
-        entity_providers: Optional[List[BaseProvider]] = None,
-        base_records: Optional[Union[pd.DataFrame, List[Dict]]] = None,
-        entity_type_mapping: Optional[Dict[str, str]] = None,
-        provider_aliases: Optional[List[Tuple[str, str]]] = None,
-        random_seed: Optional[SeedType] = None,
-    ):
+        sentence_templates: list[str] | None = None,
+        entity_providers: list[BaseProvider] | None = None,
+        base_records: pd.DataFrame | list[dict] | None = None,
+        entity_type_mapping: dict[str, str] | None = None,
+        provider_aliases: list[tuple[str, str]] | None = None,
+        random_seed: SeedType | None = None,
+    ) -> None:
         self._sentence_templates = sentence_templates
         if not self._sentence_templates:
             self._sentence_templates = [
@@ -134,7 +133,9 @@ class PresidioSentenceFaker:
             base_records = load_fake_person_df()
 
         self._sentence_faker = SentenceFaker(
-            records=base_records, locale=locale, lower_case_ratio=lower_case_ratio
+            records=base_records,
+            locale=locale,
+            lower_case_ratio=lower_case_ratio,
         )
         for entity_provider in entity_providers:
             self._sentence_faker.add_provider(entity_provider)
@@ -144,7 +145,7 @@ class PresidioSentenceFaker:
         if not entity_type_mapping:
             print(
                 "Using default entity mapping between the entities "
-                "in the templates and the ones in the output dataset"
+                "in the templates and the ones in the output dataset",
             )
             entity_type_mapping = self.ENTITY_TYPE_MAPPING
 
@@ -156,11 +157,12 @@ class PresidioSentenceFaker:
 
         for provider, alias in provider_aliases:
             self._sentence_faker.add_provider_alias(
-                provider_name=provider, new_name=alias
+                provider_name=provider,
+                new_name=alias,
             )
         self.fake_sentence_results = None
 
-    def generate_new_fake_sentences(self, num_samples: int) -> List[InputSample]:
+    def generate_new_fake_sentences(self, num_samples: int) -> list[InputSample]:
         """Generate fake sentences based on the templates, input data and entity providers."""
         self.fake_sentence_results = []
         # Map faker generated entity types to Presidio entity types
@@ -179,14 +181,15 @@ class PresidioSentenceFaker:
                         f"Warning: Non-mapped entity type found: {span.entity_type}. "
                         f"Non-mapped entities will be mapped to {span.entity_type.upper()} "
                         f"in the output dataset. If you prefer a different mapping, "
-                        f"pass the `entity_type_mapping` argument with a mapping for this entity type."
+                        f"pass the `entity_type_mapping` argument with a mapping for this entity type.",
                     )
                     self._entity_type_mapping[span.entity_type] = (
                         span.entity_type.upper()
                     )
             for key, value in self._entity_type_mapping.items():
                 fake_sentence_result.masked = fake_sentence_result.masked.replace(
-                    "{{%s}}" % key, "{{%s}}" % value
+                    f"{{{{{key}}}}}",
+                    f"{{{{{value}}}}}",
                 )
             self.fake_sentence_results.append(fake_sentence_result)
         return self.fake_sentence_results
@@ -215,11 +218,14 @@ class PresidioSentenceFaker:
         >>>self.person()
         """
         self._sentence_faker.add_provider_alias(
-            provider_name=provider_name, new_name=new_name
+            provider_name=provider_name,
+            new_name=new_name,
         )
 
     def add_entity_type_mapping(
-        self, input_entity_type: str, output_entity_type: str
+        self,
+        input_entity_type: str,
+        output_entity_type: str,
     ) -> None:
         self._entity_type_mapping[input_entity_type] = output_entity_type
 
@@ -229,7 +235,9 @@ class PresidioSentenceFaker:
 
         def lowercase_within_braces(s):
             return re.sub(
-                r"{{(.*?)}}", lambda match: f"{{{{{match.group(1).lower()}}}}}", s
+                r"{{(.*?)}}",
+                lambda match: f"{{{{{match.group(1).lower()}}}}}",
+                s,
             )
 
         template = template.replace("<", "{{").replace(">", "}}")
@@ -240,13 +248,15 @@ class PresidioSentenceFaker:
 
 if __name__ == "__main__":
     sentence_faker = PresidioSentenceFaker(
-        locale="en_US", lower_case_ratio=0.05, random_seed=42
+        locale="en_US",
+        lower_case_ratio=0.05,
+        random_seed=42,
     )
     fake_sentence_results = sentence_faker.generate_new_fake_sentences(
-        num_samples=10000
+        num_samples=10000,
     )
     repo_root = Path(__file__).parent.parent.parent
     output_file = repo_root / "data/presidio_data_generator_data.json"
     to_json = [result.to_dict() for result in fake_sentence_results]
-    with open("{}".format(output_file), "w+", encoding="utf-8") as f:
+    with open(f"{output_file}", "w+", encoding="utf-8") as f:
         json.dump(to_json, f, ensure_ascii=False, indent=2)

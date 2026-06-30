@@ -1,6 +1,6 @@
 # Presidio-research
 
-This package provides evaluation and data-science capabilities for 
+This package provides evaluation and data-science capabilities for
 [Presidio](https://github.com/microsoft/presidio) and PII detection models in general.
 
 It also includes a fake data generator that creates synthetic sentences based on templates and fake PII.
@@ -20,16 +20,13 @@ The easiest way to get started is by reviewing the notebooks.
 - [Notebook 3](notebooks/3_Split_by_pattern_number.ipynb): Provides tools to split the dataset into train/test/validation sets while avoiding leakage due to the same pattern appearing in multiple folds (only applicable for synthetically generated data).
 - [Notebook 4](notebooks/4_Evaluate_Presidio_Analyzer.ipynb): Shows how to use the evaluation tools to evaluate how well Presidio detects PII. Note that this is using the vanilla Presidio, and the results aren't very accurate.
 - [Notebook 5](notebooks/5_Evaluate_Custom_Presidio_Analyzer.ipynb): Shows how one can configure Presidio to detect PII much more accurately, and boost the f score in ~30%.
+- [Notebook 6](notebooks/6_Interactive_Entity_Mapping.ipynb): Explains the entity mapping process, which is crucial when evaluating multiple models each returning a different set of entities.
 
 ### Installation
-
->Note: Presidio evaluator requires Python version 3.9 or higher.
 
 #### From PyPI
 
 ``` sh
-conda create --name presidio python=3.12
-conda activate presidio
 pip install presidio-evaluator
 python -m spacy download en_core_web_sm # for tokenization
 python -m spacy download en_core_web_lg # for NER
@@ -43,31 +40,29 @@ To install the package:
 2. Install all dependencies:
 
 ``` sh
-# Install package+dependencies
-pip install poetry
-poetry install --with=dev
+# Install uv if not already installed
+pip install uv
 
-# Download tge spaCy pipeline used for tokenization
-poetry run python -m spacy download en_core_web_sm
+# Install package + dev dependencies
+uv sync --extra dev
 
-# To install with all additional NER dependencies (e.g. Flair, Stanza), run:
-# poetry install --with='ner,dev'
+# Download the spaCy pipeline used for tokenization
+uv run python -m spacy download en_core_web_sm
 
 # To use the default Presidio configuration, a spaCy model is required:
-poetry run python -m spacy download en_core_web_lg
+uv run python -m spacy download en_core_web_lg
 
 # Verify installation
-pytest
+uv run pytest
 ```
 
-Note that some dependencies (such as Flair and Stanza) are not automatically installed to reduce installation complexity.
+Note that some dependencies (such as Flair and Stanza) are no longer supported. Use Presidio Analyzer directly to add custom NER models.
 
 ## What's in this package?
 
 1. **Fake data generator** for PII recognizers and NER models
 2. **Data representation layer** for data generation, modeling and analysis
-3. Multiple **Model/Recognizer evaluation** files (e.g. for Presidio, Spacy, Flair, Azure AI Language)
-4. **Training and modeling code** for multiple models
+3. **Model/Recognizer evaluation** for Presidio Analyzer and custom Presidio recognizers
 5. Helper functions for **results analysis**
 
 ## 1. Data generation
@@ -120,13 +115,6 @@ The standardized structure, `List[InputSample]`, can be translated into differen
   InputSample.create_spacy_dataset(dataset, output_path="dataset.spacy")
   ```
 
-- Flair
-  ```python
-  from presidio_evaluator import InputSample
-  dataset = InputSample.read_dataset_json("data/synth_dataset_v2.json")
-  flair = InputSample.create_flair_dataset(dataset)
-  ```
-
 - json
   ```python
   from presidio_evaluator import InputSample
@@ -140,6 +128,7 @@ The presidio-evaluator framework allows you to evaluate Presidio as a system, a 
 
 ## For more information
 
+- [Blog post on PII evaluation](https://omri-mendels.medium.com/evaluating-pii-detection-models-fa0c745d7a4c)
 - [Blog post on NLP approaches to data anonymization](https://towardsdatascience.com/nlp-approaches-to-data-anonymization-1fb5bde6b929)
 - [How to evaluate PII Detection output with Presidio Evaluator](https://tranguyen221.medium.com/how-to-evaluate-pii-detection-output-with-presidio-evaluator-3f2684ba3091)
 - [Conference talk about leveraging Presidio and utilizing NLP approaches for data anonymization](https://youtu.be/Tl773LANRwY)

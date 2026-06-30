@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import List, Optional
 
 import requests
 from spacy.training.converters import conll_ner_to_docs
@@ -12,18 +11,17 @@ from presidio_evaluator.dataset_formatters import DatasetFormatter
 class CONLL2003Formatter(DatasetFormatter):
     def __init__(
         self,
-        files_path=Path("../../data/conll2003").resolve(),
+        files_path=Path("../../data/conll2003").resolve(),  # noqa: B008
         glob_pattern: str = "*.*",
-    ):
+    ) -> None:
         self.files_path = files_path
         self.glob_pattern = glob_pattern
 
     @staticmethod
     def download(
-        local_data_path=Path("../../data/conll2003").resolve(),
+        local_data_path=Path("../../data/conll2003").resolve(),  # noqa: B008
         conll_gh_path="https://raw.githubusercontent.com/glample/tagger/master/dataset/",
-    ):
-
+    ) -> None:
         for fold in ("eng.train", "eng.testa", "eng.testb"):
             fold_path = conll_gh_path + fold
             if not local_data_path.exists():
@@ -34,7 +32,7 @@ class CONLL2003Formatter(DatasetFormatter):
                 print("Dataset already exists, skipping download")
                 return
 
-            response = requests.get(fold_path)
+            response = requests.get(fold_path, timeout=30)
             dataset_raw = response.text
             with open(dataset_file, "w") as f:
                 f.write(dataset_raw)
@@ -42,28 +40,30 @@ class CONLL2003Formatter(DatasetFormatter):
 
         print("Finished downloading CoNNL2003")
 
-    def to_input_samples(self, fold: Optional[str] = None) -> List[InputSample]:
+    def to_input_samples(self, fold: str | None = None) -> list[InputSample]:
         files_found = False
         input_samples = []
-        for i, file_path in enumerate(self.files_path.glob(self.glob_pattern)):
+        for _i, file_path in enumerate(self.files_path.glob(self.glob_pattern)):
             if fold and fold not in file_path.name:
                 continue
 
             files_found = True
-            with open(file_path, "r", encoding="utf-8") as file:
+            with open(file_path, encoding="utf-8") as file:
                 text = file.readlines()
 
             text = "".join(text)
 
             output_docs = conll_ner_to_docs(
-                input_data=text, n_sents=None, no_print=True
+                input_data=text,
+                n_sents=None,
+                no_print=True,
             )
             for doc in tqdm(output_docs, f"Processing doc for file {file_path.name}"):
                 input_samples.append(InputSample.from_spacy_doc(doc=doc))
 
         if not files_found:
             raise FileNotFoundError(
-                f"No files found for pattern {self.glob_pattern} and fold {fold}"
+                f"No files found for pattern {self.glob_pattern} and fold {fold}",
             )
 
         return input_samples

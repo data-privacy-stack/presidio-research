@@ -1,9 +1,7 @@
-from typing import List, Optional, Dict
-
 from presidio_analyzer import (
     AnalyzerEngine,
-    EntityRecognizer,
     BatchAnalyzerEngine,
+    EntityRecognizer,
     RecognizerResult,
 )
 
@@ -14,17 +12,17 @@ from presidio_evaluator.models import BaseModel
 class PresidioAnalyzerWrapper(BaseModel):
     def __init__(
         self,
-        analyzer_engine: Optional[AnalyzerEngine] = None,
-        entities_to_keep: List[str] = None,
+        analyzer_engine: AnalyzerEngine | None = None,
+        entities_to_keep: list[str] | None = None,
         verbose: bool = False,
         labeling_scheme: str = "IO",
         score_threshold: float = 0.4,
         language: str = "en",
-        entity_mapping: Optional[Dict[str, str]] = None,
-        ad_hoc_recognizers: Optional[List[EntityRecognizer]] = None,
-        context: Optional[List[str]] = None,
-        allow_list: Optional[List[str]] = None,
-    ):
+        entity_mapping: dict[str, str] | None = None,
+        ad_hoc_recognizers: list[EntityRecognizer] | None = None,
+        context: list[str] | None = None,
+        allow_list: list[str] | None = None,
+    ) -> None:
         """
         Evaluation wrapper for the Presidio Analyzer
         :param analyzer_engine: object of type AnalyzerEngine (from presidio-analyzer)
@@ -34,18 +32,23 @@ class PresidioAnalyzerWrapper(BaseModel):
         the prediction to a specific scheme (IO, BIO/IOB, BILUO)
         :param score_threshold: Minimum score for an entity to be considered
         :param language: Language of the text
-        :param entity_mapping: Dictionary for mapping this model's input and output with the expected.
-        Keys should be the input entity types (from the input dataset),
-        values should be the model's supported entity types.
+        :param entity_mapping: DEPRECATED. Entity mapping is now handled by
+        CanonicalMapper before evaluation.
         :param ad_hoc_recognizers: List of ad-hoc recognizers to be used in the analyze method
         :param context: List of context words to be passed to the analyze method
         :param allow_list: List of allowed values to be passed to the analyze method
         """
+        if entity_mapping is not None:
+            raise DeprecationWarning(
+                "The 'entity_mapping' parameter is deprecated and has been removed. "
+                "Entity mapping is now handled by CanonicalMapper before evaluation. "
+                "See notebooks/4_Evaluate_Presidio_Analyzer.ipynb for examples.",
+            )
+
         super().__init__(
             entities_to_keep=entities_to_keep,
             verbose=verbose,
             labeling_scheme=labeling_scheme,
-            entity_mapping=entity_mapping,
         )
         self.name = "Presidio Analyzer"
         self.score_threshold = score_threshold
@@ -61,7 +64,7 @@ class PresidioAnalyzerWrapper(BaseModel):
 
         self.print_discrepancies()
 
-    def predict(self, sample: InputSample, **kwargs) -> List[str]:
+    def predict(self, sample: InputSample, **kwargs) -> list[str]:
         self.__update_kwargs(kwargs)
 
         results = self.analyzer_engine.analyze(
@@ -71,22 +74,23 @@ class PresidioAnalyzerWrapper(BaseModel):
         response_tags = self.__recognizer_results_to_tags(results, sample)
         return response_tags
 
-    def batch_predict(self, dataset: List[InputSample], **kwargs) -> List[List[str]]:
+    def batch_predict(self, dataset: list[InputSample], **kwargs) -> list[list[str]]:
         self.__update_kwargs(kwargs)
         texts = [sample.full_text for sample in dataset]
         batch_analyzer = BatchAnalyzerEngine(analyzer_engine=self.analyzer_engine)
         analyzer_results = batch_analyzer.analyze_iterator(texts=texts, **kwargs)
 
         predictions = []
-        for prediction, sample in zip(analyzer_results, dataset):
+        for prediction, sample in zip(analyzer_results, dataset, strict=False):
             predictions.append(self.__recognizer_results_to_tags(prediction, sample))
 
         return predictions
 
     @staticmethod
     def __recognizer_results_to_tags(
-        results: List[RecognizerResult], sample: InputSample
-    ) -> List[str]:
+        results: list[RecognizerResult],
+        sample: InputSample,
+    ) -> list[str]:
         starts = []
         ends = []
         scores = []
@@ -107,83 +111,20 @@ class PresidioAnalyzerWrapper(BaseModel):
         )
         return response_tags
 
-    def __update_kwargs(self, kwargs):
+    def __update_kwargs(self, kwargs) -> None:
         kwargs["language"] = kwargs.get("language", self.language)
         kwargs["score_threshold"] = kwargs.get("score_threshold", self.score_threshold)
         kwargs["ad_hoc_recognizers"] = kwargs.get(
-            "ad_hoc_recognizers", self.ad_hoc_recognizers
+            "ad_hoc_recognizers",
+            self.ad_hoc_recognizers,
         )
         kwargs["context"] = kwargs.get("context", self.context)
         kwargs["allow_list"] = kwargs.get("allow_list", self.allow_list)
         kwargs["entities"] = kwargs.get("entities", self.entities)
 
-    # Mapping between dataset entities and Presidio entities. Key: Dataset entity, Value: Presidio entity
-    presidio_entities_map = dict(
-        # Names
-        PER="PERSON",
-        PERSON="PERSON",
-        FIRST_NAME="PERSON",
-        LAST_NAME="PERSON",
-        NAME="PERSON",
-        PATIENT="PERSON",
-        STAFF="PERSON",
-        HCW="PERSON",
-        # Locations, GPE
-        LOC="LOCATION",
-        LOCATION="LOCATION",
-        GPE="LOCATION",
-        FACILITY="LOCATION",
-        CITY="LOCATION",
-        ADDRESS="LOCATION",
-        STREET_ADDRESS="LOCATION",
-        ZIP="ZIP_CODE",
-        ZIP_CODE="ZIP_CODE",
-        # Organizations, norps
-        ORG="ORGANIZATION",
-        ORGANIZATION="ORGANIZATION",
-        VENDOR="ORGANIZATION",
-        NORP="NRP",
-        NRP="NRP",
-        NATIONALITY="NRP",
-        HOSP="ORGANIZATION",
-        PATORG="ORGANIZATION",
-        HOSPITAL="ORGANIZATION",
-        # Generic
-        AGE="AGE",
-        ID="ID",
-        TITLE="TITLE",
-        PREFIX="TITLE",
-        # Financial
-        CREDIT_CARD="CREDIT_CARD",
-        CREDIT_CARD_NUMBER="CREDIT_CARD",
-        IBAN_CODE="IBAN_CODE",
-        IBAN="IBAN_CODE",
-        # Dates, times, birthdays
-        DATE="DATE_TIME",
-        TIME="DATE_TIME",
-        DATE_TIME="DATE_TIME",
-        BIRTHDAY="DATE_TIME",
-        DATE_OF_BIRTH="DATE_TIME",
-        DOB="DATE_TIME",
-        PHONE="PHONE_NUMBER",
-        PHONE_NUMBER="PHONE_NUMBER",
-        # Internet
-        DOMAIN_NAME="URL",
-        URL="URL",
-        DOMAIN="URL",
-        EMAIL="EMAIL_ADDRESS",
-        EMAIL_ADDRESS="EMAIL_ADDRESS",
-        IP_ADDRESS="IP_ADDRESS",
-        # US
-        SSN="US_SSN",
-        US_SSN="US_SSN",
-        US_DRIVER_LICENSE="US_DRIVER_LICENSE",
-        O="O",
-    )
-
-    def print_discrepancies(self):
+    def print_discrepancies(self) -> None:
         supported_entities = self.analyzer_engine.get_supported_entities(
-            language=self.language
+            language=self.language,
         )
 
         if not self.entities:
@@ -192,17 +133,18 @@ class PresidioAnalyzerWrapper(BaseModel):
         for entity in self.entities:
             if entity not in supported_entities:
                 print(
-                    f"Warning: Entity {entity} is not supported by this instance of Presidio Analyzer Engine"
+                    f"Warning: Entity {entity} is not supported by this instance of Presidio Analyzer Engine",
                 )
-        print("--------")
-        print("Entities supported by this Presidio Analyzer instance:")
-        print(", ".join(supported_entities))
+        if self.verbose:
+            print("--------")
+            print("Entities supported by this Presidio Analyzer instance:")
+            print(", ".join(supported_entities))
 
-    def _update_recognizers_based_on_entities_to_keep(self):
+    def _update_recognizers_based_on_entities_to_keep(self) -> None:
         """Add ORGANIZATION as it is removed by default."""
 
         supported_entities = self.analyzer_engine.get_supported_entities(
-            language=self.language
+            language=self.language,
         )
 
         if "ORGANIZATION" in self.entities and "ORGANIZATION" not in supported_entities:
@@ -210,9 +152,9 @@ class PresidioAnalyzerWrapper(BaseModel):
             spacy_recognizer = [
                 rec
                 for rec in recognizers
-                if rec.name == "SpacyRecognizer" or rec.name == "StanzaRecognizer"
+                if rec.name in {"SpacyRecognizer", "StanzaRecognizer"}
             ]
-            if len(spacy_recognizer):
+            if spacy_recognizer:
                 spacy_recognizer = spacy_recognizer[0]
                 spacy_recognizer.supported_entities.append("ORGANIZATION")
                 self.entities.append("ORGANIZATION")

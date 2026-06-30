@@ -1,5 +1,4 @@
 import os
-from typing import List
 
 import numpy as np
 import pytest
@@ -43,12 +42,33 @@ def pytest_collection_modifyitems(items, config):
 
 
 @pytest.fixture(scope="session")
-def small_dataset() -> List[InputSample]:
+def small_dataset() -> list[InputSample]:
     dir_path = os.path.dirname(os.path.realpath(__file__))
     input_samples = InputSample.read_dataset_json(
         os.path.join(dir_path, "data/generated_small.json")
     )
     return input_samples
+
+
+@pytest.fixture
+def default_entity_mapping():
+    """Default identity entity mapping for tests (entities map to themselves)."""
+    return {
+        "PERSON": "PERSON",
+        "GPE": "GPE",
+        "ORG": "ORG",
+        "LOCATION": "LOCATION",
+        "EMAIL": "EMAIL",
+        "PHONE_NUMBER": "PHONE_NUMBER",
+        "CREDIT_CARD": "CREDIT_CARD",
+        "IP_ADDRESS": "IP_ADDRESS",
+        "US_SSN": "US_SSN",
+        "US_DRIVER_LICENSE": "US_DRIVER_LICENSE",
+        "DATE_TIME": "DATE_TIME",
+        "X": "X",
+        "Y": "Y",
+        "Z": "Z",
+    }
 
 
 def assert_model_results_gt(

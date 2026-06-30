@@ -1,13 +1,13 @@
-from collections import defaultdict
-import random
-import numpy as np
-from typing import List, Dict
 import json
+import random
+from collections import defaultdict
+
+import numpy as np
 
 from presidio_evaluator import InputSample
 
 
-def split_dataset(dataset: List[InputSample], ratios):
+def split_dataset(dataset: list[InputSample], ratios):
     """
     Splits a provided dataset into n groups, by the template_id attribute
     :param dataset: List of InputSamples to be splitted
@@ -24,7 +24,8 @@ def split_dataset(dataset: List[InputSample], ratios):
     for ratio in ratios:
         if 1 >= ratio > 0:
             first_templates, second_templates = split_by_template(
-                remaining_dataset, ratio / remaining_ratio
+                remaining_dataset,
+                ratio / remaining_ratio,
             )
             first_split = get_samples_by_pattern(remaining_dataset, first_templates)
             second_split = get_samples_by_pattern(remaining_dataset, second_templates)
@@ -37,7 +38,7 @@ def split_dataset(dataset: List[InputSample], ratios):
     return tuple(splits)
 
 
-def group_by_template(dataset: List[InputSample]) -> Dict[str, List[InputSample]]:
+def group_by_template(dataset: list[InputSample]) -> dict[str, list[InputSample]]:
     """
     Creates a dict of key = template ID and value = List[InputSamples] for this template id
     """
@@ -50,7 +51,7 @@ def group_by_template(dataset: List[InputSample]) -> Dict[str, List[InputSample]
     return group_by_template
 
 
-def split_by_template(input_samples: List[InputSample], train_pct: float = 0.7):
+def split_by_template(input_samples: list[InputSample], train_pct: float = 0.7):
     """
     Splits a daset of type List[InputSample] into a tuple of train template IDs and test template IDs
     """
@@ -58,7 +59,7 @@ def split_by_template(input_samples: List[InputSample], train_pct: float = 0.7):
 
     templates = np.array(list(samples_grpd.keys()))
     train_ind = set(
-        random.sample(range(len(templates)), round(train_pct * len(templates)))
+        random.sample(range(len(templates)), round(train_pct * len(templates))),
     )
 
     test_ind = set(range(len(templates))) - train_ind
@@ -76,8 +77,8 @@ def get_samples_by_pattern(input_samples, patterns_list):
     return dataset
 
 
-def save_to_json(samples, output_file):
+def save_to_json(samples, output_file) -> None:
     examples_dict = [example.to_dict() for example in samples]
 
-    with open("{}".format(output_file), "w+", encoding="utf-8") as f:
+    with open(f"{output_file}", "w+", encoding="utf-8") as f:
         json.dump(examples_dict, f, ensure_ascii=False, indent=4)

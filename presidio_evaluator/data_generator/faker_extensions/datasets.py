@@ -13,12 +13,12 @@ def _camel_to_snake(name):
     return re.sub("([a-z0-9])([A-Z])", r"\1_\2", name).lower()
 
 
-def _full_name(row):
+def _full_name(row) -> str:
     if random.random() > 0.2:
-        return f'{row.first_name} {row.last_name}'
+        return f"{row.first_name} {row.last_name}"
     else:
         space_after_initials = " " if random.random() > 0.5 else ". "
-        return f'{row.first_name} {row.middle_initial}{space_after_initials}{row.last_name}'
+        return f"{row.first_name} {row.middle_initial}{space_after_initials}{row.last_name}"
 
 
 def _name_gendered(row):
@@ -51,7 +51,8 @@ def load_fake_person_df() -> DataFrame:
     fake_person_df.columns = [_camel_to_snake(col) for col in fake_person_df.columns]
     # Update some column names to fit Faker
     fake_person_df.rename(
-        columns={"country": "country_code", "state": "state_abbr"}, inplace=True
+        columns={"country": "country_code", "state": "state_abbr"},
+        inplace=True,
     )
     fake_person_df.rename(
         columns={
