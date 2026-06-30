@@ -128,6 +128,7 @@ The presidio-evaluator framework allows you to evaluate Presidio as a system, a 
 
 ## For more information
 
+- [Blog post on PII evaluation](https://omri-mendels.medium.com/evaluating-pii-detection-models-fa0c745d7a4c)
 - [Blog post on NLP approaches to data anonymization](https://towardsdatascience.com/nlp-approaches-to-data-anonymization-1fb5bde6b929)
 - [How to evaluate PII Detection output with Presidio Evaluator](https://tranguyen221.medium.com/how-to-evaluate-pii-detection-output-with-presidio-evaluator-3f2684ba3091)
 - [Conference talk about leveraging Presidio and utilizing NLP approaches for data anonymization](https://youtu.be/Tl773LANRwY)
