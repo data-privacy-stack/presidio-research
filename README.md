@@ -1,7 +1,7 @@
 # Presidio-research
 
 This package provides evaluation and data-science capabilities for
-[Presidio](https://github.com/microsoft/presidio) and PII detection models in general.
+[Presidio](https://github.com/data-privacy-stack/presidio) and PII detection models in general.
 
 It also includes a fake data generator that creates synthetic sentences based on templates and fake PII.
 
@@ -135,17 +135,12 @@ The presidio-evaluator framework allows you to evaluate Presidio as a system, a 
 
 # Contributing
 
-This project welcomes contributions and suggestions.  Most contributions require you to agree to a
-Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
-the rights to use your contribution. For details, visit <https://cla.opensource.microsoft.com>.
+This project welcomes contributions and suggestions. Open an issue to discuss larger changes
+before submitting a pull request.
 
-When you submit a pull request, a CLA bot will automatically determine whether you need to provide
-a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
-provided by the bot. You will only need to do this once across all repos using our CLA.
-
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
-contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+This project has adopted the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
+By participating, you are expected to uphold this code. Please report unacceptable behavior
+to <presidio@dataprivacystack.org>.
 
 Copyright notice:
 
