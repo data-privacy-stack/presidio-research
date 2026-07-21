@@ -42,12 +42,12 @@
 ## Version 0.2.5
 
 ### Improvements
- - Introduced a new evaluator, `SpanEvaluator` which compares full spans of annotations and predictions, instead of tokens. ([#141](https://github.com/microsoft/presidio-research/pull/141))
- - Make Azure SDK as an optional dependency ([#116](https://github.com/microsoft/presidio-research/pull/116))
- - Add a DF output to evaluation results ([#126](https://github.com/microsoft/presidio-research/pull/126))
+ - Introduced a new evaluator, `SpanEvaluator` which compares full spans of annotations and predictions, instead of tokens. ([#141](https://github.com/data-privacy-stack/presidio-research/pull/141))
+ - Make Azure SDK as an optional dependency ([#116](https://github.com/data-privacy-stack/presidio-research/pull/116))
+ - Add a DF output to evaluation results ([#126](https://github.com/data-privacy-stack/presidio-research/pull/126))
 ### Bug Fixes
- - Fixed bugs around plotting and experiment tracking (#140) around configuring Presidio in the evaluation loop. ([#155](https://github.com/microsoft/presidio-research/pull/155))
- - Data generation bug fixes [#113](https://github.com/microsoft/presidio-research/pull/113)
+ - Fixed bugs around plotting and experiment tracking (#140) around configuring Presidio in the evaluation loop. ([#155](https://github.com/data-privacy-stack/presidio-research/pull/155))
+ - Data generation bug fixes [#113](https://github.com/data-privacy-stack/presidio-research/pull/113)
 
 ## Version 0.2.0
 
