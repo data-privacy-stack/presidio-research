@@ -17,6 +17,10 @@ on:
   release:
     types: [published]
 
+# Least-privilege default for all jobs; the publish job widens this for OIDC.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build distributions
@@ -42,6 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      contents: read
       id-token: write  # required for trusted publishing (OIDC)
     steps:
       - name: Download build artifacts
