@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## Version 0.3
 
 > **Migration guide:** See [docs/migration-guide.md](docs/migration-guide.md) for step-by-step upgrade instructions.
 
@@ -32,6 +32,10 @@
 ### Deprecations
 
 - **`evaluator.get_results_dataframe()`** — soft `DeprecationWarning` emitted at runtime. Replace with `model.predict_dataset(dataset)`.
+
+### CI/CD
+
+- **PyPI release workflow** — added `.github/workflows/publish.yml`, which builds and publishes the package to PyPI via Trusted Publishing (OIDC) when a GitHub Release is published. Replaces the retired Azure DevOps `publish-to-pypi` pipeline.
 
 
 
