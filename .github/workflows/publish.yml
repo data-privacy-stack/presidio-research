@@ -27,6 +27,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history needed to check the tag is on main
+
+      - name: Verify release tag matches pyproject version
+        run: |
+          set -euo pipefail
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Release tag '$GITHUB_REF_NAME' does not match pyproject version '$version'."
+            exit 1
+          fi
+          echo "Release tag matches pyproject version ($version)."
+
+      - name: Verify release commit is contained in main
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Release commit $GITHUB_SHA is not contained in main; refusing to publish."
+            exit 1
+          fi
+          echo "Release commit is contained in main."
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
