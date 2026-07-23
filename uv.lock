@@ -1740,11 +1740,11 @@ wheels = [
 
 [[package]]
 name = "phonenumbers"
-version = "9.0.26"
+version = "9.0.34"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/43/a3/3720326431a23c8e8944a07cdf51520608f1fded87e32e991116fdb801bd/phonenumbers-9.0.26.tar.gz", hash = "sha256:9e582c827f0f5503cddeebef80099475a52ffa761551d8384099c7ec71298cbf", size = 2298587, upload-time = "2026-03-13T11:34:19.656Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/86/c3/e154829a50679c38ae28ec9c4f151f2c425db5e70fd445266e76f6d6cd65/phonenumbers-9.0.34.tar.gz", hash = "sha256:00751c75d1166485ca80ce02ec15b6a61a2628e9b313381579330bc70c934075", size = 2306776, upload-time = "2026-07-03T06:30:37.358Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/93/8825b3c9c23e595f34aa11735b29550c27a0f57fe4fc8c9ee737390566ca/phonenumbers-9.0.26-py2.py3-none-any.whl", hash = "sha256:ff473da5712965b6c7f7a31cbff8255864df694eb48243771133ecb761e807c1", size = 2584969, upload-time = "2026-03-13T11:34:16.671Z" },
+    { url = "https://files.pythonhosted.org/packages/16/0a/3a7980f3b071dde9a297d85cf6b18ba4bc2e5024e1c453b3da8a1dc14268/phonenumbers-9.0.34-py2.py3-none-any.whl", hash = "sha256:1221bf8e65bd2c02770226488af806d4636814bc997104d3a1f7de6ed6410bd2", size = 2595344, upload-time = "2026-07-03T06:30:33.913Z" },
 ]
 
 [[package]]
@@ -1894,9 +1894,11 @@ wheels = [
 
 [[package]]
 name = "presidio-analyzer"
-version = "2.2.362"
+version = "2.2.364"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "click" },
+    { name = "numpy" },
     { name = "phonenumbers" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -1904,19 +1906,21 @@ dependencies = [
     { name = "spacy" },
     { name = "tldextract" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/c7/50/408a41cf99d076107d3823d514bb6408e249132418f068673cb807839ce5/presidio_analyzer-2.2.364.tar.gz", hash = "sha256:51f27bacf199fb9777ade9552c0f0111e00a1d73cfe2d4797fc05c998de1e0b6", size = 154117, upload-time = "2026-07-22T07:54:36.264Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/8a/d6cf4bddbb11d9c78f5c9342bbbcde4f90fe4e3c7de114a836ec4ed8a6cf/presidio_analyzer-2.2.362-py3-none-any.whl", hash = "sha256:4c36438924b1fcb4df92ea5cf2d8dc57508808e116b10923c983b8732aa07d90", size = 201084, upload-time = "2026-03-15T12:40:43.801Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/15/44a64276cd5c45485716314addfb7966c24f61034d8ff8e9a78d13d0afbe/presidio_analyzer-2.2.364-py3-none-any.whl", hash = "sha256:0a9eeb60ccc416c505367b4989d056becb84ef082703ee3361c046fb75941739", size = 266299, upload-time = "2026-07-22T07:54:34.868Z" },
 ]
 
 [[package]]
 name = "presidio-anonymizer"
-version = "2.2.362"
+version = "2.2.364"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/66/93/0889954ed2448fe20b1a714e96fccd7c4a60dc1cc078efaeae10b7975807/presidio_anonymizer-2.2.364.tar.gz", hash = "sha256:eced015f1195f79a91ad11b34a531ceca2e5c673ed57e97649efea3d3293155d", size = 26006, upload-time = "2026-07-22T07:54:35.861Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/01/1c3404e8da63a979ae951b8822576bc0e52ca3a46a624ac9439786990c6d/presidio_anonymizer-2.2.362-py3-none-any.whl", hash = "sha256:b2d81542cb797360d18506a1aa73ea0dfacc44abca15248c81dd062f582e6b2b", size = 36603, upload-time = "2026-03-15T12:40:38.651Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/47/9a353565cbd6d1af87c9e6f68e9e2b89dd5ced7be9634284c6975abd63d2/presidio_anonymizer-2.2.364-py3-none-any.whl", hash = "sha256:f3edfe80b5e83a22976439727e9d449c796b12efdf6cd70a6db860d4942a6b72", size = 38128, upload-time = "2026-07-22T07:54:34.797Z" },
 ]
 
 [[package]]
@@ -1965,8 +1969,8 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.4.0" },
     { name = "pandas", specifier = ">=3.0.0" },
     { name = "plotly", specifier = ">=6.6.0" },
-    { name = "presidio-analyzer", specifier = ">=2.2.362" },
-    { name = "presidio-anonymizer", specifier = ">=2.2.362" },
+    { name = "presidio-analyzer", specifier = ">=2.2.364" },
+    { name = "presidio-anonymizer", specifier = ">=2.2.364" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
     { name = "pytest-azurepipelines", marker = "extra == 'dev'", specifier = ">=1.0.5" },
     { name = "python-dotenv", specifier = ">=1.2.0" },
