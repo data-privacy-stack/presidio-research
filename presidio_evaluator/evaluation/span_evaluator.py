@@ -228,7 +228,7 @@ class SpanEvaluator(BaseEvaluator):
             carry per-token start indices
         """
         tokens = span.normalized_tokens or []
-        indices = getattr(span, "normalized_start_indices", None)
+        indices = span.normalized_start_indices
         if indices is None or len(indices) != len(tokens):
             return None
         return set(zip(indices, tokens, strict=True))
@@ -599,7 +599,7 @@ class SpanEvaluator(BaseEvaluator):
                                 token_start=current_token_start,
                                 current_tokens=current_tokens,
                                 idx=idx,
-                                normalized_satrt_indices=normalized_start_indices,
+                                normalized_start_indices=normalized_start_indices,
                                 normalized_tokens=normalized_tokens,
                             ),
                         )
@@ -625,7 +625,7 @@ class SpanEvaluator(BaseEvaluator):
                                 token_start=current_token_start,
                                 current_tokens=current_tokens,
                                 idx=idx,
-                                normalized_satrt_indices=normalized_start_indices,
+                                normalized_start_indices=normalized_start_indices,
                                 normalized_tokens=normalized_tokens,
                             ),
                         )
@@ -654,7 +654,7 @@ class SpanEvaluator(BaseEvaluator):
                         token_start=current_token_start,
                         current_tokens=current_tokens,
                         idx=df.index[-1] + 1,
-                        normalized_satrt_indices=normalized_start_indices,
+                        normalized_start_indices=normalized_start_indices,
                         normalized_tokens=normalized_tokens,
                     ),
                 )
@@ -667,7 +667,7 @@ class SpanEvaluator(BaseEvaluator):
         token_start: int,
         current_tokens: list[str],
         idx: int,
-        normalized_satrt_indices: list[int],
+        normalized_start_indices: list[int],
         normalized_tokens: list[str],
     ):
         return Span(
@@ -676,12 +676,12 @@ class SpanEvaluator(BaseEvaluator):
             start_position=start_indices[0],
             end_position=start_indices[-1] + len(current_tokens[-1]),
             normalized_tokens=normalized_tokens,
-            normalized_start_index=min(normalized_satrt_indices),
+            normalized_start_index=min(normalized_start_indices),
             normalized_end_index=self._get_normalized_end_index(
                 normalized_tokens,
-                normalized_satrt_indices,
+                normalized_start_indices,
             ),
-            normalized_start_indices=normalized_satrt_indices,
+            normalized_start_indices=normalized_start_indices,
             token_start=token_start,
             token_end=idx,
         )
