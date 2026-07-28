@@ -206,6 +206,13 @@ class SpanEvaluator(BaseEvaluator):
         ignoring prediction spans with no positional overlap so that identical
         words at disjoint positions can't match.
 
+        Known limitation of the fallback path: once spans do overlap
+        positionally, token strings can't be disambiguated without positions,
+        so a repeated word may over-count the intersection (e.g. annotation
+        "Michael Smith" vs prediction "Smith met Michael" yields 1.0 instead
+        of 1/3). Spans built by _create_spans always carry per-token indices
+        and take the exact position-aware path.
+
         :param ann_span: The annotation Span to match against
         :param pred_spans: One or more prediction Spans; their tokens are pooled
             before computing the IoU
@@ -252,11 +259,18 @@ class SpanEvaluator(BaseEvaluator):
         :param span: Span to extract positional tokens from
         :return: Set of (start index, token) pairs, or None if the span does not
             carry per-token start indices
+        :raises ValueError: If the span carries per-token start indices whose
+            length does not match the number of normalized tokens
         """
         tokens = span.normalized_tokens or []
         indices = span.normalized_start_indices
-        if indices is None or len(indices) != len(tokens):
+        if indices is None:
             return None
+        if len(indices) != len(tokens):
+            raise ValueError(
+                f"Inconsistent Span: {len(tokens)} normalized tokens but "
+                f"{len(indices)} normalized start indices ({span})",
+            )
         return set(zip(indices, tokens, strict=True))
 
     def _process_sentence_spans(

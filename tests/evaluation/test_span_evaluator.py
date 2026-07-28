@@ -1694,3 +1694,49 @@ def test_token_iou_manual_spans_disjoint_positions():
     assert iou == 0.0, (
         f"Identical words at disjoint positions must have IoU 0, got {iou}"
     )
+
+
+def test_combined_token_iou_positive_full_coverage(token_based_evaluator):
+    """Two same-type predictions that together exactly cover the annotation give combined IoU 1.0."""
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0, 0],
+            "token": ["New", "York", "Mets"],
+            "annotation": ["ORGANIZATION"] * 3,
+            "pred_a": ["ORGANIZATION", "O", "O"],
+            "pred_b": ["O", "ORGANIZATION", "ORGANIZATION"],
+            "start_indices": [0, 4, 9],
+        }
+    )
+    ann_span = token_based_evaluator._create_spans(df, column="annotation")[0]
+    pred_1 = token_based_evaluator._create_spans(df, column="pred_a")[0]
+    pred_2 = token_based_evaluator._create_spans(df, column="pred_b")[0]
+
+    # Spans built from the DataFrame carry per-token indices (position-aware path)
+    assert ann_span.normalized_start_indices is not None
+    assert pred_1.normalized_start_indices is not None
+    assert pred_2.normalized_start_indices is not None
+
+    combined_iou = token_based_evaluator._calculate_combined_iou(
+        ann_span, [pred_1, pred_2]
+    )
+    assert combined_iou == 1.0, (
+        f"Predictions fully covering the annotation should give combined IoU 1.0, "
+        f"got {combined_iou}"
+    )
+
+
+def test_positional_tokens_length_mismatch_raises():
+    """A Span with mismatched token/index list lengths is inconsistent and must raise."""
+    span = Span(
+        entity_type="PERSON",
+        entity_value="John Smith",
+        start_position=0,
+        end_position=10,
+        normalized_tokens=["john", "smith"],
+        normalized_start_index=0,
+        normalized_end_index=10,
+        normalized_start_indices=[0],
+    )
+    with pytest.raises(ValueError, match="normalized"):
+        SpanEvaluator._positional_tokens(span)
