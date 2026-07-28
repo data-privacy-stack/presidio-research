@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## Version 0.3.1
+
 ### Bug Fixes
 
 - **Token-based span IoU is now position-aware** — `SpanEvaluator` with `char_based=False` previously compared sets of token strings, so identical words at different positions were wrongly treated as overlapping (e.g. annotating the first "Michael" in "Michael met Michael" while predicting the second counted as a true positive, and "Human Rights" vs "Civil Rights" had a non-zero IoU through the shared word "Rights"). Token-level IoU now compares `(position, token)` pairs; `Span` gained an optional `normalized_start_indices` field to support this. Spans built without per-token indices fall back to string comparison guarded by a positional-overlap check.
