@@ -1535,3 +1535,162 @@ def test_model_error_start_end_positions(
         assert error.end == expected["end"], (
             f"In {scenario}, {expected['error_type']} end expected {expected['end']}, got {error.end}"
         )
+
+
+# Position-aware token-based IoU:
+# token-level IoU must compare token positions, not just token strings.
+# Otherwise identical words at different positions in the sentence
+# (e.g. "Michael met Michael") wrongly count as a match.
+
+
+@pytest.fixture
+def token_based_evaluator():
+    """SpanEvaluator configured for token-based IoU without skip words."""
+    return SpanEvaluator(
+        model=None, iou_threshold=0.75, char_based=False, skip_words=[]
+    )
+
+
+def test_token_iou_same_word_different_position_is_zero(token_based_evaluator):
+    """'Michael met Michael': annotating the first and predicting the second is not a match."""
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0, 0, 0],
+            "token": ["Michael", "met", "Michael", "yesterday"],
+            "annotation": ["PERSON", "O", "O", "O"],
+            "prediction": ["O", "O", "PERSON", "O"],
+            "start_indices": [0, 8, 12, 20],
+        }
+    )
+
+    result = token_based_evaluator.calculate_score_on_df(results_df=df, level="entity")
+
+    person_metrics = result.per_type["PERSON"]
+    assert person_metrics.true_positives == 0, (
+        "Predicting a different occurrence of the same word must not be a TP"
+    )
+    assert person_metrics.false_negatives == 1
+    assert person_metrics.false_positives == 1
+
+
+def test_token_iou_shared_word_entities_do_not_overlap(token_based_evaluator):
+    """'Human Rights beat Civil Rights': gold and prediction share the word 'Rights' but do not overlap."""
+    tokens = ["Human", "Rights", "beat", "Civil", "Rights"]
+    start_indices = [0, 6, 13, 18, 24]
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * len(tokens),
+            "token": tokens,
+            "annotation": ["ORGANIZATION", "ORGANIZATION", "O", "O", "O"],
+            "prediction": ["O", "O", "O", "ORGANIZATION", "ORGANIZATION"],
+            "start_indices": start_indices,
+        }
+    )
+
+    ann_spans, pred_spans = token_based_evaluator._process_sentence_spans(df)
+    iou = token_based_evaluator.calculate_iou(
+        ann_spans[0], pred_spans[0], char_based=False
+    )
+    assert iou == 0.0, (
+        f"Disjoint spans sharing the token 'rights' must have IoU 0, got {iou}"
+    )
+
+    result = token_based_evaluator.calculate_score_on_df(results_df=df, level="entity")
+    org_metrics = result.per_type["ORGANIZATION"]
+    assert org_metrics.true_positives == 0
+    assert org_metrics.false_negatives == 1
+    assert org_metrics.false_positives == 1
+
+
+def test_token_iou_duplicate_tokens_within_span(token_based_evaluator):
+    """Annotation 'Michael Michael' vs prediction of only the first 'Michael' is a partial match."""
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0],
+            "token": ["Michael", "Michael"],
+            "annotation": ["PERSON", "PERSON"],
+            "prediction": ["PERSON", "O"],
+            "start_indices": [0, 8],
+        }
+    )
+
+    ann_spans, pred_spans = token_based_evaluator._process_sentence_spans(df)
+    iou = token_based_evaluator.calculate_iou(
+        ann_spans[0], pred_spans[0], char_based=False
+    )
+    assert iou == pytest.approx(0.5), (
+        f"Predicting one of two identical tokens should give IoU 0.5, got {iou}"
+    )
+
+
+def test_token_iou_exact_match_still_one(token_based_evaluator):
+    """Sanity: identical annotation and prediction spans still yield IoU 1.0 and a TP."""
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0, 0],
+            "token": ["Michael", "met", "Sarah"],
+            "annotation": ["PERSON", "O", "O"],
+            "prediction": ["PERSON", "O", "O"],
+            "start_indices": [0, 8, 12],
+        }
+    )
+
+    ann_spans, pred_spans = token_based_evaluator._process_sentence_spans(df)
+    iou = token_based_evaluator.calculate_iou(
+        ann_spans[0], pred_spans[0], char_based=False
+    )
+    assert iou == 1.0
+
+    result = token_based_evaluator.calculate_score_on_df(results_df=df, level="entity")
+    assert result.per_type["PERSON"].true_positives == 1
+
+
+def test_combined_token_iou_duplicate_tokens(token_based_evaluator):
+    """Combined IoU over multiple predictions must not collapse duplicate tokens."""
+    # Annotation covers only the first "Michael"; predictions cover both occurrences.
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0, 0, 0],
+            "token": ["Michael", "met", "Michael"],
+            "annotation": ["PERSON", "O", "O"],
+            "prediction": ["PERSON", "O", "LOCATION"],
+            "start_indices": [0, 8, 12],
+        }
+    )
+    ann_spans, pred_spans = token_based_evaluator._process_sentence_spans(df)
+    assert len(pred_spans) == 2
+
+    combined_iou = token_based_evaluator._calculate_combined_iou(
+        ann_spans[0], pred_spans
+    )
+    assert combined_iou == pytest.approx(0.5), (
+        "One matching token out of two predicted occurrences should give combined "
+        f"IoU 0.5, got {combined_iou}"
+    )
+
+
+def test_token_iou_manual_spans_disjoint_positions():
+    """Spans built without per-token indices still respect positions via char offsets."""
+    span_first = Span(
+        entity_type="PERSON",
+        entity_value="Michael",
+        start_position=0,
+        end_position=7,
+        normalized_tokens=["michael"],
+        normalized_start_index=0,
+        normalized_end_index=7,
+    )
+    span_second = Span(
+        entity_type="PERSON",
+        entity_value="Michael",
+        start_position=12,
+        end_position=19,
+        normalized_tokens=["michael"],
+        normalized_start_index=12,
+        normalized_end_index=19,
+    )
+
+    iou = SpanEvaluator.calculate_iou(span_first, span_second, char_based=False)
+    assert iou == 0.0, (
+        f"Identical words at disjoint positions must have IoU 0, got {iou}"
+    )

@@ -51,6 +51,8 @@ class Span:
     :param normalized_tokens: Optional list of normalized tokens (excluding skip words, punctuation etc.)
     :param normalized_start_index: Optional start index of the normalized value in the text
     :param normalized_end_index: Optional end index of the normalized value in the text
+    :param normalized_start_indices: Optional per-token start indices of the normalized tokens,
+        used for position-aware token-level comparisons
     """
 
     def __init__(
@@ -64,6 +66,7 @@ class Span:
         normalized_tokens: list[str] | None = None,
         normalized_start_index: int | None = None,
         normalized_end_index: int | None = None,
+        normalized_start_indices: list[int] | None = None,
     ) -> None:
         self.entity_type = entity_type
         self.entity_value = entity_value
@@ -72,6 +75,7 @@ class Span:
         self.normalized_tokens = normalized_tokens
         self.normalized_start_index = normalized_start_index
         self.normalized_end_index = normalized_end_index
+        self.normalized_start_indices = normalized_start_indices
         self.token_start = token_start
         self.token_end = token_end
 
