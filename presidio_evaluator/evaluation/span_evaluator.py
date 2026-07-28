@@ -110,6 +110,16 @@ class SpanEvaluator(BaseEvaluator):
                 merged_normalized_text = (current.normalized_tokens or []) + (
                     next_span.normalized_tokens or []
                 )
+                if (
+                    current.normalized_start_indices is not None
+                    and next_span.normalized_start_indices is not None
+                ):
+                    merged_normalized_indices = (
+                        current.normalized_start_indices
+                        + next_span.normalized_start_indices
+                    )
+                else:
+                    merged_normalized_indices = None
                 current = Span(
                     entity_type=current.entity_type,
                     entity_value=" ".join(merged_tokens),
@@ -124,6 +134,7 @@ class SpanEvaluator(BaseEvaluator):
                         next_span.normalized_end_index or 0,
                     ),
                     normalized_tokens=merged_normalized_text,
+                    normalized_start_indices=merged_normalized_indices,
                     token_start=current.token_start,
                     token_end=next_span.token_end,
                 )
@@ -178,15 +189,89 @@ class SpanEvaluator(BaseEvaluator):
                 use_normalized_indices=use_normalized_indices,
             )
         else:
-            range1 = set(span1.normalized_tokens or [])
-            range2 = set(span2.normalized_tokens or [])
-
-            intersection = len(range1.intersection(range2))
-            union = len(range1.union(range2))
-
-            iou = intersection / union if union > 0 else 0.0
+            iou = SpanEvaluator._token_iou(span1, [span2])
 
         return iou
+
+    @staticmethod
+    def _token_iou(ann_span: Span, pred_spans: list[Span]) -> float:
+        """
+        Calculate the token-level IoU between an annotation span and one or more
+        prediction spans.
+
+        When every span carries per-token start indices, tokens are compared as
+        (start index, token) pairs, so identical words at different positions
+        (e.g. both occurrences in "Michael met Michael") are distinct tokens.
+        Spans without per-token indices fall back to comparing token strings,
+        ignoring prediction spans with no positional overlap so that identical
+        words at disjoint positions can't match.
+
+        Known limitation of the fallback path: once spans do overlap
+        positionally, token strings can't be disambiguated without positions,
+        so a repeated word may over-count the intersection (e.g. annotation
+        "Michael Smith" vs prediction "Smith met Michael" yields 1.0 instead
+        of 1/3). Spans built by _create_spans always carry per-token indices
+        and take the exact position-aware path.
+
+        :param ann_span: The annotation Span to match against
+        :param pred_spans: One or more prediction Spans; their tokens are pooled
+            before computing the IoU
+        :return: IoU value between 0 and 1
+        """
+        ann_tokens = SpanEvaluator._positional_tokens(ann_span)
+        pred_token_sets = [
+            SpanEvaluator._positional_tokens(pred_span) for pred_span in pred_spans
+        ]
+
+        if ann_tokens is not None and all(
+            tokens is not None for tokens in pred_token_sets
+        ):
+            pred_tokens: set = set()
+            for tokens in pred_token_sets:
+                pred_tokens.update(tokens or set())
+        else:
+            ann_tokens = set(ann_span.normalized_tokens or [])
+            pred_tokens = set()
+            for pred_span in pred_spans:
+                if (
+                    pred_span.intersect(
+                        ann_span,
+                        ignore_entity_type=True,
+                        use_normalized_indices=True,
+                    )
+                    > 0
+                ):
+                    pred_tokens.update(pred_span.normalized_tokens or [])
+
+        intersection = len(ann_tokens.intersection(pred_tokens))
+        union = len(ann_tokens.union(pred_tokens))
+        return intersection / union if union > 0 else 0.0
+
+    @staticmethod
+    def _positional_tokens(span: Span) -> set[tuple[int, str]] | None:
+        """
+        Build a position-aware token set of (start index, token) pairs for a span.
+
+        Comparing tokens together with their positions prevents identical words at
+        different positions (e.g. both occurrences in "Michael met Michael") from
+        being treated as the same token.
+
+        :param span: Span to extract positional tokens from
+        :return: Set of (start index, token) pairs, or None if the span does not
+            carry per-token start indices
+        :raises ValueError: If the span carries per-token start indices whose
+            length does not match the number of normalized tokens
+        """
+        tokens = span.normalized_tokens or []
+        indices = span.normalized_start_indices
+        if indices is None:
+            return None
+        if len(indices) != len(tokens):
+            raise ValueError(
+                f"Inconsistent Span: {len(tokens)} normalized tokens but "
+                f"{len(indices)} normalized start indices ({span})",
+            )
+        return set(zip(indices, tokens, strict=True))
 
     def _process_sentence_spans(
         self,
@@ -554,7 +639,7 @@ class SpanEvaluator(BaseEvaluator):
                                 token_start=current_token_start,
                                 current_tokens=current_tokens,
                                 idx=idx,
-                                normalized_satrt_indices=normalized_start_indices,
+                                normalized_start_indices=normalized_start_indices,
                                 normalized_tokens=normalized_tokens,
                             ),
                         )
@@ -580,7 +665,7 @@ class SpanEvaluator(BaseEvaluator):
                                 token_start=current_token_start,
                                 current_tokens=current_tokens,
                                 idx=idx,
-                                normalized_satrt_indices=normalized_start_indices,
+                                normalized_start_indices=normalized_start_indices,
                                 normalized_tokens=normalized_tokens,
                             ),
                         )
@@ -609,7 +694,7 @@ class SpanEvaluator(BaseEvaluator):
                         token_start=current_token_start,
                         current_tokens=current_tokens,
                         idx=df.index[-1] + 1,
-                        normalized_satrt_indices=normalized_start_indices,
+                        normalized_start_indices=normalized_start_indices,
                         normalized_tokens=normalized_tokens,
                     ),
                 )
@@ -622,7 +707,7 @@ class SpanEvaluator(BaseEvaluator):
         token_start: int,
         current_tokens: list[str],
         idx: int,
-        normalized_satrt_indices: list[int],
+        normalized_start_indices: list[int],
         normalized_tokens: list[str],
     ):
         return Span(
@@ -631,11 +716,12 @@ class SpanEvaluator(BaseEvaluator):
             start_position=start_indices[0],
             end_position=start_indices[-1] + len(current_tokens[-1]),
             normalized_tokens=normalized_tokens,
-            normalized_start_index=min(normalized_satrt_indices),
+            normalized_start_index=min(normalized_start_indices),
             normalized_end_index=self._get_normalized_end_index(
                 normalized_tokens,
-                normalized_satrt_indices,
+                normalized_start_indices,
             ),
+            normalized_start_indices=normalized_start_indices,
             token_start=token_start,
             token_end=idx,
         )
@@ -1260,13 +1346,6 @@ class SpanEvaluator(BaseEvaluator):
                     )
             intersection = len(ann_chars.intersection(pred_chars))
             union = len(ann_chars.union(pred_chars))
-        else:
-            # Token-based IoU
-            ann_tokens = set(annotation_span.normalized_tokens or [])
-            pred_tokens: set[str] = set()
-            for pred_span in prediction_spans:
-                pred_tokens.update(pred_span.normalized_tokens or [])
+            return intersection / union if union > 0 else 0.0
 
-            intersection = len(ann_tokens.intersection(pred_tokens))
-            union = len(ann_tokens.union(pred_tokens))
-        return intersection / union if union > 0 else 0.0
+        return self._token_iou(annotation_span, prediction_spans)
