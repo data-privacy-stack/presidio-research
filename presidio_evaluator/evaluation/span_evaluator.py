@@ -154,11 +154,12 @@ class SpanEvaluator(BaseEvaluator):
         :param df: DataFrame containing the tokens
         :return: True if spans are adjacent, False otherwise
         """
-        # Slice tokens between span1 and span2 using the row indices
-        between_tokens = df.loc[
-            span1.token_end : (span2.token_start or 0) - 1,
-            "token",
-        ].tolist()
+        # token_start/token_end are positions within the sentence, so slice
+        # positionally — the DataFrame's index labels are caller-defined
+        # (e.g. global across sentences) and must not be used as positions.
+        between_tokens = (
+            df["token"].iloc[span1.token_end : span2.token_start or 0].tolist()
+        )
         non_skip_tokens = [
             tok for tok in between_tokens if tok.lower().strip() not in self.skip_words
         ]
@@ -621,7 +622,7 @@ class SpanEvaluator(BaseEvaluator):
             token_start = row["start_indices"]
             token_length = len(token)
             # If this isn't the first token, add space before it
-            if idx > df.index[0]:
+            if idx > 0:
                 curr_char_position += 1  # Account for space between tokens
 
             token_end = curr_char_position + token_length
@@ -693,7 +694,7 @@ class SpanEvaluator(BaseEvaluator):
                         start_indices=current_start_indices,
                         token_start=current_token_start,
                         current_tokens=current_tokens,
-                        idx=df.index[-1] + 1,
+                        idx=len(df),
                         normalized_start_indices=normalized_start_indices,
                         normalized_tokens=normalized_tokens,
                     ),

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## Version 0.3.2
+
+### Bug Fixes
+
+- **Span merging no longer depends on the DataFrame index** — `SpanEvaluator` mixed sentence-relative token positions with DataFrame index labels when checking whether two same-type spans are adjacent. With the global index produced by `predict_dataset()`, the between-tokens lookup read the wrong rows — or none at all — for every sentence except the one starting at row 0, and an empty lookup counts as "adjacent", silently merging same-type spans separated by regular words (e.g. the two PERSON spans in "John visited Berlin with Mary" became one). Span counts (`num_annotated`, `num_predicted`, `true_positives`) were deflated symmetrically for gold and predictions, so headline precision/recall could still look plausible. The evaluator now uses sentence-relative positions throughout and produces identical results for any DataFrame index.
+
 ## Version 0.3.1
 
 ### Bug Fixes
