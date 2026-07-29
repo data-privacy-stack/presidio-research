@@ -32,7 +32,7 @@ The model emits thousands of fine-grained labels; the dataset uses ≤10 broad c
 
 **Real example (Notebook 5):** The OpenMed HuggingFace model predicts `PERSON`, `LOCATION`, `ORGANIZATION`, etc., while the synth dataset labels `city`, `country`, `street_address`, `state`, `county`, `coordinate`, `postcode` as separate entities.
 
-**Issue type produced:** `COLLISION_AMBIGUOUS` (WARNING) — blocking. When a depth-2 ancestor like `LOCATION` is seen in predictions but the canonical surface is at depth 3 (computed by majority vote from the dataset annotations), the mapper can't determine which depth-3 entity to project onto. The user must call `map({'LOCATION': 'LOC'})` (or another appropriate target) to resolve.
+**Issue type produced:** `COLLISION_AMBIGUOUS` (WARNING) — blocking. When a depth-2 ancestor like `LOCATION` is seen in predictions but the canonical surface is at depth 3 (computed by majority vote from the dataset annotations), the mapper can't determine which depth-3 entity to project onto. The user must call `map({'LOCATION': 'GEO'})` (or another appropriate target) to resolve.
 
 **Projection rules in action:** If instead the dataset uses depth-2 labels and the canonical surface locks at depth 2, then fine-grained model labels like `STREET_ADDRESS` auto-collapse to `LOCATION` as `COLLISION_TRIVIAL` (INFO, non-blocking).
 
@@ -166,7 +166,7 @@ The dataset and model operate at different hierarchy depths, producing ancestor�
 
 **Real example (Notebook 5):** Dataset labels `city`, `street_address`, `postcode` (depth 3), model predicts `LOCATION` (depth 2).
 
-**How the new API handles this:** The canonical depth is computed automatically by majority vote from the dataset annotations. If the dataset is predominantly depth-3, the canonical surface is depth-3 and depth-2 model predictions trigger `COLLISION_AMBIGUOUS` (WARNING). Resolve with `map({'LOCATION': 'LOC'})` to pick the right depth-3 target.
+**How the new API handles this:** The canonical depth is computed automatically by majority vote from the dataset annotations. If the dataset is predominantly depth-3, the canonical surface is depth-3 and depth-2 model predictions trigger `COLLISION_AMBIGUOUS` (WARNING). Resolve with `map({'LOCATION': 'GEO'})` to pick the right depth-3 target.
 
 ---
 

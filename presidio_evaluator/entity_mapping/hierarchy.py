@@ -20,6 +20,13 @@ from presidio_evaluator.entity_mapping.definitions import (
 _BIO_PREFIX_RE = re.compile(r"^[BIOELSU]-(.+)$", re.IGNORECASE)
 _BIO_SUFFIX_RE = re.compile(r"^(.+)-[BIOELSU]$", re.IGNORECASE)
 
+# Reserved key that lets a BRANCH (non-leaf) node declare raw aliases, e.g.
+#   "LOCATION": {"_aliases": ["LOC"], "ADDRESS": {...}, ...}
+# Leaf nodes already carry their aliases as a list value; branch nodes are dicts
+# and previously had nowhere to declare synonyms. This key is skipped by every
+# tree-walk so it never becomes a canonical entity itself.
+BRANCH_ALIASES_KEY = "_aliases"
+
 
 class EntityHierarchy:
     """
@@ -101,14 +108,29 @@ class EntityHierarchy:
         """
         branch = self.canonical_to_branch.get(entity)
         if branch is None:
+            # Accept raw aliases (including branch-level ones such as "LOC")
+            # by resolving them to their canonical name first.
+            canonical = self.raw_to_canonical.get(self.normalize(entity))
+            if canonical is not None:
+                branch = self.canonical_to_branch.get(canonical)
+        if branch is None:
             raise EntityNotMappedError(
                 f"Canonical entity {entity!r} has no branch in hierarchy"
             )
         return len(branch)
 
     def add_alias(self, entity_name: str, alias: str) -> None:
-        """Add a raw alias for an existing entity."""
+        """Add a raw alias for an existing entity (leaf or branch).
+
+        *entity_name* may be a canonical name or any raw alias of one.
+        """
         found = self._find_node(entity_name)
+        if found is None:
+            # Fall back to alias resolution so e.g. add_alias("LOC", x) works
+            # even though "LOC" is itself an alias of the LOCATION branch.
+            canonical = self.raw_to_canonical.get(self.normalize(entity_name))
+            if canonical is not None:
+                found = self._find_node(canonical)
         if found is None:
             raise KeyError(f"Entity {entity_name!r} not found in hierarchy")
         parent_dict, key = found
@@ -116,9 +138,43 @@ class EntityHierarchy:
         if isinstance(value, list):
             if alias not in value:
                 value.append(alias)
+            added_to = value
         else:
-            value[alias] = []
+            # Branch (non-leaf) node: record the alias under the reserved key so
+            # it maps to this branch, instead of creating a spurious child leaf.
+            aliases = value.setdefault(BRANCH_ALIASES_KEY, [])
+            if alias not in aliases:
+                aliases.append(alias)
+            added_to = aliases
         self._rebuild()
+
+        # A branch alias is applied before the recursive descent into its own
+        # subtree, so a descendant with the same normalized name wins. Rather
+        # than persist an alias that silently never resolves, roll back and say
+        # so — the caller's intent could not be honoured.
+        #
+        # The alias is correct when it resolves wherever the TARGET resolves:
+        # for a node below canonical_depth that is the canonical ancestor, not
+        # the node's own name.
+        expected = self.raw_to_canonical.get(self.normalize(key))
+        resolved = self.raw_to_canonical.get(self.normalize(alias))
+        if resolved != expected:
+            added_to.remove(alias)
+            if not added_to and added_to is not value:
+                value.pop(BRANCH_ALIASES_KEY, None)
+            self._rebuild()
+            raise ValueError(
+                f"Alias {alias!r} already resolves to {resolved!r}, "
+                f"so it cannot be added to {key!r}",
+            )
+            added_to.remove(alias)
+            if not added_to and added_to is not value:
+                value.pop(BRANCH_ALIASES_KEY, None)
+            self._rebuild()
+            raise ValueError(
+                f"Alias {alias!r} already resolves to {resolved!r}, "
+                f"so it cannot be added to {key!r}",
+            )
 
     @staticmethod
     def _strip_bio(label: str) -> str:
@@ -139,6 +195,10 @@ class EntityHierarchy:
             items.extend(value)
         elif isinstance(value, dict):
             for k, v in value.items():
+                if k == BRANCH_ALIASES_KEY:
+                    # Collect the aliases themselves, never the reserved key name.
+                    items.extend(v)
+                    continue
                 items.append(k)
                 items.extend(EntityHierarchy._collect_all_raw(v))
         return items
@@ -152,6 +212,8 @@ class EntityHierarchy:
         """Build a normalized-label → canonical-name lookup dict by walking the hierarchy tree."""
         mapping: dict[str, str] = {}
         for key, value in node.items():
+            if key == BRANCH_ALIASES_KEY:
+                continue  # reserved: branch aliases, applied by the parent below
             if depth >= canonical_depth:
                 mapping[EntityHierarchy.normalize(key)] = key
                 for alias in EntityHierarchy._collect_all_raw(value):
@@ -162,6 +224,9 @@ class EntityHierarchy:
                     mapping[EntityHierarchy.normalize(alias)] = key
             elif isinstance(value, dict):
                 mapping[EntityHierarchy.normalize(key)] = key
+                # Branch-level aliases: raw synonyms of this non-leaf node.
+                for alias in value.get(BRANCH_ALIASES_KEY, []):
+                    mapping[EntityHierarchy.normalize(alias)] = key
                 mapping.update(
                     EntityHierarchy._build_alias_map(value, canonical_depth, depth + 1),
                 )
@@ -176,6 +241,8 @@ class EntityHierarchy:
         """Collect the names of all canonical-depth leaf nodes from the hierarchy tree."""
         result: list[str] = []
         for key, value in node.items():
+            if key == BRANCH_ALIASES_KEY:
+                continue  # reserved: not a canonical entity
             if depth >= canonical_depth:
                 result.append(key)
             elif isinstance(value, list):
@@ -202,6 +269,8 @@ class EntityHierarchy:
             current_path = []
         result: dict[str, list[str]] = {}
         for key, value in node.items():
+            if key == BRANCH_ALIASES_KEY:
+                continue  # reserved: not a canonical entity
             path = current_path + [key]
             if depth >= canonical_depth:
                 result[key] = path
@@ -317,6 +386,14 @@ class EntityHierarchy:
         if label is None or label == "O":
             return "O"
         branch_path = self.canonical_to_branch.get(label)
+        if branch_path is None:
+            # Not a canonical name — it may be a raw alias (leaf or branch
+            # level, e.g. "LOC"). Resolve it before giving up, so callers
+            # feeding raw dataset labels get the right branch instead of a
+            # silent pass-through into a different bucket.
+            canonical = self.raw_to_canonical.get(self.normalize(label))
+            if canonical is not None:
+                branch_path = self.canonical_to_branch.get(canonical)
         if branch_path is None or len(branch_path) < 2:
             return label
         return branch_path[1]
@@ -329,6 +406,11 @@ class EntityHierarchy:
         """Return (parent_dict, key) for the first node matching name in the hierarchy tree, or None."""
         if tree is None:
             tree = self.hierarchy
+        if name == BRANCH_ALIASES_KEY:
+            # Reserved key: it is not an entity, so it must not be addressable
+            # as one (otherwise add_alias("_aliases", x) would silently attach x
+            # to whichever branch happens to be found first).
+            return None
         for key, value in tree.items():
             if key == name:
                 return (tree, key)

@@ -5,6 +5,7 @@ from presidio_evaluator.entity_mapping import (
     EntityHierarchy,
     EntityNotMappedError,
 )
+from presidio_evaluator.entity_mapping.hierarchy import BRANCH_ALIASES_KEY
 
 _h = EntityHierarchy()
 
@@ -58,8 +59,8 @@ class TestCanonicalizeExplicitAliases:
         assert _h.canonicalize("LOCATION") == "LOCATION"
 
     def test_organization_alias(self):
-        # ORG is its own canonical leaf node
-        assert _h.canonicalize("ORG") == "ORG"
+        # ORG is a branch-level alias of ORGANIZATION (see BRANCH_ALIASES_KEY)
+        assert _h.canonicalize("ORG") == "ORGANIZATION"
 
 
 # ---------------------------------------------------------------------------
@@ -242,9 +243,10 @@ class TestGetBranch:
         assert _h.get_branch("LOCATION") == ["PII", "LOCATION"]
 
     def test_organization(self):
+        # ORG is now a branch-level alias of ORGANIZATION
         branch = _h.get_branch("ORG")
         assert branch is not None
-        assert branch[-1] == "ORG"
+        assert branch[-1] == "ORGANIZATION"
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +447,15 @@ class TestEntityHierarchyClass:
         with pytest.raises(KeyError):
             h.add_alias("NONEXISTENT_ENTITY", "SOME_ALIAS")
 
+    def test_add_alias_reserved_key_raises(self):
+        # The reserved branch-alias key is not an entity, so it must not be
+        # addressable as one — otherwise the alias would be silently attached
+        # to whichever branch happens to be found first in the tree walk.
+        h = EntityHierarchy()
+        with pytest.raises(KeyError):
+            h.add_alias(BRANCH_ALIASES_KEY, "SOME_ALIAS")
+        assert h.normalize("SOME_ALIAS") not in h.raw_to_canonical
+
     def test_add_alias_rebuilds_lookup(self):
         h = EntityHierarchy()
         h.add_alias("SSN", "MY_SSN")
@@ -495,3 +506,117 @@ class TestCanonicalizeWithFuzzy:
     def test_get_branch_after_fuzzy_country(self):
         canonical = self.h.canonicalize("ARGENTENIAN_TAX_ID")
         assert self.h.get_branch(canonical) == ["PII", "GOVERNMENT_ID", "TAX_ID"]
+
+
+# ---------------------------------------------------------------------------
+# Branch-level aliases (BRANCH_ALIASES_KEY)
+# ---------------------------------------------------------------------------
+
+
+class TestBranchAliases:
+    """Branch (non-leaf) nodes can declare raw aliases via the reserved
+    `_aliases` key; those resolve to the branch and never become entities."""
+
+    def setup_method(self):
+        self.h = EntityHierarchy()
+
+    def test_loc_resolves_to_location(self):
+        assert self.h.canonicalize("LOC") == "LOCATION"
+
+    def test_org_resolves_to_organization(self):
+        assert self.h.canonicalize("ORG") == "ORGANIZATION"
+
+    def test_loc_and_location_share_one_leaf(self):
+        assert self.h.canonicalize("LOC") == self.h.canonicalize("LOCATION")
+
+    def test_org_and_organization_share_one_leaf(self):
+        assert self.h.canonicalize("ORG") == self.h.canonicalize("ORGANIZATION")
+
+    def test_branch_alias_gets_branch_path(self):
+        assert self.h.get_branch("LOC") == ["PII", "LOCATION"]
+        assert self.h.get_branch("ORG") == ["PII", "ORGANIZATION"]
+
+    def test_reserved_key_is_not_a_canonical_entity(self):
+        assert "_aliases" not in self.h.all_canonical_entities
+        assert "_aliases" not in self.h.canonical_to_branch
+
+    def test_unrelated_leaves_unchanged(self):
+        assert self.h.canonicalize("EMAIL") == "EMAIL_ADDRESS"
+        assert self.h.canonicalize("GPE") == "GPE"
+        assert self.h.canonicalize("GEO") == "GEO"
+
+    def test_add_alias_on_branch_node(self):
+        h = EntityHierarchy()
+        h.add_alias("LOCATION", "GEOGRAPHIC_LOCATION")
+        assert h.canonicalize("GEOGRAPHIC_LOCATION") == "LOCATION"
+        # the alias must not leak in as a standalone canonical entity
+        assert "GEOGRAPHIC_LOCATION" not in h.all_canonical_entities
+
+    def test_add_alias_on_branch_is_idempotent(self):
+        h = EntityHierarchy()
+        h.add_alias("ORGANIZATION", "FIRM")
+        h.add_alias("ORGANIZATION", "FIRM")
+        assert h.canonicalize("FIRM") == "ORGANIZATION"
+
+    def test_reserved_key_never_leaks_at_deep_nodes(self):
+        # _aliases on a canonical-depth dict node must not surface the literal
+        # "_aliases" string as a resolvable alias.
+        import copy
+
+        from presidio_evaluator.entity_mapping.hierarchy import BRANCH_ALIASES_KEY
+
+        h = EntityHierarchy()
+        hier = copy.deepcopy(h.hierarchy)
+        hier["PII"]["DEMOGRAPHIC"]["PHYSICAL_DESCRIPTOR"][BRANCH_ALIASES_KEY] = [
+            "BODY_DESC"
+        ]
+        h2 = EntityHierarchy(hierarchy=hier)
+        assert h2.normalize(BRANCH_ALIASES_KEY) not in h2.raw_to_canonical
+        assert h2.canonicalize("BODY_DESC") == "PHYSICAL_DESCRIPTOR"
+
+    # ── behavior change: LOC/ORG are aliases, no longer canonical entities ──
+
+    def test_loc_and_org_are_no_longer_canonical_entities(self):
+        # They were empty leaf nodes before; they are branch aliases now.
+        assert "LOC" not in self.h.all_canonical_entities
+        assert "ORG" not in self.h.all_canonical_entities
+        assert "LOC" not in self.h.canonical_to_branch
+        assert "ORG" not in self.h.canonical_to_branch
+
+    def test_to_branch_resolves_branch_aliases(self):
+        # Regression guard: to_branch must not silently pass a raw alias
+        # through into a different bucket.
+        assert self.h.to_branch("LOC") == "LOCATION"
+        assert self.h.to_branch("ORG") == "ORGANIZATION"
+
+    def test_to_branch_resolves_leaf_aliases(self):
+        assert self.h.to_branch("COMPANYNAME") == "ORGANIZATION"
+
+    def test_to_branch_passes_through_unknown_labels(self):
+        assert self.h.to_branch("NOT_AN_ENTITY") == "NOT_AN_ENTITY"
+
+    def test_get_depth_resolves_branch_aliases(self):
+        assert self.h.get_depth("LOC") == self.h.get_depth("LOCATION")
+        assert self.h.get_depth("ORG") == self.h.get_depth("ORGANIZATION")
+
+    def test_add_alias_accepts_an_alias_as_the_subject(self):
+        h = EntityHierarchy()
+        h.add_alias("LOC", "LOCALITY")
+        assert h.canonicalize("LOCALITY") == "LOCATION"
+
+    def test_branch_alias_at_non_default_canonical_depth(self):
+        # CanonicalMapper builds EntityHierarchy(canonical_depth=10).
+        for depth in (2, 3, 4, 10):
+            h = EntityHierarchy(canonical_depth=depth)
+            assert h.canonicalize("LOC") == "LOCATION", f"depth={depth}"
+            assert h.canonicalize("ORG") == "ORGANIZATION", f"depth={depth}"
+            assert BRANCH_ALIASES_KEY not in h.all_canonical_entities
+
+    def test_branch_alias_shadowed_by_descendant_is_reported(self):
+        # "CITY" already resolves to ADDRESS; adding it as a LOCATION branch
+        # alias cannot win, and must not silently pretend to have worked.
+        h = EntityHierarchy()
+        before = h.canonicalize("CITY")
+        with pytest.raises(ValueError, match="already resolves"):
+            h.add_alias("LOCATION", "CITY")
+        assert h.canonicalize("CITY") == before

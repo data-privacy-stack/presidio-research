@@ -4,6 +4,25 @@
 
 ## Version 0.3.2
 
+### Features
+
+- **Branch-level aliases** — non-leaf hierarchy nodes can now declare raw aliases via a reserved `_aliases` key (e.g. `"LOCATION": {"_aliases": ["LOC"], ...}`), mirroring the alias lists that leaf nodes already have. `add_alias()` on a branch node now records the alias instead of creating a spurious child leaf. The reserved key is skipped by every tree-walk, so it never becomes a canonical entity.
+
+### Breaking Changes
+
+- **`LOC` and `ORG` are no longer canonical entities** — they were empty leaf nodes under `LOCATION`/`ORGANIZATION` and are now branch-level aliases of them. Coarse dataset labels like TAB's `LOC`/`ORG` therefore match a model's `LOCATION`/`ORGANIZATION` at the exact (leaf) level, not only at the branch level. Concretely:
+  - `canonicalize("LOC")` returns `"LOCATION"` (was `"LOC"`), and likewise for `ORG`.
+  - `LOC`/`ORG` no longer appear in `all_canonical_entities` or `canonical_to_branch`.
+  - `get_depth("LOC")` returns `2` (was `3`), because `LOC` now denotes the depth-2 `LOCATION` branch.
+  - `CanonicalMapper.map()` no longer accepts `LOC`/`ORG` as resolution *targets*, since targets must be canonical entities. Such mappings are also no longer needed — the labels resolve on their own.
+  - `to_branch("LOC")` still returns `"LOCATION"`, unchanged.
+
+### Behavior Changes
+
+- **`to_branch()` and `get_depth()` now resolve raw aliases**, not just canonical names. Previously a raw alias (e.g. `COMPANYNAME`, `QQ`) was passed through unchanged by `to_branch` and raised in `get_depth`; both now resolve it first. Unknown labels are still returned as-is by `to_branch`.
+- **`add_alias()` accepts an alias as its subject**, so `add_alias("LOC", ...)` works as well as `add_alias("LOCATION", ...)`.
+- **`add_alias()` now raises `ValueError` instead of silently no-opping** when the alias is already claimed by a descendant of the target (e.g. adding `CITY` to the `LOCATION` branch, where `CITY` already resolves to `ADDRESS`). The hierarchy is left unmodified. It also raises `KeyError` if the reserved `_aliases` key is passed as the entity name.
+
 ### Bug Fixes
 
 - **Span merging no longer depends on the DataFrame index** — `SpanEvaluator` mixed sentence-relative token positions with DataFrame index labels when checking whether two same-type spans are adjacent. With the global index produced by `predict_dataset()`, the between-tokens lookup read the wrong rows — or none at all — for every sentence except the one starting at row 0, and an empty lookup counts as "adjacent", silently merging same-type spans separated by regular words (e.g. the two PERSON spans in "John visited Berlin with Mary" became one). Span counts (`num_annotated`, `num_predicted`, `true_positives`) were deflated symmetrically for gold and predictions, so headline precision/recall could still look plausible. The evaluator now uses sentence-relative positions throughout and produces identical results for any DataFrame index.
