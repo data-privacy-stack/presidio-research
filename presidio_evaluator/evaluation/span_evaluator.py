@@ -157,9 +157,11 @@ class SpanEvaluator(BaseEvaluator):
         # token_start/token_end are positions within the sentence, so slice
         # positionally — the DataFrame's index labels are caller-defined
         # (e.g. global across sentences) and must not be used as positions.
-        between_tokens = (
-            df["token"].iloc[span1.token_end : span2.token_start or 0].tolist()
-        )
+        if span1.token_end is None or span2.token_start is None:
+            raise ValueError(
+                "Spans must have token_start/token_end set to check adjacency",
+            )
+        between_tokens = df["token"].iloc[span1.token_end : span2.token_start].tolist()
         non_skip_tokens = [
             tok for tok in between_tokens if tok.lower().strip() not in self.skip_words
         ]
@@ -613,19 +615,11 @@ class SpanEvaluator(BaseEvaluator):
         current_tokens = []
         current_start_indices = []
         current_token_start: int = 0
-        curr_char_position = 0
-        token_position = 0  # Add token position counter
 
         for idx, (_, row) in enumerate(df.iterrows()):
             entity_type = row[column]
             token = row["token"]
             token_start = row["start_indices"]
-            token_length = len(token)
-            # If this isn't the first token, add space before it
-            if idx > 0:
-                curr_char_position += 1  # Account for space between tokens
-
-            token_end = curr_char_position + token_length
 
             if entity_type == "O":
                 if current_entity_type and current_tokens:
@@ -649,8 +643,6 @@ class SpanEvaluator(BaseEvaluator):
                     current_start_indices = []
                     current_token_start = 0
 
-                curr_char_position = token_end
-                token_position += 1  # Increment token position
                 continue
 
             if entity_type != current_entity_type:
@@ -678,8 +670,6 @@ class SpanEvaluator(BaseEvaluator):
             else:
                 current_tokens.append(token)
                 current_start_indices.append(token_start)
-            curr_char_position = token_end
-            token_position += 1  # Increment token position
 
         # Handle final span
         if current_entity_type and current_tokens:
