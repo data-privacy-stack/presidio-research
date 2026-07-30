@@ -73,13 +73,34 @@ The matching process follows these steps:
 
 ## Metric Calculation
 
-The evaluator calculates both per-entity-type metrics and global PII metrics:
+Counting is **two-sided**: recall is counted per annotation and precision is
+counted per prediction span. The two sides keep separate numerators, because
+one prediction may satisfy several annotations (or several predictions may
+jointly satisfy one annotation) without being consumed.
+
+- **Recall side (per annotation)**: every annotation gets exactly one verdict.
+  It is a *true positive* if the predictions of its own type cover it at
+  IoU ≥ threshold (a single span measured pairwise, several spans measured by
+  their combined IoU), and a *false negative* otherwise.
+- **Precision side (per prediction span)**: every prediction span enters
+  `num_predicted` exactly once, no matter how many annotations it overlaps. A
+  span that participated in at least one successful same-type match is
+  *credited*; any other span is a *false positive*.
 
 ### Per-Entity-Type Metrics
 
-- **Precision**: TP / num_predicted
+- **Precision**: (num_predicted − FP) / num_predicted — the fraction of
+  emitted spans that were credited. Note this is *not* TP / num_predicted:
+  TP counts covered annotations, and one wide span covering two annotations
+  is two recall hits but a single credited prediction.
 - **Recall**: TP / num_annotated
 - **F-beta**: (1 + beta²) * (precision * recall) / (beta² * precision + recall)
+
+Two invariants always hold, and make results easy to sanity-check:
+
+1. `TP + FN == num_annotated` — every annotation is counted exactly once.
+2. `num_predicted` equals the number of prediction spans the model actually
+   emitted (after span merging), each counted exactly once as credited or FP.
 
 ### Global PII Metrics
 
@@ -89,19 +110,30 @@ The evaluator calculates both per-entity-type metrics and global PII metrics:
 
 ## Evaluation Process
 
-1. For each annotation, find all overlapping prediction spans
-2. Group overlapping spans by entity type
-3. Calculate combined IoU for each group
-4. Determine match status based on IoU and entity type
-5. Mark remaining predictions (with no overlap) as FPs
+1. **Recall pass** — for each annotation: find all overlapping prediction
+   spans, group them by entity type, measure the same-type group's coverage
+   (pairwise IoU for one span, combined IoU for several), and issue one
+   verdict: TP if coverage ≥ threshold, else FN. Wrong-type groups covering
+   the annotation at ≥ threshold are recorded as `WrongEntity` errors for
+   error analysis.
+2. **Precision pass** — for each prediction span: count it once in
+   `num_predicted`; if it never participated in a successful match, count it
+   once as FP (whether it overlapped an annotation insufficiently or nothing
+   at all).
 
 See more info on the [Span Matching Strategies](span_matching_strategies.md) document.
 
 ## Counting Strategy
 
-- Multiple predictions of the same type overlapping with one annotation count as a single prediction
-- Different entity types are counted separately
-- An annotation is only counted once as annotated (denominator for precision and recall),
-  regardless of how many types intersect with it
-
-
+- Every annotation is counted exactly once in `num_annotated` and receives
+  exactly one verdict (TP or FN), regardless of how many predictions or types
+  intersect with it.
+- Every prediction span is counted exactly once in `num_predicted` and, if
+  unmatched, exactly once as FP — grouped same-type spans that jointly fail
+  count one FP *each*, and a span overlapping several annotations is *not*
+  re-counted per annotation.
+- Different entity types are counted separately.
+- In the confusion matrix each span appears in exactly one cell: a wrong-type
+  detection at ≥ threshold is recorded as (annotation type, predicted type),
+  replacing both the (annotation type, "O") entry for the gold and the
+  ("O", predicted type) entry for the prediction.

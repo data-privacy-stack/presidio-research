@@ -237,13 +237,13 @@ def test_scenario_group1(
             ["The", "New", "York", "Mets", "visited"],
             [0, 4, 8, 13, 18],
             0,  # true positives
-            1,  # false positives
+            2,  # false positives (each failed prediction span counts once)
             1,  # false negatives
             {
                 ("ORGANIZATION", "O"): 1,
-                ("O", "ORGANIZATION"): 1,
+                ("O", "ORGANIZATION"): 2,
             },  # confusion matrix
-            [ErrorType.FN, ErrorType.FP],  # errors
+            [ErrorType.FN, ErrorType.FP, ErrorType.FP],  # errors
         ),
         # Scenario 7A: Cumulative IoU with spans of different types > threshold
         (
@@ -436,14 +436,14 @@ def test_scenario_group2(
             ["O", "LOCATION", "ORGANIZATION", "O", "PERSON", "O"],
             ["The", "John", "Smith", "Jr", "Doe", "visited"],
             [0, 4, 9, 15, 18, 22],
-            1.0,  # precision (1 TP out of 1 predicted PII span)
+            1.0,  # precision (both predicted spans credited by the joint match)
             1.0,  # recall (1 TP out of 1 annotated PII span)
             1.0,  # F1 score
             1,  # true positives
             0,  # false positives
             0,  # false negatives
             1,  # annotated PII spans (one PERSON span)
-            1,  # predicted PII spans (multiple entity types become single PII span)
+            2,  # predicted PII spans (each actual span counts once)
         ),
         # Global entities with standalone predictions (no annotation overlap) - results in FP count update
         (
@@ -867,8 +867,14 @@ def test_calculate_iou_token_based():
             [0, 4, 8, 13],
             [ErrorType.FN, ErrorType.FP, ErrorType.WrongEntity],
             3,
-            ["Wrong entity type: LOCATION detected as PERSON"],
-            {("LOCATION", "PERSON"): 1},
+            [
+                "Entity LOCATION not detected. iou with PERSON=",
+                "Wrong entity type: LOCATION detected as PERSON",
+                "Entity PERSON falsely detected",
+            ],
+            # Both spans are represented by the wrong-entity cell only:
+            # no ("O", PERSON) for the prediction, no (LOCATION, "O") for the gold
+            {("LOCATION", "PERSON"): 1, ("O", "PERSON"): 0, ("LOCATION", "O"): 0},
         ),
         # Single overlapping prediction: Same type, low IoU → FN
         (
@@ -907,13 +913,14 @@ def test_calculate_iou_token_based():
             ["ADDRESS", "O", "ADDRESS", "ADDRESS", "ADDRESS", "O"],
             ["123", "Main", "Street", "Suite", "100", "is"],
             [0, 4, 9, 16, 22, 26],
-            [ErrorType.FN, ErrorType.FP],
-            2,
+            [ErrorType.FN, ErrorType.FP, ErrorType.FP],
+            3,
             [
                 "Entity ADDRESS not detected due to low iou=",
                 "Entity ADDRESS falsely detected",
+                "Entity ADDRESS falsely detected",
             ],
-            {("ADDRESS", "O"): 1, ("O", "ADDRESS"): 1},
+            {("ADDRESS", "O"): 1, ("O", "ADDRESS"): 2},
         ),
         # Multiple overlapping predictions: Same type, low cumulative IoU → FN
         (
@@ -922,13 +929,14 @@ def test_calculate_iou_token_based():
             ["O", "ORGANIZATION", "O", "ORGANIZATION", "O"],
             ["The", "New", "York", "Mets", "visited"],
             [0, 4, 8, 13, 18],
-            [ErrorType.FN, ErrorType.FP],
-            2,
+            [ErrorType.FN, ErrorType.FP, ErrorType.FP],
+            3,
             [
                 "Entity ORGANIZATION not detected due to low iou",
                 "Entity ORGANIZATION falsely detected",
+                "Entity ORGANIZATION falsely detected",
             ],
-            {("ORGANIZATION", "O"): 1, ("O", "ORGANIZATION"): 1},
+            {("ORGANIZATION", "O"): 1, ("O", "ORGANIZATION"): 2},
         ),
         # Multiple overlapping predictions: Different type, high cumulative IoU → WrongEntity
         (
@@ -941,11 +949,18 @@ def test_calculate_iou_token_based():
             4,
             [
                 "Entity PERSON not detected due to low iou",
-                "Entity PERSON falsely detected",
                 "Wrong entity type: PERSON detected as LOCATION",
+                "Entity PERSON falsely detected",
                 "Entity LOCATION falsely detected",
             ],
-            {("PERSON", "LOCATION"): 1, ("O", "PERSON"): 1, ("PERSON", "O"): 1},
+            # Gold PERSON and the LOCATION preds are represented by the
+            # wrong-entity cell only — neither falls back to the "O" row/column
+            {
+                ("PERSON", "LOCATION"): 1,
+                ("O", "PERSON"): 1,
+                ("O", "LOCATION"): 0,
+                ("PERSON", "O"): 0,
+            },
         ),
         # Multiple overlapping predictions: Different type, low cumulative IoU → FN + FP
         (
@@ -1021,12 +1036,18 @@ def test_calculate_iou_token_based():
             5,
             [
                 "Entity PERSON not detected.",
-                "Wrong entity type: LOCATION detected as PERSON",
                 "Entity LOCATION not detected. iou with PERSON=1.00",
+                "Wrong entity type: LOCATION detected as PERSON",
                 "Entity PERSON falsely detected",
                 "False prediction with no overlap: PHONE_NUMBER",
             ],
-            {("PERSON", "O"): 1, ("LOCATION", "PERSON"): 1, ("O", "PHONE_NUMBER"): 1},
+            {
+                ("PERSON", "O"): 1,  # the missed "Alice" annotation
+                ("LOCATION", "PERSON"): 1,
+                ("LOCATION", "O"): 0,  # gold LOCATION shown as wrong-entity, not missed
+                ("O", "PERSON"): 0,  # PERSON pred shown as wrong-entity, not FP row
+                ("O", "PHONE_NUMBER"): 1,
+            },
         ),
     ],
 )
@@ -1779,3 +1800,267 @@ def test_multi_sentence_df_does_not_merge_separated_same_type_spans(span_evaluat
     )
     assert person.num_predicted == 4
     assert person.true_positives == 4
+
+
+@pytest.mark.parametrize(
+    "tau, tokens, annotation, expected",
+    [
+        pytest.param(
+            0.9,
+            ["John", "Smith", "met", "Mary", "Jones"],
+            ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
+            # Blob misses both golds (IoU ~0.4 each): both golds are FNs, but
+            # the blob is ONE wrong prediction, not two.
+            {
+                "precision": 0.0,
+                "recall": 0.0,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "false_positives": 1,
+                "false_negatives": 2,
+            },
+            id="strict-blob-misses-both-one-fp",
+        ),
+        pytest.param(
+            0.3,
+            ["John", "Smith", "met", "Mary", "Jones"],
+            ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
+            # At a deliberately lenient threshold the blob covers both golds:
+            # full recall credit (2 golds found), full precision credit for
+            # ONE prediction — not two TPs from a single span.
+            {
+                "precision": 1.0,
+                "recall": 1.0,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "false_positives": 0,
+                "false_negatives": 0,
+            },
+            id="lenient-blob-covers-both-counted-once",
+        ),
+        pytest.param(
+            0.6,
+            ["John", "met", "Mary", "Jones", "Wilson", "Brown"],
+            ["PERSON", "O", "PERSON", "PERSON", "PERSON", "PERSON"],
+            # Short gold ("John", IoU ~0.1) swallowed, long gold
+            # ("Mary Jones Wilson Brown", IoU ~0.7) matched: the swallowed
+            # gold is an FN, but the blob already earned its single precision
+            # entry by matching the long gold — no extra FP, no phantom
+            # prediction.
+            {
+                "precision": 1.0,
+                "recall": 0.5,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "false_positives": 0,
+                "false_negatives": 1,
+            },
+            id="mixed-short-swallowed-fn-only",
+        ),
+    ],
+)
+def test_single_prediction_overlapping_multiple_annotations_counted_once(
+    span_evaluator, tau, tokens, annotation, expected
+):
+    """A prediction span overlapping several annotations is still ONE prediction.
+
+    Regression test for per-annotation double counting: the matching loop
+    processes each annotation independently and increments num_predicted (and
+    TP/FP) for every annotation a prediction overlaps, so a single blob
+    prediction covering two golds enters the precision denominator twice.
+    Desired semantics are two-sided: recall asks, per annotation, "was I
+    covered at IoU >= threshold?"; precision asks, per prediction (counted
+    once), "did I participate in any successful match?".
+    """
+    prediction = ["PERSON"] * len(tokens)
+    starts, pos = [], 0
+    for tok in tokens:
+        starts.append(pos)
+        pos += len(tok) + 1
+
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * len(tokens),
+            "token": tokens,
+            "annotation": annotation,
+            "prediction": prediction,
+            "start_indices": starts,
+        }
+    )
+
+    evaluator = SpanEvaluator(iou_threshold=tau, char_based=True, skip_words=None)
+    result = evaluator.calculate_score_on_df(results_df=df, level="entity")
+    metrics = result.per_type["PERSON"]
+
+    for field, want in expected.items():
+        got = getattr(metrics, field)
+        assert got == pytest.approx(want), (
+            f"{field}: expected {want}, got {got} "
+            f"(tp={metrics.true_positives}, fp={metrics.false_positives}, "
+            f"fn={metrics.false_negatives}, num_predicted={metrics.num_predicted})"
+        )
+
+
+@pytest.mark.parametrize(
+    "tau, tokens, annotation, prediction, expected",
+    [
+        pytest.param(
+            0.75,
+            ["John", "Smith", "Jr", "Doe"],
+            ["PERSON", "PERSON", "PERSON", "PERSON"],
+            ["PERSON", "PERSON", "O", "PERSON"],
+            # Two spans jointly cover the gold at combined IoU >= tau:
+            # one TP on the recall side, both spans credited on the precision side.
+            {
+                "true_positives": 1,
+                "false_negatives": 0,
+                "false_positives": 0,
+                "num_predicted": 2,
+                "num_annotated": 1,
+                "precision": 1.0,
+                "recall": 1.0,
+            },
+            id="1-two-preds-joint-coverage-above-tau-tp",
+        ),
+        pytest.param(
+            0.75,
+            ["New", "York", "Mets"],
+            ["ORGANIZATION", "ORGANIZATION", "ORGANIZATION"],
+            ["ORGANIZATION", "O", "ORGANIZATION"],
+            # Two spans jointly fail (combined IoU < tau): the gold is one FN,
+            # and each failed span is its own FP.
+            {
+                "true_positives": 0,
+                "false_negatives": 1,
+                "false_positives": 2,
+                "num_predicted": 2,
+                "num_annotated": 1,
+                "precision": 0.0,
+                "recall": 0.0,
+            },
+            id="2-two-preds-joint-coverage-below-tau-1fn-2fp",
+        ),
+        pytest.param(
+            0.75,
+            ["Alice", "visited", "Bob"],
+            ["O", "O", "O"],
+            ["PERSON", "O", "PERSON"],
+            # Two standalone predictions with no gold at all: two FPs.
+            # Recall is undefined (nothing annotated).
+            {
+                "true_positives": 0,
+                "false_negatives": 0,
+                "false_positives": 2,
+                "num_predicted": 2,
+                "num_annotated": 0,
+                "precision": 0.0,
+                "recall": np.nan,
+            },
+            id="3-two-standalone-preds-2fp",
+        ),
+        pytest.param(
+            0.3,
+            ["John", "Smith", "met", "Mary", "Jones"],
+            ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
+            ["PERSON", "PERSON", "PERSON", "PERSON", "PERSON"],
+            # One blob covers both golds, each pairwise IoU >= tau: two recall
+            # TPs, but the blob enters the precision denominator once.
+            # Precision is (np - fp)/np = 1.0, NOT tp/np (which would be 2.0).
+            {
+                "true_positives": 2,
+                "false_negatives": 0,
+                "false_positives": 0,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "precision": 1.0,
+                "recall": 1.0,
+            },
+            id="4-one-pred-two-golds-above-tau-2tp",
+        ),
+        pytest.param(
+            0.9,
+            ["John", "Smith", "met", "Mary", "Jones"],
+            ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
+            ["PERSON", "PERSON", "PERSON", "PERSON", "PERSON"],
+            # One blob misses both golds: two FNs, but only ONE FP — the model
+            # emitted a single span.
+            {
+                "true_positives": 0,
+                "false_negatives": 2,
+                "false_positives": 1,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "precision": 0.0,
+                "recall": 0.0,
+            },
+            id="5-one-pred-two-golds-below-tau-2fn-1fp",
+        ),
+        pytest.param(
+            0.6,
+            ["John", "met", "Mary", "Jones", "Wilson", "Brown"],
+            ["PERSON", "O", "PERSON", "PERSON", "PERSON", "PERSON"],
+            ["PERSON", "PERSON", "PERSON", "PERSON", "PERSON", "PERSON"],
+            # Mixed: the blob matches the long gold (IoU ~0.7) and swallows the
+            # short one (IoU ~0.1). The miss costs recall once (FN); the blob is
+            # credited via the long match, so no FP.
+            {
+                "true_positives": 1,
+                "false_negatives": 1,
+                "false_positives": 0,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "precision": 1.0,
+                "recall": 0.5,
+            },
+            id="6-one-pred-long-matched-short-swallowed-1tp-1fn",
+        ),
+    ],
+)
+def test_two_sided_counting_semantics(
+    span_evaluator, tau, tokens, annotation, prediction, expected
+):
+    """The counting-semantics contract of two-sided matching, one case per scenario.
+
+    Recall side: every annotation gets exactly one verdict (TP if covered by
+    same-type predictions at IoU >= threshold — pairwise for one span, combined
+    for several — else FN), so tp + fn == num_annotated.
+
+    Precision side: every prediction span enters num_predicted exactly once and
+    is either credited (participated in a successful match) or an FP, so
+    precision == (num_predicted - false_positives) / num_predicted.
+    """
+    starts, pos = [], 0
+    for tok in tokens:
+        starts.append(pos)
+        pos += len(tok) + 1
+
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * len(tokens),
+            "token": tokens,
+            "annotation": annotation,
+            "prediction": prediction,
+            "start_indices": starts,
+        }
+    )
+
+    evaluator = SpanEvaluator(iou_threshold=tau, char_based=True, skip_words=None)
+    result = evaluator.calculate_score_on_df(results_df=df, level="entity")
+    entity_type = next(t for t in annotation + prediction if t != "O")
+    metrics = result.per_type[entity_type]
+
+    for field, want in expected.items():
+        got = getattr(metrics, field)
+        if isinstance(want, float) and np.isnan(want):
+            assert np.isnan(got), f"{field}: expected nan, got {got}"
+        else:
+            assert got == pytest.approx(want), (
+                f"{field}: expected {want}, got {got} "
+                f"(tp={metrics.true_positives}, fp={metrics.false_positives}, "
+                f"fn={metrics.false_negatives}, np={metrics.num_predicted}, "
+                f"na={metrics.num_annotated})"
+            )
+
+    # The two ledger invariants hold in every scenario.
+    assert metrics.true_positives + metrics.false_negatives == metrics.num_annotated
+    assert metrics.false_positives <= metrics.num_predicted

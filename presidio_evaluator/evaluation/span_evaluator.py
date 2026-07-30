@@ -68,9 +68,12 @@ class SpanEvaluator(BaseEvaluator):
         3. Removing standalone punctuation
         4. Removing skip words (common words that shouldn't affect entity matching)
 
-        :param tokens: List of token strings to normalize
-        :param start_indices: List of start indices for each token
-        :return: Tuple of (normalized tokens, normalized start indices)
+        :param tokens: (list[str]) Token strings to normalize.
+        :param start_indices: (list[int] | None) Character start offset of each
+            token, parallel to ``tokens``; defaults to zeros when omitted.
+        :return: (tuple[list[str], list[int]]) ``(normalized_tokens,
+            normalized_start_indices)`` — the surviving tokens (lowercased,
+            skip words removed) and their start offsets, kept parallel.
         """
 
         if not start_indices:
@@ -91,9 +94,11 @@ class SpanEvaluator(BaseEvaluator):
         """
         Merge adjacent spans of the same entity type if separated only by skip words / punctuation.
 
-        :param spans: List of Span objects to potentially merge
-        :param df: DataFrame containing the tokens and their positions
-        :return: List of merged Span objects
+        :param spans: (list[Span]) Span objects to potentially merge.
+        :param df: (pd.DataFrame) The sentence's rows, used to inspect the
+            tokens between two candidate spans.
+        :return: (list[Span]) Spans sorted by start position, with same-type
+            neighbors separated only by skip words fused into single spans.
         """
         if not spans:
             return []
@@ -149,10 +154,11 @@ class SpanEvaluator(BaseEvaluator):
         """
         Check if two spans are adjacent, i.e., separated only by skipwords / punctuation or whitespace tokens.
 
-        :param span1: First Span object
-        :param span2: Second Span object
-        :param df: DataFrame containing the tokens
-        :return: True if spans are adjacent, False otherwise
+        :param span1: (Span) The earlier span (by start position).
+        :param span2: (Span) The later span.
+        :param df: (pd.DataFrame) The sentence's rows, sliced positionally via
+            the spans' sentence-relative ``token_end``/``token_start``.
+        :return: (bool) True if every token between the spans is a skip word.
         """
         # token_start/token_end are positions within the sentence, so slice
         # positionally — the DataFrame's index labels are caller-defined
@@ -178,12 +184,12 @@ class SpanEvaluator(BaseEvaluator):
         """
         Calculate the Intersection over Union (IoU) between two spans at character or token level.
 
-        :param span1: First Span object
-        :param span2: Second Span object
-        :param ignore_entity_type: If True, ignores the entity type when calculating IoU
-        :param use_normalized_indices: If True, uses normalized indices for IoU calculation
-        :param char_based: If True, calculates IoU at character level, else at token level
-
+        :param span1: (Span) First Span object.
+        :param span2: (Span) Second Span object.
+        :param ignore_entity_type: (bool) If True, ignores the entity type when calculating IoU.
+        :param use_normalized_indices: (bool) If True, uses normalized indices for IoU calculation.
+        :param char_based: (bool) If True, calculates IoU at character level, else at token level.
+        :return: (float) IoU value between 0 and 1.
         """
         if char_based:
             iou = span1.iou(
@@ -216,10 +222,10 @@ class SpanEvaluator(BaseEvaluator):
         of 1/3). Spans built by _create_spans always carry per-token indices
         and take the exact position-aware path.
 
-        :param ann_span: The annotation Span to match against
-        :param pred_spans: One or more prediction Spans; their tokens are pooled
-            before computing the IoU
-        :return: IoU value between 0 and 1
+        :param ann_span: (Span) The annotation Span to match against.
+        :param pred_spans: (list[Span]) One or more prediction Spans; their
+            tokens are pooled before computing the IoU.
+        :return: (float) IoU value between 0 and 1.
         """
         ann_tokens = SpanEvaluator._positional_tokens(ann_span)
         pred_token_sets = [
@@ -259,9 +265,9 @@ class SpanEvaluator(BaseEvaluator):
         different positions (e.g. both occurrences in "Michael met Michael") from
         being treated as the same token.
 
-        :param span: Span to extract positional tokens from
-        :return: Set of (start index, token) pairs, or None if the span does not
-            carry per-token start indices
+        :param span: (Span) Span to extract positional tokens from.
+        :return: (set[tuple[int, str]] | None) Set of (start index, token)
+            pairs, or None if the span does not carry per-token start indices
         :raises ValueError: If the span carries per-token start indices whose
             length does not match the number of normalized tokens
         """
@@ -280,6 +286,15 @@ class SpanEvaluator(BaseEvaluator):
         self,
         sentence_df: pd.DataFrame,
     ) -> tuple[list[Span], list[Span]]:
+        """
+        Build the gold and predicted spans for one sentence.
+
+        :param sentence_df: (pd.DataFrame) Rows of a single sentence with
+            ``token``, ``annotation``, ``prediction`` and ``start_indices`` columns.
+        :return: (tuple[list[Span], list[Span]]) ``(annotation_spans,
+            prediction_spans)`` — each built from the corresponding tag column
+            and merged across skip-word gaps by ``_merge_adjacent_spans``.
+        """
         annotation_spans = self._create_spans(df=sentence_df, column="annotation")
         prediction_spans = self._create_spans(df=sentence_df, column="prediction")
 
@@ -294,116 +309,6 @@ class SpanEvaluator(BaseEvaluator):
 
         return annotation_spans, prediction_spans
 
-    @staticmethod
-    def _handle_unmatched_predictions(
-        prediction_spans: list[Span],
-        matched_preds: set[tuple[str, int, int]],
-        evaluation_result: EvaluationResult,
-    ) -> EvaluationResult:
-        """
-        Handle predictions that weren't matched to any annotation.
-
-        :param prediction_spans: List of prediction Span objects
-        :param matched_preds: Set of already matched prediction spans
-        :param evaluation_result: EvaluationResult object to update
-
-        """
-        if not evaluation_result.model_errors:
-            evaluation_result.model_errors = []
-
-        for pred_span in prediction_spans:
-            pred_span_key = (
-                pred_span.entity_type,
-                pred_span.start_position,
-                pred_span.end_position,
-            )
-            if pred_span_key not in matched_preds:
-                evaluation_result.results[("O", pred_span.entity_type)] += 1
-                evaluation_result.pii_false_positives += 1
-                evaluation_result.per_type[pred_span.entity_type].false_positives += 1
-                model_error = ModelError(
-                    error_type=ErrorType.FP,
-                    annotation="O",
-                    prediction=pred_span.entity_type,
-                    full_text=pred_span.entity_value,
-                    token=" ".join(pred_span.normalized_tokens or []),
-                    explanation=f"False positive for {pred_span}",
-                    start=pred_span.start_position,
-                    end=pred_span.end_position,
-                )
-                evaluation_result.model_errors.append(model_error)
-
-        return evaluation_result
-
-    @staticmethod
-    def _check_if_matched_already(
-        pred_span: Span,
-        ann_span: Span,
-        matched_preds: set,
-    ) -> bool:
-        """
-        Check if a prediction span is valid for matching with an annotation span.
-
-        A prediction is valid if:
-        1. It hasn't already been matched to another annotation
-        2. Its entity type matches the annotation's entity type
-
-        Args:
-            pred_span: The prediction Span to check
-            ann_span: The annotation Span being matched against
-            matched_preds: Set of already matched prediction spans
-
-        Returns:
-            bool: True if the prediction is valid for matching, False otherwise
-        """
-        # Create unique key for the prediction span
-        pred_span_key = (
-            pred_span.entity_type,
-            pred_span.start_position,
-            pred_span.end_position,
-        )
-
-        # Check if prediction is already matched
-        if pred_span_key in matched_preds:
-            return False
-
-        return True
-
-    def _find_best_match(
-        self,
-        ann_span: Span,
-        prediction_spans: list[Span],
-        matched_preds: set[tuple[str, int, int]],
-    ) -> tuple[Span | None, float]:
-        """
-        Find the best matching prediction span for a given annotation span.
-
-        :param ann_span: The annotation Span to match against
-        :param prediction_spans: List of prediction Span objects
-        :param matched_preds: Set of already matched prediction spans to avoid duplicates
-        """
-        best_match = None
-        best_iou = 0.0
-
-        for pred_span in prediction_spans:
-            if self._check_if_matched_already(
-                pred_span=pred_span,
-                ann_span=ann_span,
-                matched_preds=matched_preds,
-            ):
-                iou = self.calculate_iou(
-                    span1=ann_span,
-                    span2=pred_span,
-                    ignore_entity_type=True,
-                    use_normalized_indices=True,
-                    char_based=self.char_based,
-                )
-                if iou > best_iou:
-                    best_iou = iou
-                    best_match = pred_span
-
-        return best_match, best_iou
-
     def _update_result_with_overall_metrics(
         self,
         evaluation_result: EvaluationResult,
@@ -412,8 +317,10 @@ class SpanEvaluator(BaseEvaluator):
         """
         Update the evaluation result with overall metrics and per-type metrics.
 
-        :param evaluation_result: EvaluationResult object to update
-        :param beta: The beta parameter for F-beta score calculation.
+        :param evaluation_result: (EvaluationResult) Result to update in place —
+            fills ``pii_precision``, ``pii_recall`` and ``pii_f`` from the
+            ``pii_*`` counters.
+        :param beta: (float) The beta parameter for F-beta score calculation.
         """
 
         precision, recall, f_beta = self._calculate_metrics(
@@ -421,6 +328,7 @@ class SpanEvaluator(BaseEvaluator):
             evaluation_result.pii_predicted or 0,
             evaluation_result.pii_annotated or 0,
             beta,
+            false_positives=evaluation_result.pii_false_positives or 0,
         )
         evaluation_result.pii_recall = recall
         evaluation_result.pii_precision = precision
@@ -434,9 +342,10 @@ class SpanEvaluator(BaseEvaluator):
         """
         Update per-type metrics in the evaluation result.
 
-        :param evaluation_result: EvaluationResult object containing per-type metrics
-        :param beta: F-beta parameter
-
+        :param evaluation_result: (EvaluationResult) Result whose
+            ``per_type`` dict (``dict[str, PIIEvaluationMetrics]``) gets its
+            ``precision``/``recall``/``f_beta`` fields computed from the counts.
+        :param beta: (float) F-beta parameter.
         """
 
         for _entity_type, pii_metrics in evaluation_result.per_type.items():
@@ -446,6 +355,7 @@ class SpanEvaluator(BaseEvaluator):
                 pii_metrics.num_predicted,
                 pii_metrics.num_annotated,
                 beta,
+                false_positives=pii_metrics.false_positives,
             )
             pii_metrics.precision = precision
             pii_metrics.recall = recall
@@ -456,8 +366,11 @@ class SpanEvaluator(BaseEvaluator):
         """
         Create a DataFrame containing global PII entities from the results DataFrame.
 
-        :param results_df: DataFrame containing the evaluation results
-        :return: DataFrame with global entities and their counts
+        :param results_df: (pd.DataFrame) Token-level evaluation results with
+            ``annotation`` and ``prediction`` columns.
+        :return: (pd.DataFrame) Copy of ``results_df`` with every non-"O"
+            annotation and prediction label replaced by ``"PII"``, for the
+            global PII-vs-O scoring pass.
         """
         # Create a deep copy to avoid modifying the original DataFrame
         global_df = results_df.copy(deep=True)
@@ -492,19 +405,22 @@ class SpanEvaluator(BaseEvaluator):
         """
         Evaluate predictions against ground truth annotations.
 
-        :param results_df: DataFrame containing sentence_id, tokens, token start indices,
-                        annotations and predictions columns — as produced by
-                        model.predict_dataset() and optionally processed by
-                        CanonicalMapper.get_mapped_results_dataframe().
-        :param level: Which metrics to compute. One of:
+        :param results_df: (pd.DataFrame) DataFrame containing sentence_id, tokens,
+                        token start indices, annotations and predictions columns —
+                        as produced by model.predict_dataset() and optionally
+                        processed by CanonicalMapper.get_mapped_results_dataframe().
+        :param level: (Literal["entity", "pii", "both"]) Which metrics to compute:
 
                     - ``"entity"`` — per-entity-type precision/recall/F only
                     - ``"pii"`` — global PII (everything vs ``"O"`` ) metrics only
                     - ``"both"`` (default) — both passes; the returned
                       ``EvaluationResult`` contains per-type **and** global PII metrics.
-        :param beta: F-beta parameter (default 2).
-        :param evaluation_result: Optional existing EvaluationResult to accumulate into.
-        :return: EvaluationResult with the requested metrics populated.
+        :param beta: (float) F-beta parameter (default 2).
+        :param evaluation_result: (EvaluationResult | None) Optional existing
+                        EvaluationResult to accumulate into.
+        :return: (EvaluationResult) Result with the requested metrics populated —
+                        ``per_type`` for "entity", the ``pii_*`` fields for "pii",
+                        both for "both".
         """
         if level in ("entity", "both"):
             evaluation_result = self._run_score_pass(
@@ -535,15 +451,16 @@ class SpanEvaluator(BaseEvaluator):
         """
         Run a single scoring pass over the results DataFrame.
 
-        :param per_type: If True, performs per-entity type evaluation; if False, performs
-                    global PII vs non-PII evaluation
-        :param results_df: DataFrame containing sentence_id, tokens, token start indices,
-                        annotations and predictions columns
-        :param beta: The beta parameter for F-beta score calculation. Higher values weight
-                    recall more than precision. Default is 2.
-        :param evaluation_result: Optional existing EvaluationResult to update. If None,
-                                creates a new one.
-        :return: EvaluationResult object containing computed metrics, counts, and error analysis
+        :param per_type: (bool) If True, performs per-entity type evaluation; if False,
+                    performs global PII vs non-PII evaluation
+        :param results_df: (pd.DataFrame) DataFrame containing sentence_id, tokens,
+                        token start indices, annotations and predictions columns
+        :param beta: (float) The beta parameter for F-beta score calculation. Higher
+                    values weight recall more than precision. Default is 2.
+        :param evaluation_result: (EvaluationResult | None) Optional existing
+                        EvaluationResult to update. If None, creates a new one.
+        :return: (EvaluationResult) Result containing computed metrics, counts,
+                        and error analysis
         """
         if not evaluation_result:
             evaluation_result = EvaluationResult()
@@ -579,13 +496,13 @@ class SpanEvaluator(BaseEvaluator):
         """
         Compare one sentence's annotations and predictions, updating the evaluation result.
 
-        :param per_type: If True, performs per-entity type evaluation; if False, performs
-                global PII vs non-PII evaluation
-        :param sentence_df: DataFrame containing sentence_id, tokens, token start indices,
-                annotations and predictions columns
-        :param evaluation_result: Optional existing EvaluationResult to update. If None,
-                creates a new one.
-
+        :param per_type: (bool) If True, performs per-entity type evaluation; if False,
+                performs global PII vs non-PII evaluation
+        :param sentence_df: (pd.DataFrame) DataFrame containing sentence_id, tokens,
+                token start indices, annotations and predictions columns
+        :param evaluation_result: (EvaluationResult | None) Optional existing
+                EvaluationResult to update. If None, creates a new one.
+        :return: (EvaluationResult) The updated result.
         """
         if not evaluation_result:
             evaluation_result = EvaluationResult()
@@ -604,11 +521,12 @@ class SpanEvaluator(BaseEvaluator):
         """
         Create spans from a DataFrame column.
 
-        :param df: DataFrame containing the spans.
-        :param column: Name of the column to extract spans from.
-
-        Returns:
-            List[Span]: List of Span objects created from the DataFrame.
+        :param df: (pd.DataFrame) One sentence's rows with ``token``,
+            ``start_indices`` and the tag column to read.
+        :param column: (str) Name of the tag column to extract spans from
+            (``"annotation"`` or ``"prediction"``).
+        :return: (list[Span]) One Span per maximal run of identically-tagged
+            tokens; runs whose tokens are all skip words are dropped.
         """
         spans = []
         current_entity_type = None
@@ -700,7 +618,22 @@ class SpanEvaluator(BaseEvaluator):
         idx: int,
         normalized_start_indices: list[int],
         normalized_tokens: list[str],
-    ):
+    ) -> Span:
+        """
+        Assemble a Span from the tokens accumulated by ``_create_spans``.
+
+        :param entity_type: (str) Entity type of the span.
+        :param start_indices: (list[int]) Character start offset of each raw token.
+        :param token_start: (int) Sentence-relative position of the first token.
+        :param current_tokens: (list[str]) The raw token strings of the span.
+        :param idx: (int) Sentence-relative position one past the last token.
+        :param normalized_start_indices: (list[int]) Character start offsets of
+            the tokens that survived skip-word normalization.
+        :param normalized_tokens: (list[str]) The normalized (lowercased,
+            skip-words removed) token strings.
+        :return: (Span) Span carrying both raw offsets and normalized
+            token/offset views used by IoU calculations.
+        """
         return Span(
             entity_type=entity_type,
             entity_value=" ".join(current_tokens),
@@ -738,19 +671,64 @@ class SpanEvaluator(BaseEvaluator):
         num_predicted: int,
         num_annotated: int,
         beta: float = 2,
+        false_positives: int | None = None,
     ) -> tuple[float, float, float]:
-        """Calculate precision, recall, and F-beta score using the new logic.
+        """Calculate precision, recall, and F-beta score.
 
-        :param true_positives: Number of true positives
-        :param num_predicted: Number of predicted spans
-        :param num_annotated: Number of annotated (gold) spans
-        :param beta: The beta parameter for F-beta score calculation. Default is 2.
-        :return: Dictionary containing precision, recall, and f-beta metrics
+        Counting is two-sided: recall is true_positives / num_annotated
+        (annotations covered), while precision is
+        (num_predicted - false_positives) / num_predicted (prediction spans
+        credited with a match). The numerators may differ — e.g. one wide
+        prediction covering two annotations is two recall hits but a single
+        credited prediction.
+
+        :param true_positives: (int) Number of annotations covered at IoU >= threshold.
+        :param num_predicted: (int) Number of predicted spans.
+        :param num_annotated: (int) Number of annotated (gold) spans.
+        :param beta: (float) The beta parameter for F-beta score calculation. Default is 2.
+        :param false_positives: (int | None) Number of predicted spans with no successful
+            match. If None, precision falls back to true_positives / num_predicted.
+        :return: (tuple[float, float, float]) ``(precision, recall, f_beta)``;
+            precision/recall are ``np.nan`` when their denominator is 0.
         """
-        precision = self.precision(tp=true_positives, num_predicted=num_predicted)
+        precision_hits = (
+            true_positives
+            if false_positives is None
+            else num_predicted - false_positives
+        )
+        precision = self.precision(tp=precision_hits, num_predicted=num_predicted)
         recall = self.recall(tp=true_positives, num_annotated=num_annotated)
         f_beta = self.f_beta(precision=precision, recall=recall, beta=beta)
         return precision, recall, f_beta
+
+    @staticmethod
+    def _span_key(span: Span) -> tuple[str, int, int]:
+        """Identity of a span for match bookkeeping.
+
+        :param span: (Span) The span to identify.
+        :return: (tuple[str, int, int]) ``(entity_type, start_position,
+            end_position)`` — hashable identity used in the pass-tracking sets.
+        """
+        return (span.entity_type, span.start_position, span.end_position)
+
+    def _group_iou(
+        self,
+        ann_span: Span,
+        spans: list[Span],
+        pairwise_ious: list[float],
+    ) -> float:
+        """Coverage of an annotation by a group of same-type spans.
+
+        :param ann_span: (Span) The annotation being covered.
+        :param spans: (list[Span]) The overlapping prediction spans of one type.
+        :param pairwise_ious: (list[float]) IoU of each span in ``spans``
+            against ``ann_span``, parallel to ``spans`` (one entry per span).
+        :return: (float) Exact pairwise IoU when ``spans`` has a single span,
+            else the combined IoU of the whole group.
+        """
+        if len(spans) == 1:
+            return pairwise_ious[0]
+        return self._calculate_combined_iou(ann_span, spans)
 
     def _match_predictions_with_annotations(
         self,
@@ -759,371 +737,161 @@ class SpanEvaluator(BaseEvaluator):
         evaluation_result: EvaluationResult,
         per_type: bool = True,
     ) -> EvaluationResult:
+        """Match spans and update counts using two-sided counting.
+
+        Recall side (per annotation): each annotation independently asks
+        whether the predictions of its type cover it at IoU >= threshold —
+        individually or combined. Covered -> true positive (recall hit),
+        otherwise false negative.
+
+        Precision side (per prediction): each prediction span enters
+        num_predicted exactly once, no matter how many annotations it
+        overlaps. A prediction that participated in at least one successful
+        same-type match is credited; any other prediction is a false
+        positive.
+
+        Precision is therefore (num_predicted - false_positives) /
+        num_predicted while recall is true_positives / num_annotated; the two
+        numerators may legitimately differ (one wide prediction covering two
+        annotations is two recall hits but a single credited prediction).
+
+        :param annotation_spans: (list[Span]) Gold spans of one sentence.
+        :param prediction_spans: (list[Span]) Predicted spans of the same sentence.
+        :param evaluation_result: (EvaluationResult) Accumulator updated in
+            place — counts, confusion-matrix ``results`` and ``model_errors``.
+        :param per_type: (bool) If True, update ``per_type`` metrics per entity
+            type; if False, update the global ``pii_*`` counters only.
+        :return: (EvaluationResult) The same ``evaluation_result``, updated.
+        """
         if not evaluation_result.model_errors:
             evaluation_result.model_errors = []
 
-        # Track which prediction spans have been processed
-        processed_predictions: set[tuple[str, int, int]] = set()
+        # Prediction spans that participated in >= 1 successful same-type match.
+        successful_predictions: set[tuple[str, int, int]] = set()
+        # Prediction spans overlapping >= 1 annotation (for FP explanations).
+        overlapping_predictions: set[tuple[str, int, int]] = set()
+        # Prediction spans already represented in the confusion matrix by a
+        # wrong-entity cell (ann_type, pred_type) — each span appears in the
+        # matrix once, so these skip the ("O", pred_type) row.
+        wrong_entity_predictions: set[tuple[str, int, int]] = set()
 
+        # --- Recall pass: one verdict per annotation ---
         for ann_span in annotation_spans:
             ann_type = ann_span.entity_type
             self._add_to_annotated(evaluation_result, per_type, ann_type)
 
-            # Find all overlapping prediction spans with IoU > 0, regardless of type
             overlapping_preds = self._get_all_overlapping(ann_span, prediction_spans)
+            for pred_span, _ in overlapping_preds:
+                overlapping_predictions.add(self._span_key(pred_span))
+            spans_by_type, iou_by_type = self._group_spans_by_type(overlapping_preds)
 
-            self._add_to_processed_predictions(
-                processed_predictions,
-                overlapping_preds,
+            same_type_spans = spans_by_type.get(ann_type, [])
+            iou = (
+                self._group_iou(ann_span, same_type_spans, iou_by_type[ann_type])
+                if same_type_spans
+                else 0.0
             )
 
-            if not overlapping_preds:  # scenario 2- there is no prediction
-                if per_type:
-                    evaluation_result.per_type[ann_type].false_negatives += 1
-                    evaluation_result.results[(ann_type, "O")] += 1
-                    evaluation_result.model_errors.append(
-                        self._get_model_error(
-                            ann_span=ann_span,
-                            pred_span=None,
-                            error_type=ErrorType.FN,
-                        ),
+            # Wrong-entity analysis: another type covering this annotation at
+            # IoU >= threshold. Collected first so the FN branch can put the
+            # wrong type (rather than "O") in the confusion matrix.
+            wrong_type_hits: list[tuple[str, list[Span], float]] = []
+            if per_type:
+                for other_type, other_spans in spans_by_type.items():
+                    if other_type == ann_type:
+                        continue
+                    other_iou = self._group_iou(
+                        ann_span, other_spans, iou_by_type[other_type]
                     )
-                else:
-                    evaluation_result.pii_false_negatives += 1
+                    if other_iou >= self.iou_threshold:
+                        wrong_type_hits.append((other_type, other_spans, other_iou))
 
-            elif (
-                len(overlapping_preds) == 1
-            ):  # scenario group 1 (single overlap of same/different type and below/above threshold)
-                self._compare_single_overlaps(
-                    evaluation_result=evaluation_result,
-                    ann_span=ann_span,
-                    overlapping_preds=overlapping_preds,
-                    per_type=per_type,
-                )
-
-            # Handle pred_span aggregation cases
-            else:  # Scenario group 2
-                self._compare_multiple_overlaps(
-                    evaluation_result=evaluation_result,
-                    ann_span=ann_span,
-                    overlapping_preds=overlapping_preds,
-                    per_type=per_type,
-                )
-
-        # Handle prediction spans that don't overlap with any annotation span
-        for pred_span in prediction_spans:
-            pred_key = (
-                pred_span.entity_type,
-                pred_span.start_position,
-                pred_span.end_position,
-            )
-
-            # If this prediction has not been processed (no overlap with any annotation)
-            if pred_key not in processed_predictions:
+            if same_type_spans and iou >= self.iou_threshold:
                 if per_type:
-                    evaluation_result.per_type[
-                        pred_span.entity_type
-                    ].false_positives += 1
-                    evaluation_result.per_type[pred_span.entity_type].num_predicted += 1
+                    evaluation_result.per_type[ann_type].true_positives += 1
+                    evaluation_result.results[(ann_type, ann_type)] += 1
                 else:
-                    evaluation_result.pii_false_positives += 1
-                    evaluation_result.pii_predicted += 1
+                    evaluation_result.pii_true_positives += 1
+                for pred_span in same_type_spans:
+                    successful_predictions.add(self._span_key(pred_span))
+            elif per_type:
+                evaluation_result.per_type[ann_type].false_negatives += 1
+                if not wrong_type_hits:
+                    evaluation_result.results[(ann_type, "O")] += 1
+                # Attach the closest evidence to the FN record: a same-type
+                # prediction below threshold, else any overlapping prediction.
+                fn_pred = same_type_spans[0] if same_type_spans else None
+                fn_iou = iou
+                if fn_pred is None and overlapping_preds:
+                    fn_pred, fn_iou = overlapping_preds[0]
+                evaluation_result.model_errors.append(
+                    self._get_model_error(
+                        ann_span=ann_span,
+                        pred_span=fn_pred,
+                        error_type=ErrorType.FN,
+                        iou=fn_iou,
+                    ),
+                )
+            else:
+                evaluation_result.pii_false_negatives += 1
 
-                # Add to confusion matrix
+            for other_type, other_spans, other_iou in wrong_type_hits:
+                evaluation_result.results[(ann_type, other_type)] += 1
+                for wrong_span in other_spans:
+                    wrong_entity_predictions.add(self._span_key(wrong_span))
+                evaluation_result.model_errors.append(
+                    self._get_model_error(
+                        ann_span=ann_span,
+                        pred_span=other_spans[0],
+                        error_type=ErrorType.WrongEntity,
+                        iou=other_iou,
+                    ),
+                )
+
+        # --- Precision pass: each prediction span is counted exactly once ---
+        for pred_span in prediction_spans:
+            pred_key = self._span_key(pred_span)
+            if per_type:
+                evaluation_result.per_type[pred_span.entity_type].num_predicted += 1
+            else:
+                evaluation_result.pii_predicted += 1
+
+            if pred_key in successful_predictions:
+                continue
+
+            if per_type:
+                evaluation_result.per_type[pred_span.entity_type].false_positives += 1
+            else:
+                evaluation_result.pii_false_positives += 1
+
+            if pred_key not in wrong_entity_predictions:
                 evaluation_result.results[("O", pred_span.entity_type)] = (
                     evaluation_result.results.get(("O", pred_span.entity_type), 0) + 1
                 )
-
-                # Add error
-                evaluation_result.model_errors.append(
-                    ModelError(
-                        error_type=ErrorType.FP,
-                        annotation="O",
-                        prediction=pred_span.entity_type,
-                        full_text=pred_span.entity_value,
-                        token=" ".join(pred_span.normalized_tokens or []),
-                        explanation=f"False prediction with no overlap: {pred_span.entity_type}",
-                        start=pred_span.start_position,
-                        end=pred_span.end_position,
-                    ),
+            if pred_key in overlapping_predictions:
+                explanation = (
+                    f"Entity {pred_span.entity_type} falsely detected: overlaps "
+                    f"annotation(s) but no match reached "
+                    f"threshold={self.iou_threshold}"
                 )
+            else:
+                explanation = (
+                    f"False prediction with no overlap: {pred_span.entity_type}"
+                )
+            evaluation_result.model_errors.append(
+                ModelError(
+                    error_type=ErrorType.FP,
+                    annotation="O",
+                    prediction=pred_span.entity_type,
+                    full_text=pred_span.entity_value,
+                    token=" ".join(pred_span.normalized_tokens or []),
+                    explanation=explanation,
+                    start=pred_span.start_position,
+                    end=pred_span.end_position,
+                ),
+            )
 
         return evaluation_result
-
-    def _compare_single_overlaps(
-        self,
-        evaluation_result: EvaluationResult,
-        ann_span: Span,
-        overlapping_preds: list[tuple[Span, float]],
-        per_type: bool,
-    ) -> None:
-        """Calculate metrics for a single overlapping prediction span (Scenario group 1)."""
-
-        ann_type = ann_span.entity_type
-        pred_span, iou = overlapping_preds[0]
-        pred_type = pred_span.entity_type
-        if iou >= self.iou_threshold:  # Scenarios 1 (TP) or 4 (Wrong Entity)
-            if pred_type == ann_type:  # scenario 1 (TP)
-                if per_type:
-                    evaluation_result.per_type[ann_type].true_positives += 1
-                    evaluation_result.per_type[pred_type].num_predicted += 1
-                    evaluation_result.results[(ann_type, pred_type)] += 1
-                else:
-                    evaluation_result.pii_true_positives += 1
-                    evaluation_result.pii_predicted += 1
-            elif per_type:
-                evaluation_result.per_type[ann_type].false_negatives += 1
-                evaluation_result.per_type[pred_type].false_positives += 1
-                evaluation_result.per_type[pred_type].num_predicted += 1
-                evaluation_result.model_errors.append(
-                    self._get_model_error(
-                        ann_span=ann_span,
-                        pred_span=pred_span,
-                        error_type=ErrorType.WrongEntity,
-                        iou=iou,
-                    ),
-                )
-                evaluation_result.model_errors.append(
-                    self._get_model_error(
-                        ann_span=ann_span,
-                        pred_span=pred_span,
-                        error_type=ErrorType.FN,
-                        iou=iou,
-                    ),
-                )
-                evaluation_result.model_errors.append(
-                    self._get_model_error(
-                        ann_span=ann_span,
-                        pred_span=pred_span,
-                        error_type=ErrorType.FP,
-                        iou=iou,
-                    ),
-                )
-                evaluation_result.results[(ann_type, pred_type)] += 1
-            else:
-                evaluation_result.pii_false_negatives += 1
-                evaluation_result.pii_false_positives += 1
-                evaluation_result.pii_predicted += 1
-
-        elif (
-            ann_type == pred_type
-        ):  # Scenario 5a (FN and FP - treat as separate entities)
-            if per_type:
-                evaluation_result.per_type[ann_type].false_negatives += 1
-                evaluation_result.per_type[pred_type].false_positives += 1
-                evaluation_result.per_type[pred_type].num_predicted += 1
-                evaluation_result.model_errors.append(
-                    self._get_model_error(
-                        ann_span=ann_span,
-                        pred_span=pred_span,
-                        error_type=ErrorType.FN,
-                        iou=iou,
-                    ),
-                )
-                evaluation_result.model_errors.append(
-                    self._get_model_error(
-                        ann_span=ann_span,
-                        pred_span=pred_span,
-                        error_type=ErrorType.FP,
-                        iou=iou,
-                    ),
-                )
-                evaluation_result.results[(ann_type, "O")] += 1
-                evaluation_result.results[("O", pred_type)] += 1
-            else:
-                evaluation_result.pii_false_negatives += 1
-                evaluation_result.pii_false_positives += 1
-                evaluation_result.pii_predicted += 1
-
-        elif per_type:
-            evaluation_result.per_type[ann_type].false_negatives += 1
-            evaluation_result.per_type[pred_type].false_positives += 1
-            evaluation_result.per_type[pred_type].num_predicted += 1
-
-            # Add two errors, one as FP and the other as FN (not WrongEntity due to low IoU)
-            evaluation_result.model_errors.append(
-                self._get_model_error(
-                    ann_span=ann_span,
-                    pred_span=pred_span,
-                    error_type=ErrorType.FN,
-                    iou=iou,
-                ),
-            )
-            evaluation_result.model_errors.append(
-                self._get_model_error(
-                    ann_span=ann_span,
-                    pred_span=pred_span,
-                    error_type=ErrorType.FP,
-                    iou=iou,
-                ),
-            )
-
-            evaluation_result.results[(ann_type, "O")] += 1
-            evaluation_result.results[("O", pred_type)] += 1
-        else:
-            evaluation_result.pii_false_negatives += 1
-            evaluation_result.pii_false_positives += 1
-            evaluation_result.pii_predicted += 1
-
-    def _compare_multiple_overlaps(
-        self,
-        evaluation_result: EvaluationResult,
-        ann_span: Span,
-        overlapping_preds: list[tuple[Span, float]],
-        per_type: bool,
-    ) -> None:
-        """Calculate metrics for an annotation span overlapping with multiple pred spans."""
-
-        annotation_was_counted = (
-            False  # Only count as FN once if matched multiple times
-        )
-        ann_type = ann_span.entity_type
-        # Group overlapping spans by entity type
-        spans_by_type, iou_by_type = self._group_spans_by_type(overlapping_preds)
-
-        # Calculate cumulative IoU per type
-        cumulative_iou_by_type = {}
-        for entity_type, spans in spans_by_type.items():
-            cumulative_iou_by_type[entity_type] = self._calculate_combined_iou(
-                ann_span,
-                spans,
-            )
-
-        for cumulative_type, iou_per_type in cumulative_iou_by_type.items():
-            # Check if there are spans of the same type as the annotation (Scenario 6)
-            if ann_type == cumulative_type:
-                same_type_spans = spans_by_type[cumulative_type]
-
-                if iou_per_type >= self.iou_threshold:
-                    # Scenario 6A: Cumulative IoU with spans of the same type > threshold
-                    if per_type:
-                        if not annotation_was_counted:
-                            annotation_was_counted = True
-                        evaluation_result.per_type[
-                            ann_span.entity_type
-                        ].true_positives += 1
-                        evaluation_result.per_type[cumulative_type].num_predicted += 1
-                        evaluation_result.results[(ann_type, ann_type)] += 1
-                    else:
-                        evaluation_result.pii_true_positives += 1
-                        evaluation_result.pii_predicted += 1
-                # Scenario 6B: Cumulative IoU with spans of the same type < threshold
-                elif per_type:
-                    if not annotation_was_counted:
-                        evaluation_result.per_type[
-                            ann_span.entity_type
-                        ].false_negatives += 1
-                        evaluation_result.model_errors.append(
-                            self._get_model_error(
-                                ann_span=ann_span,
-                                pred_span=same_type_spans[0],
-                                error_type=ErrorType.FN,
-                                iou=iou_per_type,
-                            ),
-                        )
-                        evaluation_result.results[(ann_type, "O")] += 1
-                        annotation_was_counted = True
-                    # For low IoU same-type cases, treat predictions as false positives
-                    evaluation_result.per_type[cumulative_type].false_positives += 1
-                    evaluation_result.per_type[cumulative_type].num_predicted += 1
-                    evaluation_result.model_errors.append(
-                        self._get_model_error(
-                            ann_span=ann_span,
-                            pred_span=same_type_spans[0],
-                            error_type=ErrorType.FP,
-                            iou=iou_per_type,
-                        ),
-                    )
-                    evaluation_result.results[("O", cumulative_type)] += 1
-
-                else:
-                    if not annotation_was_counted:
-                        evaluation_result.pii_false_negatives += 1
-                        annotation_was_counted = True
-                    evaluation_result.pii_false_positives += 1
-                    evaluation_result.pii_predicted += 1
-
-            else:
-                # Scenarios 7a,b: Cumulative IoU with spans of a different type
-                different_type_spans = spans_by_type[cumulative_type]
-
-                if iou_per_type >= self.iou_threshold:
-                    # Scenario 7A: Cumulative IoU with spans of a different type > threshold
-                    if per_type:
-                        if not annotation_was_counted:
-                            evaluation_result.per_type[ann_type].false_negatives += 1
-                            evaluation_result.model_errors.append(
-                                self._get_model_error(
-                                    ann_span=ann_span,
-                                    pred_span=different_type_spans[0],
-                                    error_type=ErrorType.FN,
-                                    iou=iou_per_type,
-                                ),
-                            )
-                            annotation_was_counted = True
-
-                        evaluation_result.per_type[cumulative_type].false_positives += 1
-                        evaluation_result.per_type[cumulative_type].num_predicted += 1
-                        evaluation_result.model_errors.append(
-                            self._get_model_error(
-                                ann_span=ann_span,
-                                pred_span=different_type_spans[0],
-                                error_type=ErrorType.WrongEntity,
-                                iou=iou_per_type,
-                            ),
-                        )
-
-                        evaluation_result.model_errors.append(
-                            self._get_model_error(
-                                ann_span=ann_span,
-                                pred_span=different_type_spans[0],
-                                error_type=ErrorType.FP,
-                                iou=iou_per_type,
-                            ),
-                        )
-                        evaluation_result.results[(ann_type, cumulative_type)] += 1
-                    else:
-                        if not annotation_was_counted:
-                            evaluation_result.pii_false_negatives += 1
-                            annotation_was_counted = True
-                        evaluation_result.pii_false_positives += 1
-                        evaluation_result.pii_predicted += 1
-
-                # Scenario 7B: Cumulative IoU with spans of a different type < threshold
-                elif per_type:
-                    if not annotation_was_counted:
-                        evaluation_result.per_type[ann_type].false_negatives += 1
-                        evaluation_result.model_errors.append(
-                            self._get_model_error(
-                                ann_span=ann_span,
-                                pred_span=different_type_spans[0],
-                                error_type=ErrorType.FN,
-                                iou=iou_per_type,
-                            ),
-                        )
-                        annotation_was_counted = True
-
-                    evaluation_result.per_type[cumulative_type].false_positives += 1
-                    evaluation_result.per_type[cumulative_type].num_predicted += 1
-
-                    # Add two errors, one as FP and the other as FN (not WrongEntity due to low IoU)
-
-                    evaluation_result.model_errors.append(
-                        self._get_model_error(
-                            ann_span=ann_span,
-                            pred_span=different_type_spans[0],
-                            error_type=ErrorType.FP,
-                            iou=iou_per_type,
-                        ),
-                    )
-                    evaluation_result.results[(ann_type, "O")] += 1
-                    evaluation_result.results[("O", cumulative_type)] += 1
-                else:
-                    if not annotation_was_counted:
-                        evaluation_result.pii_false_negatives += 1
-                        annotation_was_counted = True
-                    evaluation_result.pii_false_positives += 1
-                    evaluation_result.pii_predicted += 1
 
     @staticmethod
     def _group_spans_by_type(
@@ -1132,7 +900,15 @@ class SpanEvaluator(BaseEvaluator):
         """
         Group spans by entity type and their corresponding IoU values.
 
-        :param overlapping_preds: List of spans to group, with their corresponding IoU values.
+        :param overlapping_preds: (list[tuple[Span, float]]) Prediction spans to
+            group, each paired with its IoU against the annotation, as produced
+            by ``_get_all_overlapping``.
+        :return: (tuple[dict[str, list[Span]], dict[str, list[float]]]) Two
+            parallel dicts keyed by entity type: ``spans_by_type[t][i]`` is a
+            prediction span of type ``t`` and ``iou_by_type[t][i]`` is that same
+            span's IoU. Keys are exactly the types present in
+            ``overlapping_preds``; both are defaultdicts, so missing keys yield
+            empty lists (prefer ``.get`` to avoid inserting keys on lookup).
         """
         spans_by_type = defaultdict(list)
         iou_by_type = defaultdict(list)
@@ -1142,33 +918,27 @@ class SpanEvaluator(BaseEvaluator):
             iou_by_type[pred_span.entity_type].append(iou)
         return spans_by_type, iou_by_type
 
-    @staticmethod
-    def _add_to_processed_predictions(
-        processed_predictions: set[tuple[str, int, int]],
-        overlapping_preds: list[tuple[Span, float]],
-    ) -> None:
-        """
-        Update processed predictions set with all overlapping predictions.
-        :param processed_predictions: Set of already processed prediction spans
-        :param overlapping_preds: List of tuples containing overlapping prediction spans and their IoU scores
-
-        """
-        # Add all overlapping predictions to processed set
-        for pred_span, _ in overlapping_preds:
-            pred_key = (
-                pred_span.entity_type,
-                pred_span.start_position,
-                pred_span.end_position,
-            )
-            processed_predictions.add(pred_key)
-
     def _get_model_error(
         self,
         ann_span: Span | None,
         pred_span: Span | None,
         error_type: ErrorType,
         iou: float = 0.0,
-    ):
+    ) -> ModelError:
+        """
+        Build a ModelError record for error analysis.
+
+        :param ann_span: (Span | None) The gold span involved, or None for a
+            standalone false positive.
+        :param pred_span: (Span | None) The predicted span involved, or None
+            for a clean miss.
+        :param error_type: (ErrorType) FN, FP or WrongEntity.
+        :param iou: (float) The IoU that drove the verdict; quoted in the
+            explanation text.
+        :return: (ModelError) Record with annotation/prediction labels, the
+            active span's text and offsets, and a human-readable explanation.
+        """
+
         def get_explanation():
             pred_type = pred_span.entity_type if pred_span else "O"
             ann_type = ann_span.entity_type if ann_span else "O"
@@ -1234,9 +1004,11 @@ class SpanEvaluator(BaseEvaluator):
     ) -> list[tuple[Span, float]]:
         """Get all prediction spans that overlap with the annotation span, regardless of type.
 
-        :param ann_span: The annotation Span to match against
-        :param prediction_spans: List of all prediction Span objects
-        :return: List of tuples containing overlapping prediction spans and their IoU scores
+        :param ann_span: (Span) The annotation Span to match against.
+        :param prediction_spans: (list[Span]) All prediction spans of the sentence.
+        :return: (list[tuple[Span, float]]) ``(prediction span, IoU)`` pairs for
+            every prediction with IoU > 0 against ``ann_span``, sorted by the
+            prediction's start position.
         """
 
         overlapping_preds = []
@@ -1249,48 +1021,20 @@ class SpanEvaluator(BaseEvaluator):
 
         return overlapping_preds
 
-    @staticmethod
-    def _update_wrong_entities(
-        overlapping_preds,
-        annotated_entity_type,
-        matched_predictions,
-        ann_span,
-        evaluation_result,
-    ) -> EvaluationResult:
-        non_type_matching_preds = [
-            (p, iou)
-            for p, iou in overlapping_preds
-            if p.entity_type != annotated_entity_type
-            and (p.entity_type, p.start_position, p.end_position)
-            not in matched_predictions
-        ]
+    def _add_to_annotated(
+        self,
+        evaluation_result: EvaluationResult,
+        per_type: bool,
+        entity_type: str,
+    ) -> None:
+        """
+        Count one annotation in the recall denominator.
 
-        for non_matching_pred, iou in non_type_matching_preds:
-            # Record entity type mismatches in error analysis
-            if non_matching_pred.entity_type != ann_span.entity_type:
-                evaluation_result.model_errors.append(
-                    ModelError(
-                        error_type=ErrorType.WrongEntity,
-                        annotation=ann_span.entity_type,
-                        prediction=non_matching_pred.entity_type,
-                        full_text=ann_span.entity_value,
-                        token=" ".join(ann_span.normalized_tokens),
-                        explanation=f"Wrong entity type: {ann_span.entity_type} detected as {non_matching_pred.entity_type}, iou={iou:.2f}",
-                    ),
-                )
-            evaluation_result.results[
-                (ann_span.entity_type, non_matching_pred.entity_type)
-            ] = (
-                evaluation_result.results.get(
-                    (ann_span.entity_type, non_matching_pred.entity_type),
-                    0,
-                )
-                + 1
-            )
-
-        return evaluation_result
-
-    def _add_to_annotated(self, evaluation_result, per_type, entity_type) -> None:
+        :param evaluation_result: (EvaluationResult) Result object to update.
+        :param per_type: (bool) If True, increment the type's ``num_annotated``;
+            otherwise increment the global ``pii_annotated``.
+        :param entity_type: (str) Entity type of the annotation.
+        """
         if per_type:
             evaluation_result.per_type[entity_type].num_annotated += 1
         else:
@@ -1304,9 +1048,11 @@ class SpanEvaluator(BaseEvaluator):
         """
         Calculate the combined IoU of multiple prediction spans against an annotation span.
 
-        :param annotation_span: The annotation span to match against
-        :param prediction_spans: List of prediction spans that potentially overlap
-        :return: Combined IoU value between 0 and 1
+        :param annotation_span: (Span) The annotation span to match against.
+        :param prediction_spans: (list[Span]) Prediction spans whose coverage
+            is pooled before computing the IoU.
+        :return: (float) Combined IoU value between 0 and 1; 0.0 when
+            ``prediction_spans`` is empty.
         """
         if not prediction_spans:
             return 0.0
