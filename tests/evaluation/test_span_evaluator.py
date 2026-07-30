@@ -1740,3 +1740,42 @@ def test_positional_tokens_length_mismatch_raises():
     )
     with pytest.raises(ValueError, match="normalized"):
         SpanEvaluator._positional_tokens(span)
+
+
+def test_multi_sentence_df_does_not_merge_separated_same_type_spans(span_evaluator):
+    """Same-type spans separated by regular words must never be merged, regardless
+    of where their sentence sits in the dataset.
+    """
+    sentence_tokens = ["John", "visited", "Berlin", "with", "Mary", "yesterday"]
+    sentence_tags = ["PERSON", "O", "O", "O", "PERSON", "O"]
+
+    rows = []
+    for sentence_id in (0, 1):
+        char_position = 0
+        for token, tag in zip(sentence_tokens, sentence_tags):
+            rows.append(
+                {
+                    "sentence_id": sentence_id,
+                    "token": token,
+                    "annotation": tag,
+                    "prediction": tag,
+                    "start_indices": char_position,
+                }
+            )
+            char_position += len(token) + 1
+
+    # Default global RangeIndex (0..11), exactly as predict_dataset returns it.
+    df = pd.DataFrame(rows)
+
+    result = span_evaluator.calculate_score_on_df(results_df=df, level="entity")
+    person = result.per_type["PERSON"]
+
+    # Two PERSON spans per sentence, two sentences: "visited Berlin with" is not
+    # skip-word filler, so nothing may be merged.
+    assert person.num_annotated == 4, (
+        f"Expected 4 annotated PERSON spans (2 per sentence), got "
+        f"{person.num_annotated} — same-type spans were merged across "
+        f"intervening non-skip tokens"
+    )
+    assert person.num_predicted == 4
+    assert person.true_positives == 4
