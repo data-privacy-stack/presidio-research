@@ -4,24 +4,6 @@
         <loc>https://data-privacy-stack.github.io/presidio-research/</loc>
       </url>
       <url>
-        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/1_Generate_data/</loc>
-      </url>
-      <url>
-        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/2_PII_EDA/</loc>
-      </url>
-      <url>
-        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/3_Split_by_pattern_number/</loc>
-      </url>
-      <url>
-        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/4_Evaluate_Presidio_Analyzer/</loc>
-      </url>
-      <url>
-        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/5_Evaluate_Custom_Presidio_Analyzer/</loc>
-      </url>
-      <url>
-        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/6_Interactive_Entity_Mapping/</loc>
-      </url>
-      <url>
         <loc>https://data-privacy-stack.github.io/presidio-research/evaluation/</loc>
       </url>
       <url>
@@ -43,6 +25,24 @@
         <loc>https://data-privacy-stack.github.io/presidio-research/mapping_scenarios/</loc>
       </url>
       <url>
-        <loc>https://data-privacy-stack.github.io/presidio-research/migration-guide/</loc>
+        <loc>https://data-privacy-stack.github.io/presidio-research/data_generation/</loc>
+      </url>
+      <url>
+        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/1_Generate_data/</loc>
+      </url>
+      <url>
+        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/2_PII_EDA/</loc>
+      </url>
+      <url>
+        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/3_Split_by_pattern_number/</loc>
+      </url>
+      <url>
+        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/4_Evaluate_Presidio_Analyzer/</loc>
+      </url>
+      <url>
+        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/5_Evaluate_Custom_Presidio_Analyzer/</loc>
+      </url>
+      <url>
+        <loc>https://data-privacy-stack.github.io/presidio-research/notebooks/6_Interactive_Entity_Mapping/</loc>
       </url>
 </urlset>

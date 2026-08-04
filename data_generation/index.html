@@ -12,13 +12,13 @@
         <meta name="author" content="Data Privacy Stack">
       
       
-        <link rel="canonical" href="https://data-privacy-stack.github.io/presidio-research/span_evaluation/">
+        <link rel="canonical" href="https://data-privacy-stack.github.io/presidio-research/data_generation/">
       
       
-        <link rel="prev" href="../token_evaluation/">
+        <link rel="prev" href="../mapping_scenarios/">
       
       
-        <link rel="next" href="../span_matching_strategies/">
+        <link rel="next" href="../notebooks/1_Generate_data/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Span Evaluation in Presidio Evaluator - Presidio Research</title>
+        <title>Data Generation - Presidio Research</title>
       
     
     
@@ -87,7 +87,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#span-evaluation-in-presidio-evaluator" class="md-skip">
+        <a href="#data-generation" class="md-skip">
           Skip to content
         </a>
       
@@ -122,7 +122,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Span Evaluation in Presidio Evaluator
+              Data Generation
             
           </span>
         </div>
@@ -420,8 +420,6 @@
                 
   
   
-    
-  
   
   
     
@@ -432,11 +430,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_1" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_1" >
         
           
           <label class="md-nav__link" for="__nav_2_1" id="__nav_2_1_label" tabindex="0">
@@ -456,7 +454,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_1">
             <span class="md-nav__icon md-icon"></span>
             
@@ -524,36 +522,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Span evaluation
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../span_evaluation/" class="md-nav__link">
         
   
   
@@ -568,183 +540,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#span-creation-and-processing" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Span Creation and Processing
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Span Creation and Processing">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#span-creation" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Span Creation
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Span Creation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#span-normalization" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Span Normalization
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#span-merging" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Span Merging
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#span-matching-strategy" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Span Matching Strategy
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Span Matching Strategy">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#iou-calculation" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        IoU Calculation
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#matching-annotations-to-predictions" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Matching Annotations to Predictions
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#metric-calculation" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Metric Calculation
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Metric Calculation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#per-entity-type-metrics" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Per-Entity-Type Metrics
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#global-pii-metrics" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Global PII Metrics
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#evaluation-process" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Evaluation Process
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#counting-strategy" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Counting Strategy
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -926,10 +721,36 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../data_generation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Data generation
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -944,6 +765,60 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#scenarios" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Scenarios
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#process" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Process
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Example
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1240,144 +1115,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#span-creation-and-processing" class="md-nav__link">
+  <a href="#scenarios" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Span Creation and Processing
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Span Creation and Processing">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#span-creation" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Span Creation
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Span Creation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#span-normalization" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Span Normalization
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#span-merging" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Span Merging
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#span-matching-strategy" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Span Matching Strategy
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Span Matching Strategy">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#iou-calculation" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        IoU Calculation
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#matching-annotations-to-predictions" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Matching Annotations to Predictions
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#metric-calculation" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Metric Calculation
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Metric Calculation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#per-entity-type-metrics" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Per-Entity-Type Metrics
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#global-pii-metrics" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Global PII Metrics
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#evaluation-process" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Evaluation Process
+        Scenarios
       </span>
     </span>
   </a>
@@ -1385,10 +1126,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#counting-strategy" class="md-nav__link">
+  <a href="#process" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Counting Strategy
+        Process
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Example
       </span>
     </span>
   </a>
@@ -1413,92 +1165,86 @@
   
 
 
-<h1 id="span-evaluation-in-presidio-evaluator">Span Evaluation in Presidio Evaluator</h1>
-<p>This document explains the span evaluation process implemented in Presidio Evaluator, covering how spans are created,
-matched, and evaluated, along with comparisons to other evaluation paradigms.</p>
-<h2 id="span-creation-and-processing">Span Creation and Processing</h2>
-<h3 id="span-creation">Span Creation</h3>
-<p>Spans are created from token-level annotations in the input data. Each span represents a continuous sequence of tokens
-with the same entity type annotation. The basic properties of a span include:</p>
-<ul>
-<li><code>entity_type</code>: The type of entity (e.g., PERSON, LOCATION)</li>
-<li><code>entity_value</code>: The actual text of the entity</li>
-<li><code>start_position</code> and <code>end_position</code>: Character-level boundaries</li>
-</ul>
-<h4 id="span-normalization">Span Normalization</h4>
-<p>For more advanced processing, spans also include normalized versions of the text:</p>
-<ul>
-<li><code>normalized_tokens</code>: List of normalized tokens that make up the span (typically lowercased and with special characters
-  removed)</li>
-<li><code>normalized_start_index</code> and <code>normalized_end_index</code>: Character indices in the normalized text</li>
-</ul>
-<p>Normalization helps with more consistent matching between variations of the same entity (e.g., "John Smith" vs "john
-smith") and by better handling of punctuation marks and skip words.</p>
-<h3 id="span-merging">Span Merging</h3>
-<p>In some cases, multiple separate tokens may need to be merged into a single span:</p>
+<h1 id="data-generation">Data Generation</h1>
+<p>The <code>PresidioSentenceFaker</code> generates sentences from templates (e.g. <code>my name is {{person}}</code>) where the placeholders
+are replaced with fake PII entities, along with metadata about the spans (the start and end of each entity) for model training and evaluation.</p>
+<h2 id="scenarios">Scenarios</h2>
+<p>There are two main scenarios for using the <code>PresidioSentenceFaker</code>:</p>
 <ol>
-<li><strong>Adjacent tokens of same type</strong>: Consecutive tokens with the same entity type are merged into a single span</li>
-<li><strong>Skip words handling</strong>: Certain configurable words (like punctuation marks or skip words) can be included in spans even if
-   they are annotated as non-entities, allowing for more natural entity boundaries</li>
+<li>Create a fake dataset for evaluation or training purposes, given a list of predefined templates
+(uses <a href="https://github.com/data-privacy-stack/presidio-research/blob/main/presidio_evaluator/data_generator/raw_data/templates.txt">this file</a> by default)</li>
+<li>Augment an existing labeled dataset with additional fake values.</li>
 </ol>
-<p>Example of skip words:</p>
-<div class="highlight"><pre><span></span><code>Text: &quot;University of Washington&quot;
-Without skip words: [ORG, O, ORG]
-With &quot;of&quot; as skip word: [ORG, ORG, ORG] (treated as one span)
+<p>In both scenarios the process is similar. In scenario 2, the existing dataset is first translated into templates,
+and then scenario 1 is applied.</p>
+<h2 id="process">Process</h2>
+<p>This generator heavily relies on the <a href="https://www.github.com/joke2k/faker">Faker package</a> with a few differences:</p>
+<ol>
+<li><code>PresidioSentenceFaker</code> returns not only fake text, but also the spans in which fake entities appear in the text.</li>
+<li><code>Faker</code> samples each value independently.
+In many cases, we would want to keep the semantic dependency between two values.
+For example, for the template <code>My name is {{name}} and my email is {{email}}</code>,
+we would prefer a result which has the name within the email address,
+such as <code>My name is Mike and my email is mike1243@gmail.com</code>.
+For this functionality, a new <code>RecordGenerator</code> (based on Faker's <code>Generator</code> class) is implemented.
+It accepts a dictionary / pandas DataFrame, and favors returning objects from the same record (if possible).</li>
+</ol>
+<h2 id="example">Example</h2>
+<p>For a full example, see the <a href="../notebooks/1_Generate_data/">Generate Data notebook</a>.</p>
+<p><code>PresidioSentenceFaker</code> provides a high-level interface for using the full power of the <code>presidio_evaluator</code>
+package. Its results use the presidio PII entities, not the <code>Faker</code> entities.
+It is loaded by default with template strings, and the additional Presidio Entity Providers.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">presidio_evaluator.data_generator</span><span class="w"> </span><span class="kn">import</span> <span class="n">PresidioSentenceFaker</span>
+
+<span class="n">record_generator</span> <span class="o">=</span> <span class="n">PresidioSentenceFaker</span><span class="p">(</span><span class="n">locale</span><span class="o">=</span><span class="s1">&#39;en&#39;</span><span class="p">,</span> <span class="n">lower_case_ratio</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="n">fake_records</span> <span class="o">=</span> <span class="n">record_generator</span><span class="o">.</span><span class="n">generate_new_fake_sentences</span><span class="p">(</span><span class="mi">1500</span><span class="p">)</span>
+
+<span class="c1"># Print the spans of the first sample</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fake_records</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">fake</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fake_records</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">spans</span><span class="p">)</span>
 </code></pre></div>
-<p>The <code>skip_words</code> parameter in the <code>SpanEvaluator</code> constructor determines which words can be skipped when merging
-adjacent spans of the same entity type.</p>
-<h2 id="span-matching-strategy">Span Matching Strategy</h2>
-<p>The evaluator compares annotation spans (gold standard) with prediction spans (model output) using an Intersection over
-Union (IoU) approach. This can be either character-based or token-based, controlled by the <code>char_based</code> parameter.</p>
-<h3 id="iou-calculation">IoU Calculation</h3>
-<ul>
-<li><strong>Character-based IoU</strong>: Calculates the character overlap between spans</li>
-<li><strong>Token-based IoU</strong>: Calculates the token overlap between spans</li>
-</ul>
-<p>IoU = (Intersection) / (Union)</p>
-<p>An IoU threshold determines whether spans match sufficiently.</p>
-<h3 id="matching-annotations-to-predictions">Matching Annotations to Predictions</h3>
-<p>The matching process follows these steps:</p>
+<p>The process at a high level is the following:</p>
 <ol>
-<li>For each annotation span, find all overlapping prediction spans</li>
-<li>Group overlapping prediction spans by entity type</li>
-<li>Calculate combined IoU for each entity type group</li>
-<li>Determine match status based on IoU threshold and entity type</li>
+<li>Translate a NER dataset (e.g. CONLL or OntoNotes) into a list of
+templates: <code>My name is John</code> -&gt; <code>My name is [PERSON]</code></li>
+<li>Construct a <code>PresidioSentenceFaker</code> instance by:</li>
+<li>Choosing your appropriate locale, e.g. <code>en_US</code></li>
+<li>Choosing the lower case ratio</li>
+<li>Passing in your list of templates (or default to those provided)<ul>
+<li>Optionally extend with provided templates accessible via <code>from presidio_evaluator.data_generator import presidio_templates_file_path</code></li>
+</ul>
+</li>
+<li>Passing in any custom entity providers (or default to those provided)<ul>
+<li>Optionally extend with inbuilt presidio entity providers accessible via <code>from presidio_evaluator.data_generator import presidio_additional_entity_providers</code></li>
+<li>Adding a mapping from the output provider entity type to a Presidio recognized entity type where appropriate</li>
+<li>e.g. For a <code>TownProvider</code> which outputs entity type of <code>town</code>, execute <code>PresidioSentenceFaker.ENTITY_TYPE_MAPPING['town'] = 'GPE'</code>)</li>
+</ul>
+</li>
+<li>Passing in a DataFrame representing your underlying PII records (or default to those provided)<ul>
+<li>Optionally extend with inbuilt presidio entity providers accessible via <code>from presidio_evaluator.data_generator.faker_extensions.datasets import load_fake_person_df</code></li>
+</ul>
+</li>
+<li>Adding any additional aliases required by your dataset by adding to <code>PresidioSentenceFaker.PROVIDER_ALIASES</code><ul>
+<li>e.g. if the entity providers support "name" but your dataset templates contain "person", you can add this alias
+ with <code>PresidioSentenceFaker.PROVIDER_ALIASES['name'] = 'person'</code>)</li>
+</ul>
+</li>
+<li>Generate sentences</li>
+<li>Split the generated dataset into train/test/validation while making sure
+that samples from the same template would only appear in one set</li>
+<li>Adapt datasets for the various models (Spacy, Flair, CRF, sklearn)</li>
+<li>Train models</li>
+<li>Evaluate using one of the <a href="https://github.com/data-privacy-stack/presidio-research/tree/main/notebooks/models">evaluation notebooks</a></li>
 </ol>
-<blockquote>
-<p>For a detailed breakdown of different matching scenarios and examples, see
-the <a href="../span_matching_strategies/">Span Matching Strategies</a> document.</p>
-</blockquote>
-<h2 id="metric-calculation">Metric Calculation</h2>
-<p>The evaluator calculates both per-entity-type metrics and global PII metrics:</p>
-<h3 id="per-entity-type-metrics">Per-Entity-Type Metrics</h3>
+<p>Notes:</p>
 <ul>
-<li><strong>Precision</strong>: TP / num_predicted</li>
-<li><strong>Recall</strong>: TP / num_annotated</li>
-<li><strong>F-beta</strong>: (1 + beta²) * (precision * recall) / (beta² * precision + recall)</li>
+<li>For steps 5, 6, 7 see the <a href="../">home page</a>.</li>
 </ul>
-<h3 id="global-pii-metrics">Global PII Metrics</h3>
-<ul>
-<li>Treat every entity type as if it were a single PII type</li>
-<li>Calculate global precision, recall, and F-score on PII/not PII values</li>
-</ul>
-<h2 id="evaluation-process">Evaluation Process</h2>
-<ol>
-<li>For each annotation, find all overlapping prediction spans</li>
-<li>Group overlapping spans by entity type</li>
-<li>Calculate combined IoU for each group</li>
-<li>Determine match status based on IoU and entity type</li>
-<li>Mark remaining predictions (with no overlap) as FPs</li>
-</ol>
-<p>See more info on the <a href="../span_matching_strategies/">Span Matching Strategies</a> document.</p>
-<h2 id="counting-strategy">Counting Strategy</h2>
-<ul>
-<li>Multiple predictions of the same type overlapping with one annotation count as a single prediction</li>
-<li>Different entity types are counted separately</li>
-<li>An annotation is only counted once as annotated (denominator for precision and recall),
-  regardless of how many types intersect with it</li>
-</ul>
+<p><em>Copyright notice:</em></p>
+<p>Fake Name Generator identities by the Fake Name Generator are licensed under a
+Creative Commons Attribution-Share Alike 3.0 United States License.
+Fake Name Generator and the Fake Name Generator logo
+are trademarks of Corban Works, LLC.</p>
 
 
 
@@ -1538,7 +1284,7 @@ the <a href="../span_matching_strategies/">Span Matching Strategies</a> document
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../token_evaluation/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Token evaluation">
+          <a href="../mapping_scenarios/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Mapping scenarios">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -1548,20 +1294,20 @@ the <a href="../span_matching_strategies/">Span Matching Strategies</a> document
                 Previous
               </span>
               <div class="md-ellipsis">
-                Token evaluation
+                Mapping scenarios
               </div>
             </div>
           </a>
         
         
           
-          <a href="../span_matching_strategies/" class="md-footer__link md-footer__link--next" aria-label="Next: Span matching strategies">
+          <a href="../notebooks/1_Generate_data/" class="md-footer__link md-footer__link--next" aria-label="Next: Generate data">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Span matching strategies
+                Generate data
               </div>
             </div>
             <div class="md-footer__button md-icon">
