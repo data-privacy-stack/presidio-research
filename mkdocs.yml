@@ -29,10 +29,6 @@ nav:
       - Why canonical entity mapping: why_canonical_entity_mapping.md
       - Mapping scenarios: mapping_scenarios.md
       - Migration guide: migration-guide.md
-  - Architecture decisions:
-      - Simplified evaluation pipeline: adr/ADR-001-simplified-evaluation-pipeline.md
-      - Entity mapping: adr/ADR-002-entity-mapping.md
-      - Hierarchical evaluation: adr/ADR-003-hierarchical-evaluation.md
 
 theme:
   name: material
