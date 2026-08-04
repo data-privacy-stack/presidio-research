@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="./assets/dps-icon.svg">
-      <meta name="generator" content="zensical-0.0.52">
+      <meta name="generator" content="zensical-0.0.53">
     
     
       
@@ -34,7 +34,7 @@
       
         
       
-      <link rel="stylesheet" href="./assets/stylesheets/modern/main.8b3b5a67.min.css">
+      <link rel="stylesheet" href="./assets/stylesheets/modern/main.20815dad.min.css">
       
         
           
@@ -1241,12 +1241,12 @@ uv<span class="w"> </span>run<span class="w"> </span>pytest
 <li>Helper functions for <strong>results analysis</strong></li>
 </ol>
 <h2 id="1-data-generation">1. Data generation</h2>
-<p>See <a href="https://github.com/data-privacy-stack/presidio-research/blob/main/presidio_evaluator/data_generator/README.md">Data Generator README</a> for more details.</p>
+<p>See <a href="https://github.com/data-privacy-stack/presidio-research/blob/0.3.2/presidio_evaluator/data_generator/README.md">Data Generator README</a> for more details.</p>
 <p>The data generation process takes a file with templates, e.g. <code>My name is {{name}}</code>. 
 Then, it creates new synthetic sentences by sampling templates and PII values. 
 Furthermore, it tokenizes the data, creates tags (either IO/BIO/BILUO) and spans for the newly created samples.</p>
 <ul>
-<li>For information on data generation/augmentation, see the data generator <a href="https://github.com/data-privacy-stack/presidio-research/blob/main/presidio_evaluator/data_generator/README.md">README</a>.</li>
+<li>For information on data generation/augmentation, see the data generator <a href="https://github.com/data-privacy-stack/presidio-research/blob/0.3.2/presidio_evaluator/data_generator/README.md">README</a>.</li>
 <li>For an example for running the generation process, see <a href="notebooks/1_Generate_data/">this notebook</a>.</li>
 <li>For an understanding of the underlying fake PII data used, see this <a href="notebooks/2_PII_EDA/">exploratory data analysis notebook</a>.</li>
 </ul>
@@ -1257,7 +1257,7 @@ See <a href="notebooks/3_Split_by_pattern_number/">this notebook for more detail
 <p>In order to standardize the process, 
 we use specific data objects that hold all the information needed for generating, 
 analyzing, modeling and evaluating data and models. Specifically, 
-see <a href="https://github.com/data-privacy-stack/presidio-research/blob/main/presidio_evaluator/data_objects.py">data_objects.py</a>.</p>
+see <a href="https://github.com/data-privacy-stack/presidio-research/blob/0.3.2/presidio_evaluator/data_objects.py">data_objects.py</a>.</p>
 <p>The standardized structure, <code>List[InputSample]</code>, can be translated into different formats:
 - CoNLL
   - To CoNLL:
@@ -1303,7 +1303,7 @@ see <a href="https://github.com/data-privacy-stack/presidio-research/blob/main/p
 <h1 id="contributing">Contributing</h1>
 <p>This project welcomes contributions and suggestions. Open an issue to discuss larger changes
 before submitting a pull request.</p>
-<p>This project has adopted the <a href="https://github.com/data-privacy-stack/presidio-research/blob/main/CODE_OF_CONDUCT.md">Contributor Covenant Code of Conduct</a>.
+<p>This project has adopted the <a href="https://github.com/data-privacy-stack/presidio-research/blob/0.3.2/CODE_OF_CONDUCT.md">Contributor Covenant Code of Conduct</a>.
 By participating, you are expected to uphold this code. Please report unacceptable behavior
 to <a href="&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#112;&#114;&#101;&#115;&#105;&#100;&#105;&#111;&#64;&#100;&#97;&#116;&#97;&#112;&#114;&#105;&#118;&#97;&#99;&#121;&#115;&#116;&#97;&#99;&#107;&#46;&#111;&#114;&#103;">&#112;&#114;&#101;&#115;&#105;&#100;&#105;&#111;&#64;&#100;&#97;&#116;&#97;&#112;&#114;&#105;&#118;&#97;&#99;&#121;&#115;&#116;&#97;&#99;&#107;&#46;&#111;&#114;&#103;</a>.</p>
 <p>Copyright notice:</p>
@@ -1437,7 +1437,7 @@ Fake Name Generator and the Fake Name Generator logo are trademarks of Corban Wo
       <script id="__config" type="application/json">{"annotate":null,"base":".","features":["navigation.instant","navigation.instant.progress","content.tabs.link","content.code.copy","content.code.annotate","navigation.tabs","navigation.tabs.sticky","navigation.top","navigation.footer","search.suggest","search.highlight","toc.follow"],"search":"./assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="./assets/javascripts/bundle.ed145cee.min.js"></script>
+      <script src="./assets/javascripts/bundle.69c251d7.min.js"></script>
       
     
   </body>
