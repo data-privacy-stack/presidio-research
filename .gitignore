@@ -199,3 +199,11 @@ datasets/
 *.svg
 !synth_dataset_v2.json
 test_us002.py
+
+# Zensical docs build (scripts/zensical_build.py)
+/site
+/zensical.yml
+.zensical-build/
+.docs-venv/
+# Docs brand asset is committed despite the blanket *.svg ignore above.
+!docs/assets/dps-icon.svg

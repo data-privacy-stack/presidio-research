@@ -1,0 +1,20 @@
+# Dependencies for building the Presidio-Research documentation with Zensical,
+# the successor to Material for MkDocs. Build with scripts/zensical_build.py,
+# which collects the README (-> index.md) and the notebook tutorials into a
+# staging docs tree, pre-converts the notebooks, and emits a generated
+# zensical.yml. See that script's module docstring for the full flow.
+#
+#   pip install -r docs/requirements-docs.txt
+#   python scripts/zensical_build.py            # build to ./site
+#   python scripts/zensical_build.py serve      # local preview
+#
+# Zensical does not run MkDocs plugins, so mkdocs / mkdocs-material /
+# mkdocs-jupyter are intentionally absent. nbconvert renders the notebooks to
+# Markdown (no execution), which keeps the build light — the heavy
+# presidio_evaluator ML dependencies are not needed to build the docs.
+zensical
+nbconvert
+pymdown-extensions
+markdown
+pyyaml
+pygments>=2.10

@@ -1,0 +1,94 @@
+name: Release Documentation
+
+# Builds the docs with Zensical (the successor to Material for MkDocs) via
+# scripts/zensical_build.py and publishes the result to GitHub Pages. The script
+# collects the top-level README (-> index.md) and the notebooks/ tutorials into
+# the docs tree and pre-converts the notebooks with nbconvert, because Zensical
+# does not run the mkdocs-jupyter plugin.
+#
+# The published site is served at https://presidio-research.dataprivacystack.org
+# (custom domain, set via the CNAME written below). GitHub Pages then 301-
+# redirects the default https://data-privacy-stack.github.io/presidio-research/
+# URL to that custom domain.
+#
+# One-time repo setup (by a maintainer), required for the custom domain:
+#   1. Settings -> Pages -> Build and deployment -> Source: "Deploy from a branch",
+#      Branch: gh-pages / (root).
+#   2. Settings -> Pages -> Custom domain: presidio-research.dataprivacystack.org
+#   3. DNS: add a CNAME record  presidio-research -> data-privacy-stack.github.io
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The custom domain served by GitHub Pages for this site. Written into the
+# gh-pages branch so it survives each publish (which wipes the branch contents).
+env:
+  DOCS_CNAME: presidio-research.dataprivacystack.org
+
+jobs:
+  github-pages-release:
+    name: Build with Zensical and push to GitHub Pages
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write  # Required for pushing to the gh-pages branch
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper gh-pages deployment
+          persist-credentials: true  # So that the token is available for pushing
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r docs/requirements-docs.txt
+
+      - name: Build docs
+        env:
+          # README repo-relative links are absolutised against this ref.
+          DOCS_REF: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          python scripts/zensical_build.py build
+
+      - name: Deploy to GitHub Pages
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          publish_dir="$(mktemp -d)"
+          trap 'git worktree remove --force "$publish_dir"' EXIT
+
+          # Create gh-pages if it does not exist yet, otherwise reuse it.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages
+            git worktree add --detach "$publish_dir" origin/gh-pages
+          else
+            git worktree add --detach "$publish_dir"
+          fi
+
+          find "$publish_dir" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a site/. "$publish_dir"/
+          touch "$publish_dir/.nojekyll"
+          printf '%s\n' "$DOCS_CNAME" > "$publish_dir/CNAME"
+
+          git -C "$publish_dir" add -A
+          if git -C "$publish_dir" diff --cached --quiet; then
+            echo "No documentation changes to publish."
+            exit 0
+          fi
+
+          git -C "$publish_dir" commit -m "docs: publish Zensical documentation"
+          git -C "$publish_dir" push origin HEAD:gh-pages
