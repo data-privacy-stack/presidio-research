@@ -14,7 +14,8 @@ It also includes a fake data generator that creates synthetic sentences based on
 
 
 ### Using notebooks
-The easiest way to get started is by reviewing the notebooks. 
+The easiest way to get started is by reviewing the notebooks.
+
 - [Notebook 1](notebooks/1_Generate_data.ipynb): Shows how to use the PII data generator.
 - [Notebook 2](notebooks/2_PII_EDA.ipynb): Shows a simple analysis of the PII dataset.
 - [Notebook 3](notebooks/3_Split_by_pattern_number.ipynb): Provides tools to split the dataset into train/test/validation sets while avoiding leakage due to the same pattern appearing in multiple folds (only applicable for synthetically generated data).
@@ -67,13 +68,13 @@ Note that some dependencies (such as Flair and Stanza) are no longer supported. 
 
 ## 1. Data generation
 
-See [Data Generator README](presidio_evaluator/data_generator/README.md) for more details.
+See the [Data Generation docs](docs/data_generation.md) for more details.
 
 The data generation process takes a file with templates, e.g. `My name is {{name}}`. 
 Then, it creates new synthetic sentences by sampling templates and PII values. 
 Furthermore, it tokenizes the data, creates tags (either IO/BIO/BILUO) and spans for the newly created samples.
 
-- For information on data generation/augmentation, see the data generator [README](presidio_evaluator/data_generator/README.md).
+- For information on data generation/augmentation, see the [Data Generation docs](docs/data_generation.md).
 - For an example for running the generation process, see [this notebook](notebooks/1_Generate_data.ipynb).
 - For an understanding of the underlying fake PII data used, see this [exploratory data analysis notebook](notebooks/2_PII_EDA.ipynb).
 

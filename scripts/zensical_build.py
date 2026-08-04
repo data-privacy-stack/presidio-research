@@ -155,9 +155,15 @@ def _absolutise_readme_links(text: str, notebook_rels: set[str]) -> str:
         if url.startswith(("http://", "https://", "//", "mailto:", "#")):
             return match.group(0)
         path, _, frag = url.partition("#")
+        clean_path = path.lstrip("./")
         # Notebook links become on-site pages; leave them for the .ipynb pass.
-        if path.lstrip("./") in notebook_rels:
+        if clean_path in notebook_rels:
             return match.group(0)
+        # Links into docs/ resolve to on-site pages: the docs tree is the site
+        # root, so drop the leading ``docs/`` and keep the link relative.
+        if clean_path.startswith("docs/") and clean_path.endswith(".md"):
+            rel = clean_path[len("docs/") :]
+            return f"{prefix}{rel}" + (f"#{frag}" if frag else "")
         is_image = prefix.startswith("!") or prefix.startswith(("src=",))
         base = GH_RAW if is_image else GH_BLOB
         clean = path.lstrip("./")
