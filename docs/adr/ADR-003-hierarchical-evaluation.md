@@ -72,6 +72,7 @@ At each level L, for each token:
 4. The prediction is **FP** if it is non-`O` when the annotation is `O`.
 
 This means:
+
 - A token annotated at depth 2 (`PERSON`) is evaluated at L2 using the depth-2 label — any prediction of `PERSON` or a descendant (`NAME`, `TITLE`, etc.) counts as TP.
 - A token annotated at depth 3 (`TITLE`) requires the prediction to be `TITLE` or a descendant to score TP at L2; a prediction of `PERSON` (ancestor) is FP+FN.
 
@@ -79,6 +80,7 @@ Standard precision / recall / F1 apply at each level without modification. No ne
 definitions are needed.
 
 The levels correspond to the natural structure of `EntityHierarchy`:
+
 - **L0**: PII vs. non-PII (binary)
 - **L1**: depth-2 branch node (PERSON, LOCATION, CONTACT, …)
 - **L2**: the annotation's own depth (depth-3 for depth-3 annotations; depth-2 for depth-2 annotations)

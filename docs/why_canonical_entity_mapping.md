@@ -1,6 +1,6 @@
 # Why canonical entity mapping?
 
-This document explains the design decisions behind the canonical entity mapping approach used in Presidio Evaluator. For the taxonomy structure and usage guide, see [entity_hierarchy.md](entity_hierarchy.md).
+This document explains the design decisions behind the canonical entity mapping approach used in Presidio Evaluator. For the taxonomy structure and usage guide, see [Entity hierarchy](entity_hierarchy.md).
 
 ## Approaches to entity label mapping
 

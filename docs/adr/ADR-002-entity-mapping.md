@@ -18,6 +18,7 @@ The core use case is **comparing multiple models against the same dataset**. The
 the evaluation contract; models are the variable.
 
 A flat `dict[str, str]` mapping is insufficient because:
+
 - Many labels are aliases for the same concept (`FIRST_NAME`, `NAME_GIVEN`, `GIVENNAME` → `NAME`). Maintaining a hand-crafted dict for hundreds of model vocabularies is burdensome.
 - Labels exist in a hierarchy — `NAME` is a sub-type of `PERSON`. A model predicting `PERSON` on a `NAME`-annotated token is partially correct, not wrong. A flat dict cannot express this.
 - Unresolved labels need to be surfaced and triaged before evaluation; a dict silently drops or mismaps them.
@@ -76,6 +77,7 @@ By default, issues at WARNING level and above are surfaced. The user can control
 
 `get_mapped_results_dataframe()` raises `IncompleteMapping` only if `UNRESOLVED` issues remain.
 To resolve:
+
 - `mapper.map({"MY_LABEL": "CANONICAL"})` — map to a known hierarchy entity
 - `mapper.map({"MY_LABEL": None})` — suppress from evaluation entirely
 

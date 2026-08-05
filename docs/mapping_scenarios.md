@@ -111,6 +111,7 @@ The same string alias appears under multiple canonical entities in the hierarchy
 | `MRN` / `MEDICAL_RECORD_NUMBER` | `PHI → MRN` | alias of `PATIENT_ID` | Same concept, two canonical targets |
 
 **Issue types produced:**
+
 - `COLLISION_CROSS_BRANCH` (WARNING) — blocking. Raised when a label resolves to a canonical entity that has co-occurring labels on the same tokens mapping to a different hierarchy branch. Must be resolved with `map()` before extracting results.
 - `COLLISION_AMBIGUOUS` (WARNING) — blocking. Raised when a depth-2 ancestor maps to multiple depth-3 entities on the canonical surface (the top co-occurring candidate is shown in `overlap_counts`). Use `map({'LABEL': 'CANONICAL'})` to pick the right one.
 
@@ -131,6 +132,7 @@ The model finds PII types the dataset creators never labeled — every detection
 **Real example (Notebook 5):** After mapping, several Presidio predictions had no dataset counterpart.
 
 **Issue type produced:** `PREDICTION_ONLY` (WARNING) — blocking. These labels inflate precision with false positives. You have three resolution options:
+
 1. **Suppress** — `mapper.map({'CREDIT_CARD': None})` excludes the label from evaluation entirely
 2. **Remap** — `mapper.map({'CREDIT_CARD': 'FINANCIAL'})` counts detections against the `FINANCIAL` annotation set
 3. **Keep as FP** — if you want these counted as false positives deliberately, this isn't directly supported; suppression is the recommended path
