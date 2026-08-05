@@ -1357,15 +1357,19 @@ COLLISION_AMBIGUOUS, no surface projection.</p>
 <li>The prediction is <strong>FP+FN</strong> if it is an ancestor of the mapped annotation (too coarse), on a different branch, or <code>O</code> when the annotation is non-<code>O</code>.</li>
 <li>The prediction is <strong>FP</strong> if it is non-<code>O</code> when the annotation is <code>O</code>.</li>
 </ol>
-<p>This means:
-- A token annotated at depth 2 (<code>PERSON</code>) is evaluated at L2 using the depth-2 label — any prediction of <code>PERSON</code> or a descendant (<code>NAME</code>, <code>TITLE</code>, etc.) counts as TP.
-- A token annotated at depth 3 (<code>TITLE</code>) requires the prediction to be <code>TITLE</code> or a descendant to score TP at L2; a prediction of <code>PERSON</code> (ancestor) is FP+FN.</p>
+<p>This means:</p>
+<ul>
+<li>A token annotated at depth 2 (<code>PERSON</code>) is evaluated at L2 using the depth-2 label — any prediction of <code>PERSON</code> or a descendant (<code>NAME</code>, <code>TITLE</code>, etc.) counts as TP.</li>
+<li>A token annotated at depth 3 (<code>TITLE</code>) requires the prediction to be <code>TITLE</code> or a descendant to score TP at L2; a prediction of <code>PERSON</code> (ancestor) is FP+FN.</li>
+</ul>
 <p>Standard precision / recall / F1 apply at each level without modification. No new metric
 definitions are needed.</p>
-<p>The levels correspond to the natural structure of <code>EntityHierarchy</code>:
-- <strong>L0</strong>: PII vs. non-PII (binary)
-- <strong>L1</strong>: depth-2 branch node (PERSON, LOCATION, CONTACT, …)
-- <strong>L2</strong>: the annotation's own depth (depth-3 for depth-3 annotations; depth-2 for depth-2 annotations)</p>
+<p>The levels correspond to the natural structure of <code>EntityHierarchy</code>:</p>
+<ul>
+<li><strong>L0</strong>: PII vs. non-PII (binary)</li>
+<li><strong>L1</strong>: depth-2 branch node (PERSON, LOCATION, CONTACT, …)</li>
+<li><strong>L2</strong>: the annotation's own depth (depth-3 for depth-3 annotations; depth-2 for depth-2 annotations)</li>
+</ul>
 <h3 id="granularity-bonus-penalty">Granularity bonus / penalty</h3>
 <p>The scoring rule makes granularity visible without any penalty parameter.
 The L2 F1 gap between models directly quantifies how much granularity matters for a given dataset.</p>

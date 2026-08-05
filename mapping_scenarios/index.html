@@ -1820,9 +1820,11 @@ Each scenario includes a concrete example; solutions are intentionally omitted.<
 </tr>
 </tbody>
 </table>
-<p><strong>Issue types produced:</strong>
-- <code>COLLISION_CROSS_BRANCH</code> (WARNING) — blocking. Raised when a label resolves to a canonical entity that has co-occurring labels on the same tokens mapping to a different hierarchy branch. Must be resolved with <code>map()</code> before extracting results.
-- <code>COLLISION_AMBIGUOUS</code> (WARNING) — blocking. Raised when a depth-2 ancestor maps to multiple depth-3 entities on the canonical surface (the top co-occurring candidate is shown in <code>overlap_counts</code>). Use <code>map({'LABEL': 'CANONICAL'})</code> to pick the right one.</p>
+<p><strong>Issue types produced:</strong></p>
+<ul>
+<li><code>COLLISION_CROSS_BRANCH</code> (WARNING) — blocking. Raised when a label resolves to a canonical entity that has co-occurring labels on the same tokens mapping to a different hierarchy branch. Must be resolved with <code>map()</code> before extracting results.</li>
+<li><code>COLLISION_AMBIGUOUS</code> (WARNING) — blocking. Raised when a depth-2 ancestor maps to multiple depth-3 entities on the canonical surface (the top co-occurring candidate is shown in <code>overlap_counts</code>). Use <code>map({'LABEL': 'CANONICAL'})</code> to pick the right one.</li>
+</ul>
 <hr />
 <h2 id="8-model-predicts-entities-the-dataset-doesnt-annotate-prediction-only">8. Model Predicts Entities the Dataset Doesn't Annotate (Prediction-Only)</h2>
 <p>The model finds PII types the dataset creators never labeled — every detection is a false positive.</p>
@@ -1863,10 +1865,12 @@ Each scenario includes a concrete example; solutions are intentionally omitted.<
 </tbody>
 </table>
 <p><strong>Real example (Notebook 5):</strong> After mapping, several Presidio predictions had no dataset counterpart.</p>
-<p><strong>Issue type produced:</strong> <code>PREDICTION_ONLY</code> (WARNING) — blocking. These labels inflate precision with false positives. You have three resolution options:
-1. <strong>Suppress</strong> — <code>mapper.map({'CREDIT_CARD': None})</code> excludes the label from evaluation entirely
-2. <strong>Remap</strong> — <code>mapper.map({'CREDIT_CARD': 'FINANCIAL'})</code> counts detections against the <code>FINANCIAL</code> annotation set
-3. <strong>Keep as FP</strong> — if you want these counted as false positives deliberately, this isn't directly supported; suppression is the recommended path</p>
+<p><strong>Issue type produced:</strong> <code>PREDICTION_ONLY</code> (WARNING) — blocking. These labels inflate precision with false positives. You have three resolution options:</p>
+<ol>
+<li><strong>Suppress</strong> — <code>mapper.map({'CREDIT_CARD': None})</code> excludes the label from evaluation entirely</li>
+<li><strong>Remap</strong> — <code>mapper.map({'CREDIT_CARD': 'FINANCIAL'})</code> counts detections against the <code>FINANCIAL</code> annotation set</li>
+<li><strong>Keep as FP</strong> — if you want these counted as false positives deliberately, this isn't directly supported; suppression is the recommended path</li>
+</ol>
 <hr />
 <h2 id="9-dataset-has-entities-the-model-can-never-produce-annotation-only">9. Dataset Has Entities the Model Can Never Produce (Annotation-Only)</h2>
 <p>The dataset annotates entity types that the model's architecture or recognizer set can't detect.</p>

@@ -1255,10 +1255,12 @@ fine-tuned models, or third-party tools. Before evaluation can happen, every lab
 resolved to a shared vocabulary so that dataset annotations and model predictions can be compared.</p>
 <p>The core use case is <strong>comparing multiple models against the same dataset</strong>. The dataset defines
 the evaluation contract; models are the variable.</p>
-<p>A flat <code>dict[str, str]</code> mapping is insufficient because:
-- Many labels are aliases for the same concept (<code>FIRST_NAME</code>, <code>NAME_GIVEN</code>, <code>GIVENNAME</code> → <code>NAME</code>). Maintaining a hand-crafted dict for hundreds of model vocabularies is burdensome.
-- Labels exist in a hierarchy — <code>NAME</code> is a sub-type of <code>PERSON</code>. A model predicting <code>PERSON</code> on a <code>NAME</code>-annotated token is partially correct, not wrong. A flat dict cannot express this.
-- Unresolved labels need to be surfaced and triaged before evaluation; a dict silently drops or mismaps them.</p>
+<p>A flat <code>dict[str, str]</code> mapping is insufficient because:</p>
+<ul>
+<li>Many labels are aliases for the same concept (<code>FIRST_NAME</code>, <code>NAME_GIVEN</code>, <code>GIVENNAME</code> → <code>NAME</code>). Maintaining a hand-crafted dict for hundreds of model vocabularies is burdensome.</li>
+<li>Labels exist in a hierarchy — <code>NAME</code> is a sub-type of <code>PERSON</code>. A model predicting <code>PERSON</code> on a <code>NAME</code>-annotated token is partially correct, not wrong. A flat dict cannot express this.</li>
+<li>Unresolved labels need to be surfaced and triaged before evaluation; a dict silently drops or mismaps them.</li>
+</ul>
 <blockquote>
 <p><strong>Relationship to ADR-003:</strong> <a href="../ADR-003-hierarchical-evaluation/">Hierarchical evaluation</a> builds on top of this mapping layer. Hierarchical scoring handles same-branch depth differences without any label projection — so this ADR only needs to surface labels that are <strong>entirely absent</strong> from the hierarchy.</p>
 </blockquote>
@@ -1365,9 +1367,11 @@ There is no canonical surface and no depth parameter.</p>
 <p><code>COUNTRY_FALLBACK</code> is part of the identification phase and resolves to a node — it is not a separate issue type. It is logged internally and never shown in the audit table regardless of <code>min_severity</code>.</p>
 <h3 id="blocking-behavior">Blocking behavior</h3>
 <p><code>get_mapped_results_dataframe()</code> raises <code>IncompleteMapping</code> only if <code>UNRESOLVED</code> issues remain.
-To resolve:
-- <code>mapper.map({"MY_LABEL": "CANONICAL"})</code> — map to a known hierarchy entity
-- <code>mapper.map({"MY_LABEL": None})</code> — suppress from evaluation entirely</p>
+To resolve:</p>
+<ul>
+<li><code>mapper.map({"MY_LABEL": "CANONICAL"})</code> — map to a known hierarchy entity</li>
+<li><code>mapper.map({"MY_LABEL": None})</code> — suppress from evaluation entirely</li>
+</ul>
 <h3 id="workflow">Workflow</h3>
 <div class="highlight"><pre><span></span><code><span class="n">mapper</span> <span class="o">=</span> <span class="n">CanonicalMapper</span><span class="p">()</span>
 <span class="n">mapper</span><span class="o">.</span><span class="n">analyze</span><span class="p">(</span><span class="n">results_df</span><span class="p">)</span>                        <span class="c1"># default: surface WARNING and above</span>

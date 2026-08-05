@@ -1339,17 +1339,21 @@
 <p>If you compare these labels directly, everything looks like a mismatch — even when the model found the right thing.</p>
 <h2 id="how-it-works">How it works</h2>
 <p>Presidio Evaluator solves this with a <strong>shared vocabulary</strong> of canonical entity names. Every label — from any model or dataset — gets mapped to one of these canonical names before evaluation using a <strong>two-phase process</strong>:</p>
-<p><strong>Phase 1 — Identify:</strong> each label is matched to a canonical entity through five tiers (in priority order):
-1. Exact match in the alias map
-2. Country-prefix strip (e.g. <code>GERMANY_PASSPORT_NUMBER</code> → <code>PASSPORT</code>)
-3. Country-prefix fallback (tries removing leading country code)
-4. Fuzzy string match (≥0.80 similarity by default)
-5. <code>UNRESOLVED</code> — flagged for manual resolution</p>
-<p>Examples:
-- <code>EMAIL</code>, <code>email_address</code>, <code>EMAILADDRESS</code> → all become <code>EMAIL_ADDRESS</code>
-- <code>B-PERSON</code>, <code>PERSON-I</code> → BIO tags are stripped, both become <code>NAME</code>
-- <code>GERMANY_PASSPORT_NUMBER</code> → country prefix is recognized, becomes <code>PASSPORT</code>
-- <code>CREDITCARD</code>, <code>credit_card</code> → case and delimiters don't matter, becomes <code>FINANCIAL</code></p>
+<p><strong>Phase 1 — Identify:</strong> each label is matched to a canonical entity through five tiers (in priority order):</p>
+<ol>
+<li>Exact match in the alias map</li>
+<li>Country-prefix strip (e.g. <code>GERMANY_PASSPORT_NUMBER</code> → <code>PASSPORT</code>)</li>
+<li>Country-prefix fallback (tries removing leading country code)</li>
+<li>Fuzzy string match (≥0.80 similarity by default)</li>
+<li><code>UNRESOLVED</code> — flagged for manual resolution</li>
+</ol>
+<p>Examples:</p>
+<ul>
+<li><code>EMAIL</code>, <code>email_address</code>, <code>EMAILADDRESS</code> → all become <code>EMAIL_ADDRESS</code></li>
+<li><code>B-PERSON</code>, <code>PERSON-I</code> → BIO tags are stripped, both become <code>NAME</code></li>
+<li><code>GERMANY_PASSPORT_NUMBER</code> → country prefix is recognized, becomes <code>PASSPORT</code></li>
+<li><code>CREDITCARD</code>, <code>credit_card</code> → case and delimiters don't matter, becomes <code>FINANCIAL</code></li>
+</ul>
 <p><strong>Phase 2 — Project:</strong> canonical entities are projected onto the <em>canonical surface</em> — a set of entities at a
 depth computed by majority vote from the <strong>dataset annotation labels</strong>. Depth-2 ancestors that have
 multiple depth-3 descendants trigger a <code>COLLISION_AMBIGUOUS</code> issue; descendants that have exactly
@@ -1403,7 +1407,7 @@ one matching ancestor on the canonical surface are auto-fixed as <code>COLLISION
 <p>The <strong>evaluation depth is data-driven</strong>: <code>CanonicalMapper</code> computes a weighted majority vote across the
 annotation labels in your results DataFrame and selects depth 2 or 3 (capped at 3). Depth 3 is the most
 common outcome when a dataset uses fine-grained entity types like <code>EMAIL_ADDRESS</code>, <code>NAME</code>, or <code>SSN</code>.</p>
-<p>For more on why this approach was chosen over alternatives, see <a href="../why_canonical_entity_mapping/">why_canonical_entity_mapping.md</a>.</p>
+<p>For more on why this approach was chosen over alternatives, see <a href="../why_canonical_entity_mapping/">Why canonical entity mapping</a>.</p>
 <h2 id="typical-workflow">Typical workflow</h2>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">presidio_evaluator.entity_mapping</span><span class="w"> </span><span class="kn">import</span> <span class="n">CanonicalMapper</span><span class="p">,</span> <span class="n">IncompleteMapping</span>
 

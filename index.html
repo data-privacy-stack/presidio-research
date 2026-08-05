@@ -1383,9 +1383,11 @@ python<span class="w"> </span>-m<span class="w"> </span>spacy<span class="w"> </
 python<span class="w"> </span>-m<span class="w"> </span>spacy<span class="w"> </span>download<span class="w"> </span>en_core_web_lg<span class="w"> </span><span class="c1"># for NER</span>
 </code></pre></div>
 <h4 id="from-source">From source</h4>
-<p>To install the package:
-1. Clone the repo
-2. Install all dependencies:</p>
+<p>To install the package:</p>
+<ol>
+<li>Clone the repo</li>
+<li>Install all dependencies:</li>
+</ol>
 <div class="highlight"><pre><span></span><code><span class="c1"># Install uv if not already installed</span>
 pip<span class="w"> </span>install<span class="w"> </span>uv
 
@@ -1427,15 +1429,17 @@ See <a href="notebooks/3_Split_by_pattern_number/">this notebook for more detail
 we use specific data objects that hold all the information needed for generating, 
 analyzing, modeling and evaluating data and models. Specifically, 
 see <a href="https://github.com/data-privacy-stack/presidio-research/blob/main/presidio_evaluator/data_objects.py">data_objects.py</a>.</p>
-<p>The standardized structure, <code>List[InputSample]</code>, can be translated into different formats:
-- CoNLL
-  - To CoNLL:
+<p>The standardized structure, <code>List[InputSample]</code>, can be translated into different formats:</p>
+<ul>
+<li>CoNLL</li>
+<li>
+<p>To CoNLL:
     <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">presidio_evaluator</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputSample</span>
 <span class="n">dataset</span> <span class="o">=</span> <span class="n">InputSample</span><span class="o">.</span><span class="n">read_dataset_json</span><span class="p">(</span><span class="s2">&quot;data/synth_dataset_v2.json&quot;</span><span class="p">)</span>
 <span class="n">conll</span> <span class="o">=</span> <span class="n">InputSample</span><span class="o">.</span><span class="n">create_conll_dataset</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
 <span class="n">conll</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="s2">&quot;dataset.csv&quot;</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div></p>
-<ul>
+</li>
 <li>
 <p>From CoNLL
     <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
