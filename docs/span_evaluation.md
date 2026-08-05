@@ -73,13 +73,21 @@ The matching process follows these steps:
 
 ## Metric Calculation
 
-The evaluator calculates both per-entity-type metrics and global PII metrics:
+The evaluator calculates both per-entity-type metrics and global PII metrics.
+Recall is counted per annotation: each annotation is a true positive if
+predictions of its type cover it at IoU ≥ threshold, and a false negative
+otherwise. Precision is counted per prediction span: each span is counted once
+in `num_predicted`, either credited by a successful match or counted as a
+false positive.
 
 ### Per-Entity-Type Metrics
 
-- **Precision**: TP / num_predicted
+- **Precision**: (num_predicted − FP) / num_predicted
 - **Recall**: TP / num_annotated
 - **F-beta**: (1 + beta²) * (precision * recall) / (beta² * precision + recall)
+
+Note that precision is not TP / num_predicted: TP counts covered annotations,
+and a single prediction covering two annotations is two TPs but one prediction.
 
 ### Global PII Metrics
 
@@ -91,17 +99,19 @@ The evaluator calculates both per-entity-type metrics and global PII metrics:
 
 1. For each annotation, find all overlapping prediction spans
 2. Group overlapping spans by entity type
-3. Calculate combined IoU for each group
+3. Calculate the same-type coverage (pairwise IoU for a single span, combined
+   IoU for several)
 4. Determine match status based on IoU and entity type
-5. Mark remaining predictions (with no overlap) as FPs
+5. Count each prediction span once: credited if it participated in a
+   successful match, otherwise a false positive
 
 See more info on the [Span Matching Strategies](span_matching_strategies.md) document.
 
 ## Counting Strategy
 
-- Multiple predictions of the same type overlapping with one annotation count as a single prediction
+- Every annotation is counted once in `num_annotated` and receives one verdict
+  (TP or FN), regardless of how many predictions or types intersect with it
+- Every prediction span is counted once in `num_predicted` — a span is not
+  re-counted per annotation it overlaps, and grouped spans that jointly fail
+  count one FP each
 - Different entity types are counted separately
-- An annotation is only counted once as annotated (denominator for precision and recall),
-  regardless of how many types intersect with it
-
-
