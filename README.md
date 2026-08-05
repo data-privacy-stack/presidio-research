@@ -37,6 +37,7 @@ python -m spacy download en_core_web_lg # for NER
 #### From source
 
 To install the package:
+
 1. Clone the repo
 2. Install all dependencies:
 
@@ -90,6 +91,7 @@ analyzing, modeling and evaluating data and models. Specifically,
 see [data_objects.py](presidio_evaluator/data_objects.py).
 
 The standardized structure, `List[InputSample]`, can be translated into different formats:
+
 - CoNLL
   - To CoNLL:
     ```python

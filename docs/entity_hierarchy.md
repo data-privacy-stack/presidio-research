@@ -11,6 +11,7 @@ If you compare these labels directly, everything looks like a mismatch — even 
 Presidio Evaluator solves this with a **shared vocabulary** of canonical entity names. Every label — from any model or dataset — gets mapped to one of these canonical names before evaluation using a **two-phase process**:
 
 **Phase 1 — Identify:** each label is matched to a canonical entity through five tiers (in priority order):
+
 1. Exact match in the alias map
 2. Country-prefix strip (e.g. `GERMANY_PASSPORT_NUMBER` → `PASSPORT`)
 3. Country-prefix fallback (tries removing leading country code)
@@ -18,6 +19,7 @@ Presidio Evaluator solves this with a **shared vocabulary** of canonical entity 
 5. `UNRESOLVED` — flagged for manual resolution
 
 Examples:
+
 - `EMAIL`, `email_address`, `EMAILADDRESS` → all become `EMAIL_ADDRESS`
 - `B-PERSON`, `PERSON-I` → BIO tags are stripped, both become `NAME`
 - `GERMANY_PASSPORT_NUMBER` → country prefix is recognized, becomes `PASSPORT`
@@ -51,7 +53,7 @@ The **evaluation depth is data-driven**: `CanonicalMapper` computes a weighted m
 annotation labels in your results DataFrame and selects depth 2 or 3 (capped at 3). Depth 3 is the most
 common outcome when a dataset uses fine-grained entity types like `EMAIL_ADDRESS`, `NAME`, or `SSN`.
 
-For more on why this approach was chosen over alternatives, see [why_canonical_entity_mapping.md](why_canonical_entity_mapping.md).
+For more on why this approach was chosen over alternatives, see [Why canonical entity mapping](why_canonical_entity_mapping.md).
 
 ## Typical workflow
 
