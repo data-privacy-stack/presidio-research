@@ -11,6 +11,7 @@
 HIERARCHY: dict = {
     "PII": {
         "PERSON": {
+            "_aliases": ["PER"],
             "NAME": {
                 "FIRST_NAME": [
                     "FIRSTNAME",
@@ -37,7 +38,6 @@ HIERARCHY: dict = {
                     "NAME_MEDICAL_PROFESSIONAL",
                 ],
                 "MAIDEN_NAME": [],
-                "PER": [],
             },
             "PREFIX": [],
             "SUFFIX": [],

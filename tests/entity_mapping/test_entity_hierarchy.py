@@ -620,3 +620,39 @@ class TestBranchAliases:
         with pytest.raises(ValueError, match="already resolves"):
             h.add_alias("LOCATION", "CITY")
         assert h.canonicalize("CITY") == before
+
+    def test_per_resolves_to_person(self):
+        assert self.h.canonicalize("PER") == "PERSON"
+        assert self.h.to_branch("PER") == "PERSON"
+        assert "PER" not in self.h.all_canonical_entities
+
+    def test_failed_add_alias_keeps_existing_alias(self):
+        # "VRN" is already an alias of both LICENSE_PLATE_NUMBER and
+        # LICENSE_PLATE. Re-adding it to the former must raise WITHOUT
+        # stripping the alias it already owns.
+        h = EntityHierarchy()
+        before = h.canonicalize("VRN")
+        with pytest.raises(ValueError, match="already resolves"):
+            h.add_alias("LICENSE_PLATE_NUMBER", "VRN")
+        assert h.canonicalize("VRN") == before
+        node = h._find_node("LICENSE_PLATE_NUMBER")
+        assert "VRN" in node[0][node[1]]
+
+    def test_statically_shadowed_branch_alias_warns(self, caplog):
+        import copy
+        import logging
+
+        hier = copy.deepcopy(HIERARCHY)
+        # "CITY" already resolves to ADDRESS, so this branch alias is dead.
+        hier["PII"]["LOCATION"][BRANCH_ALIASES_KEY] = ["LOC", "CITY"]
+        with caplog.at_level(logging.WARNING):
+            EntityHierarchy(hierarchy=hier)
+        assert any("shadowed" in r.message for r in caplog.records)
+
+    def test_clean_hierarchy_emits_no_shadow_warning(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            EntityHierarchy()
+        assert not [r for r in caplog.records if "shadowed" in r.message]
+

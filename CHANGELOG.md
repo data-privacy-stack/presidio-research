@@ -10,18 +10,19 @@
 
 ### Breaking Changes
 
-- **`LOC` and `ORG` are no longer canonical entities** — they were empty leaf nodes under `LOCATION`/`ORGANIZATION` and are now branch-level aliases of them. Coarse dataset labels like TAB's `LOC`/`ORG` therefore match a model's `LOCATION`/`ORGANIZATION` at the exact (leaf) level, not only at the branch level. Concretely:
-  - `canonicalize("LOC")` returns `"LOCATION"` (was `"LOC"`), and likewise for `ORG`.
-  - `LOC`/`ORG` no longer appear in `all_canonical_entities` or `canonical_to_branch`.
-  - `get_depth("LOC")` returns `2` (was `3`), because `LOC` now denotes the depth-2 `LOCATION` branch.
-  - `CanonicalMapper.map()` no longer accepts `LOC`/`ORG` as resolution *targets*, since targets must be canonical entities. Such mappings are also no longer needed — the labels resolve on their own.
-  - `to_branch("LOC")` still returns `"LOCATION"`, unchanged.
+- **`LOC`, `ORG` and `PER` are no longer canonical entities** — they were empty leaf nodes under `LOCATION`/`ORGANIZATION`/`PERSON` > `NAME` and are now branch-level aliases of `LOCATION`/`ORGANIZATION`/`PERSON`. Coarse dataset labels like TAB's `LOC`/`ORG`/`PER` therefore match a model's `LOCATION`/`ORGANIZATION`/`PERSON` at the exact (leaf) level, not only at the branch level. Concretely:
+  - `canonicalize("LOC")` returns `"LOCATION"` (was `"LOC"`), and likewise for `ORG` and `PER`.
+  - `LOC`/`ORG`/`PER` no longer appear in `all_canonical_entities` or `canonical_to_branch`.
+  - `get_depth("LOC")` returns `2` (was `3`), because `LOC` now denotes the depth-2 `LOCATION` branch. `get_depth("PER")` returns `2` (was `3`).
+  - `CanonicalMapper.map()` no longer accepts `LOC`/`ORG`/`PER` as resolution *targets*, since targets must be canonical entities. Such mappings are also no longer needed — the labels resolve on their own.
+  - `to_branch("LOC")` still returns `"LOCATION"`, unchanged; `to_branch("PER")` still returns `"PERSON"`.
 
 ### Behavior Changes
 
 - **`to_branch()` and `get_depth()` now resolve raw aliases**, not just canonical names. Previously a raw alias (e.g. `COMPANYNAME`, `QQ`) was passed through unchanged by `to_branch` and raised in `get_depth`; both now resolve it first. Unknown labels are still returned as-is by `to_branch`.
 - **`add_alias()` accepts an alias as its subject**, so `add_alias("LOC", ...)` works as well as `add_alias("LOCATION", ...)`.
-- **`add_alias()` now raises `ValueError` instead of silently no-opping** when the alias is already claimed by a descendant of the target (e.g. adding `CITY` to the `LOCATION` branch, where `CITY` already resolves to `ADDRESS`). The hierarchy is left unmodified. It also raises `KeyError` if the reserved `_aliases` key is passed as the entity name.
+- **`add_alias()` now raises `ValueError` instead of silently no-opping** when the alias is already claimed by a descendant of the target (e.g. adding `CITY` to the `LOCATION` branch, where `CITY` already resolves to `ADDRESS`). The hierarchy is left unmodified — an alias the target already owns is preserved. It also raises `KeyError` if the reserved `_aliases` key is passed as the entity name.
+- **A branch alias shadowed by one of its own descendants logs a warning at construction time**, so collisions declared statically in `definitions.py` are no longer silent.
 
 ### Bug Fixes
 

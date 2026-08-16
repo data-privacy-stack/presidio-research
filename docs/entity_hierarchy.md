@@ -24,11 +24,70 @@ Examples:
 - `CREDITCARD`, `credit_card` → case and delimiters don't matter, becomes `FINANCIAL`
 
 **Phase 2 — Project:** canonical entities are projected onto the *canonical surface* — a set of entities at a
-depth computed by majority vote from the **dataset annotation labels**. Depth-2 ancestors that have
-multiple depth-3 descendants trigger a `COLLISION_AMBIGUOUS` issue; descendants that have exactly
-one matching ancestor on the canonical surface are auto-fixed as `COLLISION_TRIVIAL`.
+depth computed by majority vote from the **dataset annotation labels**. A label that sits on the same
+branch as its co-occurring annotations but at a different depth (e.g. prediction `PERSON` vs annotation
+`NAME`) is reported as `COLLISION_SAME_BRANCH` (INFO) and handled automatically by hierarchical
+evaluation. A label on a *different* branch is reported as `COLLISION_CROSS_BRANCH` (WARNING) and
+must be resolved with `map()`.
 
 Labels that can't be resolved automatically are flagged for you to handle manually.
+
+## Aliases
+
+An alias is a raw label that resolves to a canonical entity. Aliases are how the same concept written
+different ways (`EMAIL`, `email_address`, `EMAILADDRESS`) all reach one canonical name. Matching is
+normalized — case, underscores, dashes and BIO prefixes are ignored.
+
+**Leaf aliases** are declared as the list value of a leaf node:
+
+```python
+"EMAIL_ADDRESS": ["EMAIL", "EMAILADDRESS", "E_MAIL"]
+```
+
+**Branch aliases** are declared with the reserved `_aliases` key, so a non-leaf node can carry synonyms
+of its own:
+
+```python
+"LOCATION": {
+    "_aliases": ["LOC"],      # LOC resolves to LOCATION itself
+    "ADDRESS": {...},
+    "GPE": [...],
+}
+```
+
+This matters for coarse corpora. TAB, for example, labels entities `LOC`/`ORG`/`PER`; without branch
+aliases those could only ever match a model's `LOCATION`/`ORGANIZATION`/`PERSON` at the *branch*
+level, understating exact-level scores. The reserved key is skipped by every tree-walk, so `_aliases`
+never becomes an entity itself.
+
+**Adding an alias at runtime** — works for both leaf and branch nodes, and the target may itself be
+given as an alias:
+
+```python
+h = EntityHierarchy()
+h.add_alias("EMAIL_ADDRESS", "ELECTRONIC_MAIL")   # leaf
+h.canonicalize("ELECTRONIC_MAIL")                 # -> 'EMAIL_ADDRESS'
+
+h.add_alias("LOCATION", "GEOGRAPHIC_LOCATION")    # branch -> stored under _aliases
+h.add_alias("LOC", "LOCALITY")                    # target given as an alias
+h.canonicalize("LOCALITY")                        # -> 'LOCATION'
+```
+
+`add_alias()` raises `ValueError` if the alias is already claimed by a descendant of the target — branch
+aliases are applied before the descent into their own subtree, so a descendant would win and the alias
+would never resolve. The hierarchy is left unchanged in that case. Declaring such a collision statically
+in `definitions.py` logs a warning at construction time.
+
+**Looking up an alias** — `canonicalize()`, `to_branch()` and `get_depth()` all accept raw aliases:
+
+```python
+h.canonicalize("LOC")   # -> 'LOCATION'
+h.to_branch("LOC")      # -> 'LOCATION'
+h.get_depth("LOC")      # -> 2
+```
+
+Note that aliases are not canonical entities: `LOC` does not appear in `all_canonical_entities`, and it
+cannot be used as a `map()` *target*.
 
 ## The canonical vocabulary
 
@@ -112,10 +171,9 @@ When you call `mapper.analyze(df)`, the mapper checks for problems that could si
 | Type | Severity | Meaning |
 |------|----------|---------|
 | `UNRESOLVED` | ERROR | Label could not be matched — blocks `get_mapped_results_dataframe()` |
-| `COLLISION_AMBIGUOUS` | WARNING | Depth-2 label maps to multiple depth-3 entities — blocks extraction |
 | `COLLISION_CROSS_BRANCH` | WARNING | Label maps across hierarchy branches — blocks extraction |
 | `PREDICTION_ONLY` | WARNING | Label only in predictions, not dataset — blocks extraction |
-| `COLLISION_TRIVIAL` | INFO | Auto-fixed: descendant collapsed to single ancestor |
+| `COLLISION_SAME_BRANCH` | INFO | Label and annotation share a branch at different depths — handled by hierarchical evaluation |
 | `DATASET_ONLY` | INFO | Label only in dataset annotations (model never predicts it) |
 
 > **Warning**: `get_mapped_results_dataframe()` raises `IncompleteMapping` if any WARNING or ERROR issues remain. INFO issues are non-blocking.
@@ -206,5 +264,5 @@ would have changed the canonical depth if analyzed alone. It's projected onto th
 
 **This is intentional.** The dataset annotations define the ground truth, so the canonical surface is
 anchored to the first model's dataset. If model B has labels that don't fit the surface, they appear
-as `COLLISION_AMBIGUOUS` or `PREDICTION_ONLY` issues — resolve them with `map()` before extracting
+as `COLLISION_CROSS_BRANCH` or `PREDICTION_ONLY` issues — resolve them with `map()` before extracting
 results.

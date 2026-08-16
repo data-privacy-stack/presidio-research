@@ -5,6 +5,7 @@
 
 import copy
 import difflib
+import logging
 import re
 
 from presidio_evaluator.entity_mapping.definitions import (
@@ -19,6 +20,8 @@ from presidio_evaluator.entity_mapping.definitions import (
 
 _BIO_PREFIX_RE = re.compile(r"^[BIOELSU]-(.+)$", re.IGNORECASE)
 _BIO_SUFFIX_RE = re.compile(r"^(.+)-[BIOELSU]$", re.IGNORECASE)
+
+logger = logging.getLogger(__name__)
 
 # Reserved key that lets a BRANCH (non-leaf) node declare raw aliases, e.g.
 #   "LOCATION": {"_aliases": ["LOC"], "ADDRESS": {...}, ...}
@@ -97,12 +100,12 @@ class EntityHierarchy:
         return branch
 
     def get_depth(self, entity: str) -> int:
-        """Return the depth of a canonical entity in the hierarchy tree.
+        """Return the depth of an entity in the hierarchy tree.
 
         Depth is defined as the length of the ancestor path:
         PII=1, PERSON=2, NAME=3, FIRST_NAME=4.
 
-        :param entity: A canonical entity name.
+        :param entity: A canonical entity name, or any raw alias of one.
         :return: depth (int >= 1).
         :raises EntityNotMappedError: if entity is not found.
         """
@@ -115,7 +118,7 @@ class EntityHierarchy:
                 branch = self.canonical_to_branch.get(canonical)
         if branch is None:
             raise EntityNotMappedError(
-                f"Canonical entity {entity!r} has no branch in hierarchy"
+                f"Entity {entity!r} has no branch in hierarchy"
             )
         return len(branch)
 
@@ -136,16 +139,16 @@ class EntityHierarchy:
         parent_dict, key = found
         value = parent_dict[key]
         if isinstance(value, list):
-            if alias not in value:
-                value.append(alias)
             added_to = value
         else:
             # Branch (non-leaf) node: record the alias under the reserved key so
             # it maps to this branch, instead of creating a spurious child leaf.
-            aliases = value.setdefault(BRANCH_ALIASES_KEY, [])
-            if alias not in aliases:
-                aliases.append(alias)
-            added_to = aliases
+            added_to = value.setdefault(BRANCH_ALIASES_KEY, [])
+        # Track whether THIS call appended, so a rollback never deletes an alias
+        # that was already there (e.g. re-adding an alias the target already owns).
+        appended = alias not in added_to
+        if appended:
+            added_to.append(alias)
         self._rebuild()
 
         # A branch alias is applied before the recursive descent into its own
@@ -159,18 +162,11 @@ class EntityHierarchy:
         expected = self.raw_to_canonical.get(self.normalize(key))
         resolved = self.raw_to_canonical.get(self.normalize(alias))
         if resolved != expected:
-            added_to.remove(alias)
-            if not added_to and added_to is not value:
-                value.pop(BRANCH_ALIASES_KEY, None)
-            self._rebuild()
-            raise ValueError(
-                f"Alias {alias!r} already resolves to {resolved!r}, "
-                f"so it cannot be added to {key!r}",
-            )
-            added_to.remove(alias)
-            if not added_to and added_to is not value:
-                value.pop(BRANCH_ALIASES_KEY, None)
-            self._rebuild()
+            if appended:
+                added_to.remove(alias)
+                if not added_to and added_to is not value:
+                    value.pop(BRANCH_ALIASES_KEY, None)
+                self._rebuild()
             raise ValueError(
                 f"Alias {alias!r} already resolves to {resolved!r}, "
                 f"so it cannot be added to {key!r}",
@@ -302,6 +298,39 @@ class EntityHierarchy:
             self.hierarchy,
             self.canonical_depth,
         )
+        self._warn_on_shadowed_branch_aliases()
+
+    def _warn_on_shadowed_branch_aliases(self) -> None:
+        """Warn about branch aliases that a descendant silently overrides.
+
+        Branch aliases are written into the lookup before the recursive descent
+        into their own subtree, so a descendant with the same normalized name
+        wins. `add_alias()` rejects that at call time, but a collision baked
+        into the hierarchy definition would otherwise pass unnoticed.
+        """
+        for branch_key, alias in self._collect_branch_aliases(self.hierarchy):
+            expected = self.raw_to_canonical.get(self.normalize(branch_key))
+            resolved = self.raw_to_canonical.get(self.normalize(alias))
+            if expected is not None and resolved != expected:
+                logger.warning(
+                    "Branch alias %r on %r is shadowed by %r and will never "
+                    "resolve to %r.",
+                    alias,
+                    branch_key,
+                    resolved,
+                    expected,
+                )
+
+    @staticmethod
+    def _collect_branch_aliases(node: dict) -> list[tuple[str, str]]:
+        """Return (branch_name, alias) for every branch-level alias in the tree."""
+        found: list[tuple[str, str]] = []
+        for key, value in node.items():
+            if key == BRANCH_ALIASES_KEY or not isinstance(value, dict):
+                continue
+            found.extend((key, a) for a in value.get(BRANCH_ALIASES_KEY, []))
+            found.extend(EntityHierarchy._collect_branch_aliases(value))
+        return found
 
     def _resolve_remainder(self, remainder: str, threshold: float) -> str:
         """Canonicalize the document-type portion of a country-prefixed label, falling back to NATIONAL_ID."""
