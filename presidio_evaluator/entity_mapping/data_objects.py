@@ -76,6 +76,14 @@ class MappingIssue:
 # ---------------------------------------------------------------------------
 
 
+#: Columns carrying the finest-grained label for each token. They are attached to
+#: every level of :class:`MappedResults` so that span merging can distinguish
+#: entities whose labels have been collapsed (at the binary level every label is
+#: ``"PII"``, which would otherwise make neighbouring entities indistinguishable).
+ANNOTATION_MERGE_KEY = "annotation_merge_key"
+PREDICTION_MERGE_KEY = "prediction_merge_key"
+
+
 @dataclass(frozen=True)
 class MappedResults:
     """Four DataFrames produced by the single-phase CanonicalMapper.

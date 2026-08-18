@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Bug Fixes
+
+- **Span merging no longer collapses unrelated entities at coarse levels** — `SpanEvaluator` decided both where a span ends and whether two spans should merge by comparing the *visible* label. At the binary level `CanonicalMapper` rewrites every label to `PII`, so that comparison was vacuous: a name, an age and an email address separated only by commas became one span, and two entities standing side by side with no token between them were never separate to begin with. The gold span count therefore depended on the granularity being scored — on ai4privacy (n=20) 25 spans at binary, 27 at branch and 29 at detailed, against 29 in the source data — so the three levels were each scored against a different ground truth and were not comparable to one another. Because the distortion applied symmetrically to annotations and predictions, precision and recall still looked plausible while ~14% of the ground truth had silently disappeared, and a model that correctly returned three separate entities could be scored against one merged gold span. `CanonicalMapper` now attaches `annotation_merge_key` / `prediction_merge_key` columns carrying the finest-grained label to every level of `MappedResults`, and `SpanEvaluator` uses them to end and to merge spans. Same-entity fragment merging (`"New"` + `"York"` → one `LOCATION`) is unchanged, and DataFrames built without `CanonicalMapper` keep their previous behaviour.
+
 ## Version 0.3.2
 
 ### Features
