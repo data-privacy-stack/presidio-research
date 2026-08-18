@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Bug Fixes
+
+- **`add_alias()` no longer rejects a valid alias on `LICENSE`** — the rollback guard added alongside branch aliases asked where the *target's name* resolves and compared that to where the new alias landed. Those are the same question for every node except one: the hierarchy declares `LICENSE` both as a canonical leaf under `EMPLOYMENT` and as an alias of `PROFESSIONAL_LICENSE`, so `canonicalize("LICENSE")` is `"PROFESSIONAL_LICENSE"` and a brand-new alias correctly attached to the `LICENSE` leaf looked like a conflict. `add_alias("LICENSE", "PROF_LIC")` raised `ValueError` claiming the alias "already resolves to 'LICENSE'" — describing the mapping the call had itself created one line earlier. The guard now derives the target from the node's path in the tree rather than from a name lookup, so it is unaffected by another node claiming the same name. Verified across all 126 canonical entities: previously 1 rejected a fresh alias, now none do.
+- **`add_alias()` no longer silently steals an alias from another entity** — `add_alias("LOCATION", "EMAIL")` was accepted and quietly re-pointed `EMAIL` from `EMAIL_ADDRESS` to `LOCATION`, invalidating every corpus already annotated with that label. Whether the theft succeeded depended only on dictionary ordering. An alias already resolving somewhere other than the requested target is now rejected before the hierarchy is touched.
+- **A rejected `add_alias()` no longer logs a spurious shadow warning** — the speculative rebuild ran the branch-alias shadow check while the doomed alias was still attached, so a failed call logged a warning about a hierarchy state that was discarded microseconds later, phrased as though `definitions.py` were at fault. Shadow warnings now come only from construction, which is what they are for.
+
+### Removals
+
+- **`_to_l1()` and `_to_l0()` removed from `base_evaluator`** — superseded by `EntityHierarchy.to_branch()` / `to_binary()`, and callerless. `_to_l1` was a copy of the branch projection that did not learn alias resolution when `to_branch()` did, leaving the two disagreeing on 434 of 570 labels — including `LOC`, which `_to_l1` bucketed under a `LOC` branch of its own rather than `LOCATION`, the exact mis-bucketing branch aliases exist to remove. Nothing called it, so nothing miscounted; it is deleted rather than fixed so the divergence cannot be reintroduced by a future import.
+
 ## Version 0.3.2
 
 ### Features
@@ -11,11 +21,14 @@
 ### Breaking Changes
 
 - **`LOC`, `ORG` and `PER` are no longer canonical entities** — they were empty leaf nodes under `LOCATION`/`ORGANIZATION`/`PERSON` > `NAME` and are now branch-level aliases of `LOCATION`/`ORGANIZATION`/`PERSON`. Coarse dataset labels like TAB's `LOC`/`ORG`/`PER` therefore match a model's `LOCATION`/`ORGANIZATION`/`PERSON` at the exact (leaf) level, not only at the branch level. Concretely:
-  - `canonicalize("LOC")` returns `"LOCATION"` (was `"LOC"`), and likewise for `ORG` and `PER`.
-  - `LOC`/`ORG`/`PER` no longer appear in `all_canonical_entities` or `canonical_to_branch`.
-  - `get_depth("LOC")` returns `2` (was `3`), because `LOC` now denotes the depth-2 `LOCATION` branch. `get_depth("PER")` returns `2` (was `3`).
+  `LOC` and `ORG` were depth-3 canonical leaves, but `PER` sat one level deeper, under `PERSON > NAME`, so it does not follow the same before/after as the other two. Taking them separately:
+  - `canonicalize("LOC")` returns `"LOCATION"` (was `"LOC"`), and likewise `canonicalize("ORG")`.
+  - `canonicalize("PER")` returns `"PERSON"` — **was `"NAME"`**, not `"PER"`.
+  - `LOC` and `ORG` no longer appear in `all_canonical_entities` or `canonical_to_branch`. `PER` never did, being below the canonical depth.
+  - `get_depth("LOC")` returns `2` (was `3`), because `LOC` now denotes the depth-2 `LOCATION` branch. `get_depth("PER")` returns `2` — it previously **raised `EntityNotMappedError`**.
   - `CanonicalMapper.map()` no longer accepts `LOC`/`ORG`/`PER` as resolution *targets*, since targets must be canonical entities. Such mappings are also no longer needed — the labels resolve on their own.
-  - `to_branch("LOC")` still returns `"LOCATION"`, unchanged; `to_branch("PER")` still returns `"PERSON"`.
+  - `to_branch("LOC")` returns `"LOCATION"`, unchanged.
+  - **`to_branch("PER")` returns `"PERSON"`, where it previously returned `"PER"`.** This one is a genuine behaviour change, not a no-op: anyone bucketing a `PER`-annotated corpus by branch gets a different answer after upgrading. `PER` used to fall through `to_branch` unresolved and form a bucket of its own; it now joins `PERSON`.
 
 ### Behavior Changes
 

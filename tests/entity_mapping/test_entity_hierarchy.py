@@ -656,3 +656,100 @@ class TestBranchAliases:
             EntityHierarchy()
         assert not [r for r in caplog.records if "shadowed" in r.message]
 
+
+
+class TestAddAliasShadowedTarget:
+    """Regression tests for the add_alias guard introduced with branch aliases.
+
+    Each of these fails on the commit that introduced branch aliases (2c61890).
+    """
+
+    def test_new_alias_on_license_is_accepted(self):
+        """LICENSE is the one node whose own name resolves somewhere else.
+
+        It is declared as a canonical leaf under EMPLOYMENT *and* as an alias of
+        PROFESSIONAL_LICENSE, so a guard that asks "where does the target's name
+        resolve?" gets PROFESSIONAL_LICENSE and rejects an alias that landed on
+        the LICENSE leaf exactly as asked.
+        """
+        h = EntityHierarchy()
+        assert h.normalize("PROF_LIC") not in h.raw_to_canonical
+        h.add_alias("LICENSE", "PROF_LIC")
+        assert h.canonicalize("PROF_LIC") == "LICENSE"
+
+    def test_every_canonical_entity_accepts_a_fresh_alias(self):
+        """No canonical entity may reject an alias nothing else has claimed.
+
+        This is the general form of the LICENSE bug: it caught one node out of
+        126, so a single hand-picked example could easily have missed it.
+        """
+        rejected = []
+        for entity in sorted(EntityHierarchy().all_canonical_entities):
+            h = EntityHierarchy()
+            try:
+                h.add_alias(entity, f"ZZ_FRESH_{entity}")
+            except ValueError:
+                rejected.append(entity)
+        assert rejected == []
+
+    def test_alias_owned_by_another_entity_is_refused(self):
+        """Re-homing a live alias silently invalidates existing annotations."""
+        h = EntityHierarchy()
+        assert h.canonicalize("EMAIL") == "EMAIL_ADDRESS"
+        with pytest.raises(ValueError, match="already resolves"):
+            h.add_alias("LOCATION", "EMAIL")
+        assert h.canonicalize("EMAIL") == "EMAIL_ADDRESS"
+
+    def test_refused_alias_leaves_hierarchy_untouched(self):
+        h = EntityHierarchy()
+        before = dict(h.raw_to_canonical)
+        for target, alias in (("LOCATION", "EMAIL"), ("LOCATION", "CITY")):
+            with pytest.raises(ValueError):
+                h.add_alias(target, alias)
+        assert h.raw_to_canonical == before
+
+    def test_rejected_add_alias_does_not_warn(self, caplog):
+        """The warning is about definitions.py, not about a rejected argument."""
+        import logging
+
+        h = EntityHierarchy()
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(ValueError):
+                h.add_alias("LOCATION", "CITY")
+        assert [r for r in caplog.records if "shadowed" in r.message] == []
+
+    def test_construction_still_warns_about_static_shadowing(self, caplog):
+        """Silencing the probe rebuild must not silence the real check."""
+        import copy
+        import logging
+
+        hier = copy.deepcopy(HIERARCHY)
+        hier["PII"]["LOCATION"][BRANCH_ALIASES_KEY] = ["LOC", "CITY"]
+        with caplog.at_level(logging.WARNING):
+            EntityHierarchy(hierarchy=hier)
+        assert any("shadowed" in r.message for r in caplog.records)
+
+    def test_canonical_name_for_path_uses_structure_not_names(self):
+        h = EntityHierarchy()
+        found = h._find_node("LICENSE")
+        assert found is not None
+        _, key, path = found
+        assert key == "LICENSE"
+        assert h._canonical_name_for_path(path) == "LICENSE"
+        # ...whereas the name-based question gives a different answer, which is
+        # precisely why the guard must not ask it.
+        assert h.canonicalize("LICENSE") == "PROFESSIONAL_LICENSE"
+
+
+class TestRemovedBranchProjectionHelpers:
+    def test_to_l1_and_to_l0_are_gone(self):
+        """Deleted so no future import can resurrect the diverged copy."""
+        from presidio_evaluator.evaluation import base_evaluator
+
+        assert not hasattr(base_evaluator, "_to_l1")
+        assert not hasattr(base_evaluator, "_to_l0")
+
+    def test_to_branch_resolves_aliases_that_to_l1_did_not(self):
+        h = EntityHierarchy()
+        assert h.to_branch("LOC") == "LOCATION"
+        assert h.to_branch("CITY") == "LOCATION"
