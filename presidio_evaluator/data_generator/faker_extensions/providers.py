@@ -326,10 +326,24 @@ class HospitalProvider(BaseProvider):
         }
 
         """
+        headers = {
+            "User-Agent": (
+                "presidio-research "
+                "(https://github.com/data-privacy-stack/presidio-research)"
+            )
+        }
         try:
-            r = requests.get(url, params={"format": "json", "query": query}, timeout=10)
+            r = requests.get(
+                url,
+                params={"format": "json", "query": query},
+                headers=headers,
+                timeout=10,
+            )
             if r.status_code != 200:
-                print("Unable to read hospitals from WikiData, returning an empty list")
+                print(
+                    "Unable to read hospitals from WikiData "
+                    f"(status code {r.status_code}), returning default hospital list"
+                )
                 return self.default_list
             data = r.json()
             bindings = data["results"].get("bindings", [])
