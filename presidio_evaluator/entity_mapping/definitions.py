@@ -32,6 +32,7 @@ HIERARCHY: dict = {
                 "FULL_NAME": [
                     "FULLNAME",
                     "DOCTOR",
+                    "PATIENT",
                     "PATIENT_NAME",
                     "DOCTOR_NAME",
                     "HCW",
@@ -361,7 +362,6 @@ HIERARCHY: dict = {
         },
         "PHI": {
             "PATIENT_ID": [
-                "PATIENT",
                 "MEDICALRECORD",
                 "MEDICAL_RECORD_NUMBER",
                 "MEDICAL_RECORD",
