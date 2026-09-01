@@ -412,3 +412,84 @@ class TestMappingProjectionScenarios:
         name_m = scores["detailed"].per_type.get("NAME")
         assert name_m is not None
         assert name_m.false_positives > 0
+
+
+# ---------------------------------------------------------------------------
+# Confusion matrix consistency with per_type metrics (multiple overlaps)
+# ---------------------------------------------------------------------------
+
+
+def _make_single_sentence_results(
+    annotations: list[str], predictions: list[str]
+) -> MappedResults:
+    """Build MappedResults with all tokens in one sentence, so a single
+    annotation span can overlap multiple prediction spans."""
+    n = len(annotations)
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * n,
+            "token": [f"tok{i}" for i in range(n)],
+            "annotation": annotations,
+            "prediction": predictions,
+            "start_indices": list(range(n)),
+        }
+    )
+    mapper = CanonicalMapper()
+    mapper.analyze(df)
+    return mapper.get_mapped_results_dataframe()
+
+
+class TestConfusionMatrixConsistency:
+    """The `results` confusion matrix must agree with per_type TP/FN counts
+    when one annotation overlaps predictions of several types."""
+
+    _overlap_evaluator = SpanEvaluator(
+        skip_words=[], iou_threshold=0.5, char_based=False
+    )
+
+    def test_tp_annotation_has_no_missed_cell(self):
+        """A high-IoU same-branch match plus a low-IoU different-type overlap:
+        the TP annotation must not also produce an (ann_type, 'O') cell."""
+        results = _make_single_sentence_results(
+            ["PERSON", "PERSON", "PERSON"],
+            ["NAME", "TITLE", "LOCATION"],
+        )
+        scores = self._overlap_evaluator.calculate_hierarchical_scores(results)
+        branch = scores["branch"]
+        person_m = branch.per_type["PERSON"]
+        assert person_m.true_positives == 1
+        assert person_m.false_negatives == 0
+        assert branch.results[("PERSON", "PERSON")] == 1
+        assert branch.results.get(("PERSON", "O"), 0) == 0
+        # The low-IoU LOCATION overlap is only a spurious prediction
+        assert branch.results.get(("O", "LOCATION"), 0) == 1
+
+    def test_fn_annotation_missed_cell_counted_once(self):
+        """An annotation overlapping several low-IoU prediction types is one FN
+        and must contribute exactly one (ann_type, 'O') cell."""
+        results = _make_single_sentence_results(
+            ["PERSON", "PERSON", "PERSON"],
+            ["NAME", "TITLE", "LOCATION"],
+        )
+        scores = self._overlap_evaluator.calculate_hierarchical_scores(results)
+        detailed = scores["detailed"]
+        person_m = detailed.per_type["PERSON"]
+        assert person_m.false_negatives == 1
+        assert detailed.results.get(("PERSON", "O"), 0) == 1
+
+    def test_tp_annotation_has_no_wrong_entity_cell(self):
+        """A same-type high-IoU match plus a different-type high-IoU overlap:
+        the TP annotation's row must not also gain a wrong-entity cell."""
+        results = _make_single_sentence_results(
+            ["PERSON", "PERSON", "PERSON", "PERSON"],
+            ["PERSON", "PERSON", "LOCATION", "LOCATION"],
+        )
+        scores = self._overlap_evaluator.calculate_hierarchical_scores(results)
+        branch = scores["branch"]
+        person_m = branch.per_type["PERSON"]
+        assert person_m.true_positives == 1
+        assert person_m.false_negatives == 0
+        assert branch.results[("PERSON", "PERSON")] == 1
+        assert branch.results.get(("PERSON", "LOCATION"), 0) == 0
+        # The different-type predictions are only a spurious prediction
+        assert branch.results.get(("O", "LOCATION"), 0) == 1

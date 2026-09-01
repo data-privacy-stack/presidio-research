@@ -989,7 +989,15 @@ class SpanEvaluator(BaseEvaluator):
                 spans,
             )
 
-        for cumulative_type, iou_per_type in cumulative_iou_by_type.items():
+        # Process type groups in priority order — above-threshold groups before
+        # below-threshold ones, the annotation's own type first within each
+        # tier — so the annotation's single confusion-matrix row cell is
+        # claimed by the strongest match (TP, then wrong entity, then missed)
+        # rather than by whichever group happens to come first.
+        for cumulative_type, iou_per_type in sorted(
+            cumulative_iou_by_type.items(),
+            key=lambda item: (item[1] < self.iou_threshold, item[0] != ann_type),
+        ):
             # Check if there are spans of the same type as the annotation (Scenario 6)
             if ann_type == cumulative_type:
                 same_type_spans = spans_by_type[cumulative_type]
@@ -1061,6 +1069,12 @@ class SpanEvaluator(BaseEvaluator):
                                 ),
                             )
                             annotation_was_counted = True
+                            evaluation_result.results[(ann_type, cumulative_type)] += 1
+                        else:
+                            # The annotation is already accounted for in another
+                            # confusion matrix cell; only record the spurious
+                            # prediction.
+                            evaluation_result.results[("O", cumulative_type)] += 1
 
                         evaluation_result.per_type[cumulative_type].false_positives += 1
                         evaluation_result.per_type[cumulative_type].num_predicted += 1
@@ -1081,7 +1095,6 @@ class SpanEvaluator(BaseEvaluator):
                                 iou=iou_per_type,
                             ),
                         )
-                        evaluation_result.results[(ann_type, cumulative_type)] += 1
                     else:
                         if not annotation_was_counted:
                             evaluation_result.pii_false_negatives += 1
@@ -1102,6 +1115,7 @@ class SpanEvaluator(BaseEvaluator):
                             ),
                         )
                         annotation_was_counted = True
+                        evaluation_result.results[(ann_type, "O")] += 1
 
                     evaluation_result.per_type[cumulative_type].false_positives += 1
                     evaluation_result.per_type[cumulative_type].num_predicted += 1
@@ -1116,7 +1130,6 @@ class SpanEvaluator(BaseEvaluator):
                             iou=iou_per_type,
                         ),
                     )
-                    evaluation_result.results[(ann_type, "O")] += 1
                     evaluation_result.results[("O", cumulative_type)] += 1
                 else:
                     if not annotation_was_counted:
