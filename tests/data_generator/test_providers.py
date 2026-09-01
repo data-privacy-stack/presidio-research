@@ -40,6 +40,7 @@ def test_hospital_provider_sends_user_agent_header(mock_get):
     faker = Faker()
     faker.add_provider(HospitalProvider)
 
+    mock_get.assert_called_once()
     _, call_kwargs = mock_get.call_args
     assert "User-Agent" in call_kwargs["headers"]
 
