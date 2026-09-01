@@ -298,7 +298,7 @@ class HospitalProvider(BaseProvider):
 
         if hospital_file:
             hospitals = pd.read_csv(hospital_file)
-            if "name" not in self.hospitals:
+            if "name" not in hospitals:
                 print(
                     "Unable to retrieve hospital names, "
                     "file is missing column named 'name'",
@@ -326,16 +326,30 @@ class HospitalProvider(BaseProvider):
         }
 
         """
+        headers = {
+            "User-Agent": (
+                "presidio-research "
+                "(https://github.com/data-privacy-stack/presidio-research)"
+            )
+        }
         try:
-            r = requests.get(url, params={"format": "json", "query": query}, timeout=10)
+            r = requests.get(
+                url,
+                params={"format": "json", "query": query},
+                headers=headers,
+                timeout=10,
+            )
             if r.status_code != 200:
-                print("Unable to read hospitals from WikiData, returning an empty list")
+                print(
+                    "Unable to read hospitals from WikiData "
+                    f"(status code {r.status_code}), returning default hospital list"
+                )
                 return self.default_list
             data = r.json()
-            bindings = data["results"].get("bindings", [])
+            bindings = data.get("results", {}).get("bindings", [])
             hospitals = [self.deep_get(x, ["label_en", "value"]) for x in bindings]
             hospitals = [x for x in hospitals if "no key" not in x]
-            return hospitals
+            return hospitals if hospitals else self.default_list
         except OSError:
             warnings.warn(
                 "Can't download hospitals data. Returning default list", stacklevel=2

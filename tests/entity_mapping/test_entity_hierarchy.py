@@ -753,3 +753,22 @@ class TestRemovedBranchProjectionHelpers:
         h = EntityHierarchy()
         assert h.to_branch("LOC") == "LOCATION"
         assert h.to_branch("CITY") == "LOCATION"
+    def test_i2b2_patient_is_a_name_not_a_record_number(self):
+        # In the i2b2/n2c2 2014 de-identification schema, PATIENT and DOCTOR are
+        # both subtypes of the NAME category; MEDICALRECORD is the ID subtype.
+        # "PATIENT" tags a person's name ("Yosef Villegas"), so it must resolve
+        # like DOCTOR and PATIENT_NAME, not like a medical record number.
+        for label in ("PATIENT", "DOCTOR", "PATIENT_NAME"):
+            assert self.h.canonicalize(label) == "NAME"
+            assert self.h.to_branch(label) == "PERSON"
+
+        # ...while the record-number aliases stay in PHI.
+        for label in ("MEDICALRECORD", "MEDICAL_RECORD"):
+            assert self.h.canonicalize(label) == "PATIENT_ID"
+            assert self.h.to_branch(label) == "PHI"
+
+        # MEDICAL_RECORD_NUMBER is listed under both PATIENT_ID and MRN, and MRN
+        # currently wins. That pre-existing shadowing is out of scope here; it is
+        # asserted at branch level so this test does not silently encode which
+        # leaf happens to win.
+        assert self.h.to_branch("MEDICAL_RECORD_NUMBER") == "PHI"
