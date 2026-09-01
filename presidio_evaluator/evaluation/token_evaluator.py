@@ -7,6 +7,7 @@ import pandas as pd
 from spacy.tokens import Token
 
 from presidio_evaluator import InputSample
+from presidio_evaluator.entity_mapping import EntityHierarchy
 from presidio_evaluator.evaluation import (
     BaseEvaluator,
     DeprecationError,
@@ -29,6 +30,7 @@ class TokenEvaluator(BaseEvaluator):
         self,
         input_sample: InputSample,
         prediction: list[str],
+        entity_hierarchy: EntityHierarchy | None = None,
     ) -> tuple[Counter, list[ModelError]]:
         """
         Compares ground truth tags (annotation) and predicted (prediction)
@@ -56,15 +58,24 @@ class TokenEvaluator(BaseEvaluator):
             cur_token = tokens[i]
             cur_prediction = prediction[i]
             cur_annotation = annotation[i]
+            scored_prediction = (
+                cur_annotation
+                if self._entity_types_match(
+                    cur_annotation,
+                    cur_prediction,
+                    entity_hierarchy,
+                )
+                else cur_prediction
+            )
 
-            results[(cur_annotation, cur_prediction)] += 1
+            results[(cur_annotation, scored_prediction)] += 1
 
             if self.verbose:
                 logger.info("Annotation: %s", cur_annotation)
                 logger.info("Prediction: %s", cur_prediction)
                 logger.info("Results: %s", results)
 
-            is_error = cur_annotation != cur_prediction
+            is_error = cur_annotation != scored_prediction
 
             if is_error:
                 reverted = self.__revert_known_errors(
@@ -72,6 +83,7 @@ class TokenEvaluator(BaseEvaluator):
                     cur_prediction,
                     cur_token,
                     results,
+                    allow_generic_entities=entity_hierarchy is None,
                 )
                 if reverted:
                     continue
@@ -135,6 +147,7 @@ class TokenEvaluator(BaseEvaluator):
         current_prediction: str,
         current_token: str | Token,
         results: Counter[tuple[str, str]],
+        allow_generic_entities: bool = True,
     ) -> bool:
         reverted = False
 
@@ -143,14 +156,22 @@ class TokenEvaluator(BaseEvaluator):
             results[(current_annotation, current_prediction)] -= 1
             reverted = True
 
-        if current_prediction in self.generic_entities and current_annotation != "O":
+        if (
+            allow_generic_entities
+            and current_prediction in self.generic_entities
+            and current_annotation != "O"
+        ):
             # Ignore cases where the prediction is generic
             results[(current_annotation, current_prediction)] -= 1
             # Add a result which assumes the generic equals the specific
             results[(current_annotation, current_annotation)] += 1
             reverted = True
 
-        elif current_annotation in self.generic_entities and current_prediction != "O":
+        elif (
+            allow_generic_entities
+            and current_annotation in self.generic_entities
+            and current_prediction != "O"
+        ):
             # Ignore cases where the prediction is generic
             results[(current_annotation, current_prediction)] -= 1
             # Add a result which assumes the generic equals the specific
@@ -202,6 +223,7 @@ class TokenEvaluator(BaseEvaluator):
         results_df: pd.DataFrame,
         beta: float = 2.0,
         level: Literal["entity", "pii", "both"] = "both",
+        entity_hierarchy: EntityHierarchy | None = None,
         **kwargs,
     ) -> EvaluationResult:
         """
@@ -219,6 +241,8 @@ class TokenEvaluator(BaseEvaluator):
         :param beta: F-beta parameter for score calculation (default 2.0).
         :param level: Which metrics to compute. One of ``"entity"``, ``"pii"``,
             or ``"both"`` (default).
+        :param entity_hierarchy: Optional hierarchy used to credit predictions that
+            are more specific descendants of the annotated entity type.
         :return: EvaluationResult with the requested precision/recall/F metrics.
         """
         evaluation_results: list[EvaluationResult] = []
@@ -238,6 +262,7 @@ class TokenEvaluator(BaseEvaluator):
             results, errors = self.compare(
                 input_sample=input_sample,
                 prediction=predictions,
+                entity_hierarchy=entity_hierarchy,
             )
             evaluation_results.append(
                 EvaluationResult(
