@@ -940,12 +940,14 @@ def test_calculate_iou_token_based():
             [ErrorType.FN, ErrorType.WrongEntity, ErrorType.FP, ErrorType.FP],
             4,
             [
-                "Entity PERSON not detected due to low iou",
-                "Entity PERSON falsely detected",
+                "Entity PERSON not detected. iou with LOCATION=",
                 "Wrong entity type: PERSON detected as LOCATION",
                 "Entity LOCATION falsely detected",
+                "Entity PERSON falsely detected",
             ],
-            {("PERSON", "LOCATION"): 1, ("O", "PERSON"): 1, ("PERSON", "O"): 1},
+            # The annotation's row is claimed once, by the high-IoU LOCATION
+            # match — it must not also appear as a (PERSON, O) miss.
+            {("PERSON", "LOCATION"): 1, ("O", "PERSON"): 1, ("PERSON", "O"): 0},
         ),
         # Multiple overlapping predictions: Different type, low cumulative IoU → FN + FP
         (
