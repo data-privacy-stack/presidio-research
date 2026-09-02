@@ -2,11 +2,27 @@
 
 ## Status
 
-Proposed
+Superseded
 
 ## Date
 
 2026-04-29 (revised 2026-04-30)
+
+## Superseding implementation
+
+The evaluator-side descendant-credit design below was not adopted. Hierarchy-aware
+granularity projection is implemented in `CanonicalMapper` instead, keeping
+`SpanEvaluator` and `TokenEvaluator` independent of the hierarchy:
+
+- More-specific predictions are projected upward to the single annotation depth used
+  on their hierarchy branch.
+- Less-specific predictions are not projected downward and remain detailed-level
+  mismatches.
+- Mixed annotation depths on one branch are a blocking mapping issue requiring an
+  explicit `map()` decision.
+- Low-IoU errors are attributed to the projected scoring label.
+
+The remainder of this ADR is retained as the original proposal and rationale.
 
 ## Context
 
@@ -153,7 +169,9 @@ It further can shows the confusion matrix and error analysis for each level.
 - **Three scores instead of one** — reporting becomes more complex. Users need guidance on which level to optimize for their use case.
 - **Requires `EntityHierarchy` for every label** — labels that are `UNRESOLVED` cannot be placed at any level and must still be handled before multi-level evaluation can run.
 - **L0 precision is trivially high for entity-rich models** — a model that fires on everything gets near-perfect L0 recall at the cost of precision; L0 alone is not enough. The multi-level view makes this visible rather than hiding it.
-- **Descendant-credit rule requires hierarchy access in SpanEvaluator** — a minor change to the evaluator is needed to pass the hierarchy and apply the rule.
+- **The original descendant-credit rule would have required hierarchy access in
+  `SpanEvaluator`** — this trade-off was avoided by moving projection into
+  `CanonicalMapper`.
 
 ## Alternatives Considered
 

@@ -4,7 +4,6 @@ from typing import Literal
 import pandas as pd
 
 from presidio_evaluator.data_objects import Span
-from presidio_evaluator.entity_mapping import EntityHierarchy
 from presidio_evaluator.evaluation import (
     BaseEvaluator,
     DeprecationError,
@@ -488,7 +487,6 @@ class SpanEvaluator(BaseEvaluator):
         beta: float = 2,
         level: Literal["entity", "pii", "both"] = "both",
         evaluation_result: EvaluationResult | None = None,
-        entity_hierarchy: EntityHierarchy | None = None,
         **kwargs,
     ) -> EvaluationResult:
         """
@@ -506,8 +504,6 @@ class SpanEvaluator(BaseEvaluator):
                       ``EvaluationResult`` contains per-type **and** global PII metrics.
         :param beta: F-beta parameter (default 2).
         :param evaluation_result: Optional existing EvaluationResult to accumulate into.
-        :param entity_hierarchy: Optional hierarchy used to credit predictions that
-            are more specific descendants of the annotated entity type.
         :return: EvaluationResult with the requested metrics populated.
         """
         if level in ("entity", "both"):
@@ -516,7 +512,6 @@ class SpanEvaluator(BaseEvaluator):
                 results_df=results_df,
                 beta=beta,
                 evaluation_result=evaluation_result,
-                entity_hierarchy=entity_hierarchy,
             )
         if level in ("pii", "both"):
             global_pii_df = self.create_global_entities_df(results_df)
@@ -536,7 +531,6 @@ class SpanEvaluator(BaseEvaluator):
         results_df: pd.DataFrame,
         beta: float = 2,
         evaluation_result: EvaluationResult | None = None,
-        entity_hierarchy: EntityHierarchy | None = None,
     ) -> EvaluationResult:
         """
         Run a single scoring pass over the results DataFrame.
@@ -561,7 +555,6 @@ class SpanEvaluator(BaseEvaluator):
                 sentence_df=sentence_df,
                 per_type=per_type,
                 evaluation_result=evaluation_result,
-                entity_hierarchy=entity_hierarchy,
             )
         # Create and return the final evaluation result
         if per_type:
@@ -582,7 +575,6 @@ class SpanEvaluator(BaseEvaluator):
         sentence_df: pd.DataFrame,
         per_type: bool,
         evaluation_result: EvaluationResult | None = None,
-        entity_hierarchy: EntityHierarchy | None = None,
     ) -> EvaluationResult:
         """
         Compare one sentence's annotations and predictions, updating the evaluation result.
@@ -605,7 +597,6 @@ class SpanEvaluator(BaseEvaluator):
             prediction_spans,
             evaluation_result,
             per_type,
-            entity_hierarchy,
         )
         return evaluation_result
 
@@ -767,7 +758,6 @@ class SpanEvaluator(BaseEvaluator):
         prediction_spans: list[Span],
         evaluation_result: EvaluationResult,
         per_type: bool = True,
-        entity_hierarchy: EntityHierarchy | None = None,
     ) -> EvaluationResult:
         if not evaluation_result.model_errors:
             evaluation_result.model_errors = []
@@ -809,7 +799,6 @@ class SpanEvaluator(BaseEvaluator):
                     ann_span=ann_span,
                     overlapping_preds=overlapping_preds,
                     per_type=per_type,
-                    entity_hierarchy=entity_hierarchy,
                 )
 
             # Handle pred_span aggregation cases
@@ -819,7 +808,6 @@ class SpanEvaluator(BaseEvaluator):
                     ann_span=ann_span,
                     overlapping_preds=overlapping_preds,
                     per_type=per_type,
-                    entity_hierarchy=entity_hierarchy,
                 )
 
         # Handle prediction spans that don't overlap with any annotation span
@@ -868,7 +856,6 @@ class SpanEvaluator(BaseEvaluator):
         ann_span: Span,
         overlapping_preds: list[tuple[Span, float]],
         per_type: bool,
-        entity_hierarchy: EntityHierarchy | None = None,
     ) -> None:
         """Calculate metrics for a single overlapping prediction span (Scenario group 1)."""
 
@@ -876,15 +863,11 @@ class SpanEvaluator(BaseEvaluator):
         pred_span, iou = overlapping_preds[0]
         pred_type = pred_span.entity_type
         if iou >= self.iou_threshold:  # Scenarios 1 (TP) or 4 (Wrong Entity)
-            if self._entity_types_match(
-                ann_type,
-                pred_type,
-                entity_hierarchy,
-            ):  # scenario 1 (TP)
+            if pred_type == ann_type:  # scenario 1 (TP)
                 if per_type:
                     evaluation_result.per_type[ann_type].true_positives += 1
-                    evaluation_result.per_type[ann_type].num_predicted += 1
-                    evaluation_result.results[(ann_type, ann_type)] += 1
+                    evaluation_result.per_type[pred_type].num_predicted += 1
+                    evaluation_result.results[(ann_type, pred_type)] += 1
                 else:
                     evaluation_result.pii_true_positives += 1
                     evaluation_result.pii_predicted += 1
@@ -922,10 +905,8 @@ class SpanEvaluator(BaseEvaluator):
                 evaluation_result.pii_false_positives += 1
                 evaluation_result.pii_predicted += 1
 
-        elif self._entity_types_match(
-            ann_type,
-            pred_type,
-            entity_hierarchy,
+        elif (
+            ann_type == pred_type
         ):  # Scenario 5a (FN and FP - treat as separate entities)
             if per_type:
                 evaluation_result.per_type[ann_type].false_negatives += 1
@@ -990,7 +971,6 @@ class SpanEvaluator(BaseEvaluator):
         ann_span: Span,
         overlapping_preds: list[tuple[Span, float]],
         per_type: bool,
-        entity_hierarchy: EntityHierarchy | None = None,
     ) -> None:
         """Calculate metrics for an annotation span overlapping with multiple pred spans."""
 
@@ -1000,38 +980,6 @@ class SpanEvaluator(BaseEvaluator):
         ann_type = ann_span.entity_type
         # Group overlapping spans by entity type
         spans_by_type, iou_by_type = self._group_spans_by_type(overlapping_preds)
-
-        compatible_types = [
-            pred_type
-            for pred_type in spans_by_type
-            if self._entity_types_match(
-                ann_type,
-                pred_type,
-                entity_hierarchy,
-            )
-        ]
-        compatible_spans = [
-            span for pred_type in compatible_types for span in spans_by_type[pred_type]
-        ]
-        if (
-            compatible_spans
-            and self._calculate_combined_iou(ann_span, compatible_spans)
-            >= self.iou_threshold
-        ):
-            compatible_ious = [
-                iou for pred_type in compatible_types for iou in iou_by_type[pred_type]
-            ]
-            for pred_type in compatible_types:
-                del spans_by_type[pred_type]
-                del iou_by_type[pred_type]
-            spans_by_type = defaultdict(
-                list,
-                {ann_type: compatible_spans, **spans_by_type},
-            )
-            iou_by_type = defaultdict(
-                list,
-                {ann_type: compatible_ious, **iou_by_type},
-            )
 
         # Calculate cumulative IoU per type
         cumulative_iou_by_type = {}

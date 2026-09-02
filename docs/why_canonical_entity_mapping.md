@@ -56,13 +56,12 @@ Depth 2 (the domain branches) is useful for coarse-grained comparison (e.g. "did
 Depth 3 provides enough specificity for meaningful evaluation without fragmenting into micro-types that no realistic
 model distinguishes. Depth-4+ entities exist for completeness but are intentionally aggregated upward during evaluation.
 
-**Depth is now data-driven:** rather than accepting a fixed `canonical_depth` parameter, `CanonicalMapper` computes
-the evaluation depth automatically via a weighted majority vote over the annotation labels in your results DataFrame.
-Each annotation label is mapped to a canonical entity, its depth is measured (capped at 3), and the weighted average
-determines the canonical surface. Depth 3 is the most common outcome for datasets that use fine-grained entity types like
-`EMAIL_ADDRESS`, `NAME`, or `SSN`. Depth 2 results when the dataset predominantly uses broad categories like `PERSON`
-or `LOCATION`.
+**Granularity is now branch-specific and data-driven:** rather than accepting a fixed
+`canonical_depth` parameter, `CanonicalMapper` uses the annotation depth on each hierarchy branch.
+More-specific predictions are projected upward to that depth, while less-specific predictions are
+not projected downward. Mixed annotation depths on one branch block evaluation until the caller makes
+an explicit mapping decision.
 
-This means no manual tuning is required — the canonical surface reflects the granularity of the ground truth data.
-Multi-model comparisons are consistent because the canonical surface is locked after the first `analyze()` call and reused
-for all subsequent models.
+This requires no manual tuning when each annotation branch uses one granularity. Multi-model
+comparisons remain consistent when every model is analyzed against the same annotations and explicit
+mapping policy.

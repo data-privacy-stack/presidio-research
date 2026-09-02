@@ -361,6 +361,16 @@ class MapperRenderer:
         for issue in m.get_issues():
             sty = sev_style[issue.severity]
             why = gap_why.get(issue.type, "")
+            if (
+                issue.type == IssueType.COLLISION_SAME_BRANCH
+                and issue.severity == IssueSeverity.ERROR
+            ):
+                why = (
+                    "The gold annotation vocabulary uses <strong>multiple hierarchy "
+                    "depths on one branch</strong>. A prediction on that branch has no "
+                    "single detailed projection target, so mapping stops until the "
+                    "annotation labels are aligned explicitly."
+                )
             lbl_tags = " ".join(
                 f'<code style="background:#f6f8fa;padding:1px 5px;'
                 f'border-radius:3px;font-size:12px">{lbl}</code>'

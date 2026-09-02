@@ -6,6 +6,7 @@ import pytest
 from presidio_evaluator.entity_mapping import (
     CanonicalMapper,
     EntityHierarchy,
+    IncompleteMapping,
     MappedResults,
 )
 from presidio_evaluator.evaluation import EvaluationResult
@@ -212,8 +213,8 @@ class TestGranularityBonus:
         assert person.false_positives == 0
         assert person.false_negatives == 0
 
-    def test_low_iou_descendants_keep_their_predicted_type(self):
-        """A failed descendant match remains an FP for the model's label."""
+    def test_low_iou_descendants_use_the_projected_type(self):
+        """A failed descendant match is attributed to the mapped scoring label."""
         results = _make_single_sentence_results(
             ["PERSON", "PERSON", "PERSON", "PERSON"],
             ["NAME", "O", "NAME", "O"],
@@ -225,9 +226,9 @@ class TestGranularityBonus:
         ).calculate_hierarchical_scores(results)
         detailed = scores["detailed"]
         assert detailed.per_type["PERSON"].false_negatives == 1
-        assert detailed.per_type["NAME"].false_positives == 1
-        assert detailed.results[("O", "NAME")] == 1
-        assert detailed.results[("O", "PERSON")] == 0
+        assert detailed.per_type["PERSON"].false_positives == 1
+        assert detailed.results[("O", "PERSON")] == 1
+        assert detailed.results[("O", "NAME")] == 0
 
     def test_custom_hierarchy_is_used_for_descendant_credit(self):
         """Callers can score descendant relationships from a custom taxonomy."""
@@ -247,8 +248,7 @@ class TestGranularityBonus:
         mapper = CanonicalMapper(hierarchy=hierarchy)
         mapper.analyze(df)
         scores = SpanEvaluator(skip_words=[]).calculate_hierarchical_scores(
-            mapper.get_mapped_results_dataframe(),
-            entity_hierarchy=hierarchy,
+            mapper.get_mapped_results_dataframe()
         )
         assert scores["detailed"].per_type["CUSTOM_PARENT"].true_positives == 1
 
@@ -267,6 +267,9 @@ class TestGranularityBonus:
     def test_coarse_generic_prediction_is_not_forgiven_for_tokens(self):
         """Hierarchy scoring must not treat a coarse PII prediction as exact."""
         results = _make_results(["PERSON"], ["PII"])
+        direct = TokenEvaluator(skip_words=[]).calculate_score_on_df(results.detailed)
+        assert direct.per_type["PERSON"].true_positives == 1
+
         scores = TokenEvaluator(skip_words=[]).calculate_hierarchical_scores(results)
         person = scores["detailed"].per_type["PERSON"]
         assert person.true_positives == 0
@@ -347,22 +350,22 @@ class TestMappingProjectionScenarios:
         assert pii_m.precision == pytest.approx(1.0, abs=1e-6)
 
     # ------------------------------------------------------------------
-    # Scenario 2: dataset=depths 2, 3, 4; model=depth-1 (PII)
+    # Scenario 2: dataset=depth-3; model=depth-1 (PII)
     # ------------------------------------------------------------------
 
     def test_scenario2_binary_is_perfect(self):
         """S2 binary: granular annotations collapse to PII, matching PII predictions."""
         results = _make_results(
-            ["PERSON", "NAME", "FIRST_NAME"],
+            ["NAME", "NAME", "NAME"],
             ["PII", "PII", "PII"],
         )
         scores = _evaluator.calculate_hierarchical_scores(results)
         assert scores["binary"].pii_recall == pytest.approx(1.0, abs=1e-6)
 
     def test_scenario2_branch_person_annotations_miss_pii_predictions(self):
-        """S2 branch: PERSON/NAME/FIRST_NAME all become PERSON; PII prediction stays PII → mismatch."""
+        """S2 branch: NAME becomes PERSON; PII prediction remains too coarse."""
         results = _make_results(
-            ["PERSON", "NAME", "FIRST_NAME"],
+            ["NAME", "NAME", "NAME"],
             ["PII", "PII", "PII"],
         )
         scores = _evaluator.calculate_hierarchical_scores(results)
@@ -373,23 +376,16 @@ class TestMappingProjectionScenarios:
         assert pii_m is not None
         assert pii_m.false_positives > 0
 
-    def test_scenario2_detailed_all_annotation_types_miss(self):
-        """S2 detailed: each granular annotation type gets recall=0 vs the coarse PII prediction.
-
-        Note: FIRST_NAME resolves to NAME at canonical_depth=3, so per_type only contains
-        PERSON and NAME (with num_annotated=2 for NAME, covering both NAME and FIRST_NAME tokens).
-        """
+    def test_scenario2_detailed_annotation_type_misses(self):
+        """S2 detailed: NAME gets recall=0 against the coarse PII prediction."""
         results = _make_results(
-            ["PERSON", "NAME", "FIRST_NAME"],
+            ["NAME", "NAME", "NAME"],
             ["PII", "PII", "PII"],
         )
         scores = _evaluator.calculate_hierarchical_scores(results)
-        for entity in ("PERSON", "NAME"):
-            m = scores["detailed"].per_type.get(entity)
-            assert m is not None, f"Expected {entity} in detailed per_type"
-            assert m.recall == pytest.approx(0.0, abs=1e-6), (
-                f"Expected recall=0 for {entity} at detailed level"
-            )
+        name = scores["detailed"].per_type.get("NAME")
+        assert name is not None
+        assert name.recall == pytest.approx(0.0, abs=1e-6)
 
     # ------------------------------------------------------------------
     # Scenario 3: dataset=2×depth-2 + 2×depth-3; model=depth-2 only
@@ -397,49 +393,13 @@ class TestMappingProjectionScenarios:
     # Predictions: PERSON, LOCATION, PERSON, LOCATION
     # ------------------------------------------------------------------
 
-    def test_scenario3_binary_is_perfect(self):
-        """S3 binary: all non-O labels collapse to PII on both sides → all TP."""
-        results = _make_results(
-            ["PERSON", "LOCATION", "NAME", "GPE"],
-            ["PERSON", "LOCATION", "PERSON", "LOCATION"],
-        )
-        scores = _evaluator.calculate_hierarchical_scores(results)
-        assert scores["binary"].pii_recall == pytest.approx(1.0, abs=1e-6)
-        assert scores["binary"].pii_precision == pytest.approx(1.0, abs=1e-6)
-
-    def test_scenario3_branch_all_tp_because_depth3_maps_to_same_branch(self):
-        """S3 branch: NAME→PERSON and GPE→LOCATION, matching depth-2 predictions → all TP."""
-        results = _make_results(
-            ["PERSON", "LOCATION", "NAME", "GPE"],
-            ["PERSON", "LOCATION", "PERSON", "LOCATION"],
-        )
-        scores = _evaluator.calculate_hierarchical_scores(results)
-        person_m = scores["branch"].per_type.get("PERSON")
-        location_m = scores["branch"].per_type.get("LOCATION")
-        assert person_m is not None
-        assert location_m is not None
-        assert person_m.recall == pytest.approx(1.0, abs=1e-6)
-        assert location_m.recall == pytest.approx(1.0, abs=1e-6)
-
-    def test_scenario3_detailed_depth2_annotations_hit_depth3_annotations_miss(self):
-        """S3 detailed: PERSON/LOCATION annotations (depth-2) are TPs; NAME/GPE (depth-3) are FNs."""
-        results = _make_results(
-            ["PERSON", "LOCATION", "NAME", "GPE"],
-            ["PERSON", "LOCATION", "PERSON", "LOCATION"],
-        )
-        scores = _evaluator.calculate_hierarchical_scores(results)
-        # Depth-2 annotations matched by depth-2 predictions → TP
-        assert scores["detailed"].per_type["PERSON"].recall == pytest.approx(
-            1.0, abs=1e-6
-        )
-        assert scores["detailed"].per_type["LOCATION"].recall == pytest.approx(
-            1.0, abs=1e-6
-        )
-        # Depth-3 annotations miss because model only predicts at depth-2
-        assert scores["detailed"].per_type["NAME"].recall == pytest.approx(
-            0.0, abs=1e-6
-        )
-        assert scores["detailed"].per_type["GPE"].recall == pytest.approx(0.0, abs=1e-6)
+    def test_scenario3_mixed_gold_depths_block_mapping(self):
+        """S3 cannot choose one detailed projection depth for either branch."""
+        with pytest.raises(IncompleteMapping, match="blocking issue"):
+            _make_results(
+                ["PERSON", "LOCATION", "NAME", "GPE"],
+                ["PERSON", "LOCATION", "PERSON", "LOCATION"],
+            )
 
     # ------------------------------------------------------------------
     # Scenario 4: dataset=depth-4 (FIRST_NAME), model=depth-2 (PERSON)

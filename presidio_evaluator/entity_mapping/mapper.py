@@ -28,10 +28,6 @@ def _get_renderer_class():  # noqa: ANN201
     return MapperRenderer
 
 
-# Full-depth hierarchy used for branch lookups and depth calculations.
-# Constructed once at module load; never mutated.
-_FULL_HIERARCHY = EntityHierarchy(canonical_depth=10)
-
 _SEVERITY_ORDER = {
     IssueSeverity.ERROR: 0,
     IssueSeverity.WARNING: 1,
@@ -121,6 +117,30 @@ class CanonicalMapper:
             lbl for lbl, rec in self._records.items() if rec.tier == "UNRESOLVED"
         )
 
+    @property
+    def _full_hierarchy(self) -> EntityHierarchy:
+        """Return a full-depth view of the mapper's current hierarchy."""
+        return EntityHierarchy(
+            hierarchy=self._hierarchy.hierarchy,
+            canonical_depth=10,
+        )
+
+    def _resolved_annotation_paths(
+        self,
+        hierarchy: EntityHierarchy,
+    ) -> list[tuple[str, str, list[str]]]:
+        """Return raw label, resolved label, and path for active annotations."""
+        annotations = []
+        for label, record in self._records.items():
+            if self._label_annotation_counts.get(label, 0) == 0:
+                continue
+            if record.resolved is None or record.tier in ("UNRESOLVED", "NONE"):
+                continue
+            path = hierarchy.canonical_to_branch.get(record.resolved)
+            if path:
+                annotations.append((label, record.resolved, path))
+        return annotations
+
     # -- Analysis -------------------------------------------------------------
 
     def analyze(
@@ -137,8 +157,9 @@ class CanonicalMapper:
         :param results_df: DataFrame with annotation and prediction columns.
         :param min_severity: Minimum severity to surface via get_issues() and
             render_html(). Accepts 'ERROR', 'WARNING', 'INFO' (or IssueSeverity
-            enum values). Default is 'WARNING'. COLLISION_SAME_BRANCH (INFO)
-            is only shown when min_severity='INFO'.
+            enum values). Default is 'WARNING'. Informational
+            COLLISION_SAME_BRANCH issues are only shown when min_severity='INFO';
+            mixed annotation depths on one branch are ERROR.
         :param min_collision_count: Minimum number of cross-branch token
             co-occurrences required to raise a COLLISION_CROSS_BRANCH warning.
             Collisions with fewer co-occurrences than this threshold are silently
@@ -304,7 +325,7 @@ class CanonicalMapper:
     def _detect_issues(self) -> None:
         """Detect all issues (single-phase identification) and sort them."""
         self._issues.clear()
-        h_full = _FULL_HIERARCHY
+        h_full = self._full_hierarchy
 
         def _branch_key(resolved: str | None) -> str | None:
             if not resolved:
@@ -607,7 +628,126 @@ class CanonicalMapper:
                 )
             )
 
-        # ── COLLISION_SAME_BRANCH (INFO) ─────────────────────────────────────
+        # ── COLLISION_SAME_BRANCH (ERROR / INFO) ─────────────────────────────
+        # Detailed evaluation can project predictions to the gold vocabulary's
+        # depth only when each hierarchy branch has one annotation depth.
+        annotation_labels_by_branch: dict[str, list[tuple[str, str, int]]] = {}
+        root_annotations: list[tuple[str, str, int]] = []
+        resolved_annotations = self._resolved_annotation_paths(h_full)
+        for ann_lbl, resolved, ann_path in resolved_annotations:
+            item = (ann_lbl, resolved, len(ann_path))
+            if len(ann_path) == 1:
+                root_annotations.append(item)
+            else:
+                annotation_labels_by_branch.setdefault(ann_path[1], []).append(item)
+
+        ambiguous_branches: set[str] = set()
+        if root_annotations and annotation_labels_by_branch:
+            root_target = root_annotations[0][1]
+            deeper_labels = {
+                label
+                for branch_labels in annotation_labels_by_branch.values()
+                for label, _, _ in branch_labels
+            }
+            labels = sorted({label for label, _, _ in root_annotations} | deeper_labels)
+            self._issues.append(
+                MappingIssue(
+                    type=IssueType.COLLISION_SAME_BRANCH,
+                    severity=IssueSeverity.ERROR,
+                    message=(
+                        "Annotations mix the root hierarchy entity with more-specific "
+                        "entities, so detailed predictions have no single projection "
+                        "depth. Collapse the more-specific labels to the root entity, "
+                        "or suppress the root annotation label."
+                    ),
+                    labels=labels,
+                    annotation_count=sum(
+                        self._label_annotation_counts.get(label, 0) for label in labels
+                    ),
+                    prediction_count=0,
+                    resolution_options=[
+                        ResolutionOption(
+                            action="map_to_canonical",
+                            description=(
+                                f"Collapse more-specific labels to {root_target!r}"
+                            ),
+                            mapper_call=dict.fromkeys(deeper_labels, root_target),
+                        ),
+                        ResolutionOption(
+                            action="suppress",
+                            description=(
+                                "Suppress the root-level annotation label, then resolve "
+                                "any remaining mixed depths within individual branches"
+                            ),
+                            mapper_call={
+                                label: None for label, _, _ in root_annotations
+                            },
+                        ),
+                    ],
+                )
+            )
+            ambiguous_branches.update(annotation_labels_by_branch)
+
+        for branch, labels_at_branch in annotation_labels_by_branch.items():
+            if root_annotations:
+                continue
+            depths = {depth for _, _, depth in labels_at_branch}
+            if len(depths) <= 1:
+                continue
+            ambiguous_branches.add(branch)
+            labels = sorted({label for label, _, _ in labels_at_branch})
+            target_depth = min(depths)
+            collapse_mapping = {
+                label: h_full.canonical_to_branch[resolved][target_depth - 1]
+                for label, resolved, depth in labels_at_branch
+                if depth > target_depth
+            }
+            shallower_labels = {
+                label for label, _, depth in labels_at_branch if depth == target_depth
+            }
+            resolved_depths = ", ".join(
+                f"{resolved} (depth {depth})"
+                for resolved, depth in sorted(
+                    {(resolved, depth) for _, resolved, depth in labels_at_branch},
+                    key=lambda item: (item[1], item[0]),
+                )
+            )
+            self._issues.append(
+                MappingIssue(
+                    type=IssueType.COLLISION_SAME_BRANCH,
+                    severity=IssueSeverity.ERROR,
+                    message=(
+                        f"Annotations on the {branch!r} branch mix hierarchy depths: "
+                        f"{resolved_depths}. Detailed predictions have no single "
+                        "projection target. Align these labels to one canonical depth "
+                        "before evaluation."
+                    ),
+                    labels=labels,
+                    annotation_count=sum(
+                        self._label_annotation_counts.get(label, 0) for label in labels
+                    ),
+                    prediction_count=0,
+                    resolution_options=[
+                        ResolutionOption(
+                            action="map_to_canonical",
+                            description=(
+                                f"Collapse deeper labels to depth {target_depth}; "
+                                "this merges their detailed categories"
+                            ),
+                            mapper_call=collapse_mapping,
+                        ),
+                        ResolutionOption(
+                            action="suppress",
+                            description=(
+                                "Suppress the shallower annotation labels and preserve "
+                                "the more-specific categories"
+                            ),
+                            mapper_call=dict.fromkeys(shallower_labels),
+                        ),
+                    ],
+                )
+            )
+
         # Prediction label co-occurs with annotation label(s) on same branch but
         # different depth (e.g. prediction=PERSON depth-2, annotation=NAME depth-3).
         for pred_lbl, rec_pred in self._records.items():
@@ -619,6 +759,8 @@ class CanonicalMapper:
             if len(pred_branch) < 2:
                 continue
             pred_branch_key = pred_branch[1]
+            if pred_branch_key in ambiguous_branches:
+                continue
             pred_depth = len(pred_branch)
 
             same_branch_overlap: dict[str, int] = {}
@@ -656,8 +798,9 @@ class CanonicalMapper:
                         f"{pred_lbl!r} (→ {rec_pred.resolved!r}, depth {pred_depth}) "
                         f"co-occurs with same-branch annotation(s) at different "
                         f"depth: {ann_str}. "
-                        f"Handled automatically by hierarchical evaluation "
-                        f"(branch/detailed projection)."
+                        f"More-specific predictions are projected to the annotation "
+                        f"depth during detailed mapping; less-specific predictions "
+                        f"remain mismatches."
                     ),
                     labels=[pred_lbl],
                     annotation_count=0,
@@ -680,8 +823,9 @@ class CanonicalMapper:
     def get_issues(self) -> list[MappingIssue]:
         """Return issues from the last analyze() call, filtered by min_severity.
 
-        Issues with severity below min_severity are excluded. COLLISION_SAME_BRANCH
-        (INFO) is only returned when min_severity='INFO'.
+        Issues with severity below min_severity are excluded. Informational
+        COLLISION_SAME_BRANCH issues are only returned when min_severity='INFO';
+        mixed annotation depths on one branch are returned as ERROR.
         """
         min_order = _SEVERITY_ORDER[self._min_severity]
         return [i for i in self._issues if _SEVERITY_ORDER[i.severity] <= min_order]
@@ -825,10 +969,11 @@ class CanonicalMapper:
         - ``.original`` — raw input labels, unmodified.
         - ``.binary``   — any non-O label → ``"PII"``; suppressed/O → ``"O"``.
         - ``.branch``   — depth-2 branch ancestor (e.g. ``NAME`` → ``PERSON``).
-        - ``.detailed`` — hierarchy node at native depth (e.g. ``FIRST_NAME`` → ``NAME``).
+        - ``.detailed`` — resolved hierarchy nodes, with predictions projected
+          upward to the annotation depth when that depth is unambiguous.
 
         :raises RuntimeError: if analyze() has not been called.
-        :raises IncompleteMapping: if any UNRESOLVED (ERROR) issues remain.
+        :raises IncompleteMapping: if any blocking mapping error remains.
         """
         if self._results_df is None:
             raise RuntimeError(
@@ -839,6 +984,15 @@ class CanonicalMapper:
             raise IncompleteMapping(blocking)
 
         df = self._results_df
+        h_full = self._full_hierarchy
+
+        annotation_depths_by_branch: dict[str, set[int]] = {}
+        root_annotation_depth: int | None = None
+        for _, _, path in self._resolved_annotation_paths(h_full):
+            if len(path) == 1:
+                root_annotation_depth = 1
+            elif len(path) >= 2:
+                annotation_depths_by_branch.setdefault(path[1], set()).add(len(path))
 
         def _resolve(label: str) -> str | None:
             """Return the resolved hierarchy node for a raw label, or None if suppressed."""
@@ -854,25 +1008,45 @@ class CanonicalMapper:
             if resolved is None or resolved == "O":
                 return "O"
             if level == "binary":
-                return _FULL_HIERARCHY.to_binary(resolved)
+                return h_full.to_binary(resolved)
             if level == "branch":
-                return _FULL_HIERARCHY.to_branch(resolved)
+                return h_full.to_branch(resolved)
             # detailed — hierarchy node at native depth
+            return resolved
+
+        def _project_prediction(label: str) -> str:
+            resolved = _resolve(label)
+            if resolved is None or resolved == "O":
+                return "O"
+            path = h_full.canonical_to_branch.get(resolved)
+            if not path:
+                return resolved
+            target_depth = root_annotation_depth
+            if target_depth is None and len(path) >= 2:
+                depths = annotation_depths_by_branch.get(path[1], set())
+                if len(depths) == 1:
+                    target_depth = next(iter(depths))
+            if target_depth is not None and len(path) > target_depth:
+                return path[target_depth - 1]
             return resolved
 
         original = df.copy()
 
         binary = df.copy()
         binary["annotation"] = df["annotation"].map(lambda x: _level(x, "binary"))
-        binary["prediction"] = df["prediction"].map(lambda x: _level(x, "binary"))
+        binary["prediction"] = df["prediction"].map(
+            lambda x: h_full.to_binary(_project_prediction(x))
+        )
 
         branch = df.copy()
         branch["annotation"] = df["annotation"].map(lambda x: _level(x, "branch"))
-        branch["prediction"] = df["prediction"].map(lambda x: _level(x, "branch"))
+        branch["prediction"] = df["prediction"].map(
+            lambda x: h_full.to_branch(_project_prediction(x))
+        )
 
         detailed = df.copy()
         detailed["annotation"] = df["annotation"].map(lambda x: _level(x, "detailed"))
-        detailed["prediction"] = df["prediction"].map(lambda x: _level(x, "detailed"))
+        detailed["prediction"] = df["prediction"].map(_project_prediction)
 
         return MappedResults(
             original=original,

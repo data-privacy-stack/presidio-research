@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
 from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.evaluation.skipwords import get_skip_words
 from presidio_evaluator.models import BaseModel
@@ -17,23 +16,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 GENERIC_ENTITIES = ("PII", "ID", "PII", "PHI", "ID_NUM", "NUMBER", "NUM", "GENERIC_PII")
-
-
-def _to_l1(entity: str, hierarchy: EntityHierarchy) -> str:
-    """Map an entity label to its depth-2 (branch) ancestor."""
-    if entity == "O":
-        return "O"
-    branch = hierarchy.canonical_to_branch.get(entity)
-    if branch is None:
-        return entity  # unknown entity — pass through unchanged
-    if len(branch) >= 2:
-        return branch[1]  # e.g. ['PII', 'PERSON', 'NAME'] -> 'PERSON'
-    return branch[0]  # depth-1 node (PII itself)
-
-
-def _to_l0(entity: str) -> str:
-    """Map any non-O entity label to 'PII'."""
-    return "O" if entity == "O" else "PII"
 
 
 class DeprecationError(RuntimeError):
@@ -269,36 +251,10 @@ class BaseEvaluator(ABC):
 
         return ((1 + beta**2) * precision * recall) / (((beta**2) * precision) + recall)
 
-    @staticmethod
-    def _entity_types_match(
-        annotation: str,
-        prediction: str,
-        hierarchy: EntityHierarchy | None = None,
-    ) -> bool:
-        """Return whether a prediction satisfies the annotation's granularity.
-
-        Without a hierarchy, entity types must be equal. During detailed
-        hierarchical evaluation, a more-specific prediction also matches its
-        annotated ancestor (for example, NAME satisfies PERSON).
-        """
-        if annotation == prediction:
-            return True
-        if hierarchy is None or annotation == "O" or prediction == "O":
-            return False
-        annotation_path = hierarchy.canonical_to_branch.get(annotation)
-        prediction_path = hierarchy.canonical_to_branch.get(prediction)
-        if annotation_path is None or prediction_path is None:
-            return False
-        return (
-            len(prediction_path) > len(annotation_path)
-            and prediction_path[: len(annotation_path)] == annotation_path
-        )
-
     def calculate_hierarchical_scores(
         self,
         results: "MappedResults",
         beta: float = 2.0,
-        entity_hierarchy: EntityHierarchy | None = None,
     ) -> dict[str, EvaluationResult]:
         """Evaluate model performance at three granularity levels simultaneously.
 
@@ -312,8 +268,6 @@ class BaseEvaluator(ABC):
         :param results: :class:`~presidio_evaluator.entity_mapping.MappedResults`
             as returned by ``CanonicalMapper.get_mapped_results_dataframe()``.
         :param beta: F-beta parameter (default ``2.0``).
-        :param entity_hierarchy: Hierarchy used to evaluate ancestor/descendant
-            relationships. Defaults to the built-in full-depth hierarchy.
         :return: ``dict[str, EvaluationResult]`` with keys ``"binary"``,
             ``"branch"``, ``"detailed"``.
         """
@@ -327,21 +281,20 @@ class BaseEvaluator(ABC):
                 "Use CanonicalMapper.get_mapped_results_dataframe() to produce it."
             )
 
-        hierarchy = entity_hierarchy or EntityHierarchy(canonical_depth=10)
         return {
             "binary": self.calculate_score_on_df(
                 results.binary,
                 beta=beta,
-                entity_hierarchy=hierarchy,
+                allow_generic_entities=False,
             ),
             "branch": self.calculate_score_on_df(
                 results.branch,
                 beta=beta,
-                entity_hierarchy=hierarchy,
+                allow_generic_entities=False,
             ),
             "detailed": self.calculate_score_on_df(
                 results.detailed,
                 beta=beta,
-                entity_hierarchy=hierarchy,
+                allow_generic_entities=False,
             ),
         }

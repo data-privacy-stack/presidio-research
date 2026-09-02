@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Behavior Changes
+
+- **More-specific predictions are projected to the gold annotation depth during canonical mapping** — for example, a `NAME` prediction is mapped to `PERSON` when the dataset uses the broader `PERSON` label, and `DATE` is mapped to `DATE_TIME`. Less-specific predictions remain mismatches. If annotations mix hierarchy depths on the same branch, mapping now blocks until the vocabulary is aligned explicitly. Low-IoU errors are attributed to the projected scoring label.
+
 ## Version 0.3.2
 
 ### Features

@@ -24,7 +24,8 @@ class IssueType(Enum):
     DATASET_ONLY:           Entity has annotations but no prediction maps to it.
     COLLISION_SAME_BRANCH:  Label and co-occurring annotation share the same hierarchy branch
                             at different depths (e.g. model predicts PERSON, dataset uses NAME).
-                            Informational — handled automatically by hierarchical evaluation.
+                            More-specific predictions are projected when the gold depth is
+                            unambiguous; mixed gold depths are a blocking mapping error.
     """
 
     UNRESOLVED = "unresolved"
@@ -89,8 +90,9 @@ class MappedResults:
         binary:    Labels resolved to ``"PII"`` (any non-O) or ``"O"``.
         branch:    Labels resolved to the depth-2 branch ancestor
                    (e.g. ``FIRST_NAME`` → ``PERSON``).
-        detailed:  Labels resolved to the hierarchy node at native depth
-                   (e.g. ``FIRST_NAME`` → ``NAME``).  Suppressed → ``"O"``.
+        detailed:  Labels resolved to the hierarchy node at native depth, with
+                   predictions projected upward to an unambiguous annotation
+                   depth. Suppressed → ``"O"``.
     """
 
     original: pd.DataFrame
