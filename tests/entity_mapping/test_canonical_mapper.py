@@ -687,6 +687,82 @@ class TestMappedResultsProjectionScenarios:
         with pytest.raises(IncompleteMapping, match="blocking issue"):
             self._mapped(["PERSON", "NAME"], ["PII", "PII"])
 
+    def _scenario2_collapsed(self):
+        df = _make_df(["PERSON", "NAME"], ["PII", "PII"])
+        mapper = CanonicalMapper()
+        mapper.analyze(df)
+        issue = next(
+            (
+                issue
+                for issue in mapper.get_issues()
+                if issue.type == IssueType.COLLISION_SAME_BRANCH
+                and issue.severity == IssueSeverity.ERROR
+            ),
+            None,
+        )
+        assert issue is not None, "expected blocking COLLISION_SAME_BRANCH issue"
+        option = next(
+            (
+                option
+                for option in issue.resolution_options
+                if option.action == "map_to_canonical"
+            ),
+            None,
+        )
+        assert option is not None, "expected an explicit collapse resolution"
+        assert option.mapper_call == {"NAME": "PERSON"}
+        mapper.map(option.mapper_call)
+        return mapper.get_mapped_results_dataframe()
+
+    def test_scenario2_original_preserves_raw_labels_after_resolution(self):
+        r = self._scenario2_collapsed()
+        assert r.original["annotation"].tolist() == ["PERSON", "NAME"]
+        assert r.original["prediction"].tolist() == ["PII", "PII"]
+
+    def test_scenario2_binary_both_sides_become_pii_after_resolution(self):
+        r = self._scenario2_collapsed()
+        assert set(r.binary["annotation"].unique()) == {"PII"}
+        assert set(r.binary["prediction"].unique()) == {"PII"}
+
+    def test_scenario2_branch_annotation_becomes_person_prediction_stays_pii(
+        self,
+    ):
+        """Explicit collapse maps NAME to PERSON; PII predictions stay PII."""
+        r = self._scenario2_collapsed()
+        assert r.branch["annotation"].tolist() == ["PERSON", "PERSON"]
+        assert r.branch["prediction"].tolist() == ["PII", "PII"]
+
+    def test_scenario2_detailed_uses_explicit_collapse_prediction_stays_pii(
+        self,
+    ):
+        """Detailed output reflects the explicit NAME-to-PERSON resolution."""
+        r = self._scenario2_collapsed()
+        assert r.detailed["annotation"].tolist() == ["PERSON", "PERSON"]
+        assert r.detailed["prediction"].tolist() == ["PII", "PII"]
+
+    def test_scenario2_can_suppress_shallower_gold_to_preserve_detail(self):
+        df = _make_df(["PERSON", "NAME"], ["PII", "PII"])
+        mapper = CanonicalMapper()
+        mapper.analyze(df)
+        issue = next(
+            issue
+            for issue in mapper.get_issues()
+            if issue.type == IssueType.COLLISION_SAME_BRANCH
+            and issue.severity == IssueSeverity.ERROR
+        )
+        option = next(
+            option for option in issue.resolution_options if option.action == "suppress"
+        )
+        assert option.mapper_call == {"PERSON": None}
+        mapper.map(option.mapper_call)
+
+        r = mapper.get_mapped_results_dataframe()
+        assert r.original["annotation"].tolist() == ["PERSON", "NAME"]
+        assert r.binary["annotation"].tolist() == ["O", "PII"]
+        assert r.branch["annotation"].tolist() == ["O", "PERSON"]
+        assert r.detailed["annotation"].tolist() == ["O", "NAME"]
+        assert r.detailed["prediction"].tolist() == ["PII", "PII"]
+
     # ------------------------------------------------------------------
     # Scenario 3: dataset=depth-2 + depth-3; model=depth-2 only
     # Annotations: PERSON, NAME, LOCATION, GPE
