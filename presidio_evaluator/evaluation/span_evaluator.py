@@ -487,6 +487,7 @@ class SpanEvaluator(BaseEvaluator):
         beta: float = 2,
         level: Literal["entity", "pii", "both"] = "both",
         evaluation_result: EvaluationResult | None = None,
+        allow_generic_entities: bool = True,
         **kwargs,
     ) -> EvaluationResult:
         """
@@ -504,6 +505,11 @@ class SpanEvaluator(BaseEvaluator):
                       ``EvaluationResult`` contains per-type **and** global PII metrics.
         :param beta: F-beta parameter (default 2).
         :param evaluation_result: Optional existing EvaluationResult to accumulate into.
+        :param allow_generic_entities: Accepted for signature compatibility with
+            :class:`TokenEvaluator` and with
+            :meth:`BaseEvaluator.calculate_hierarchical_scores`, which passes it
+            for every level. Span evaluation compares entity types exactly and
+            has no generic-entity shortcut, so this parameter has no effect here.
         :return: EvaluationResult with the requested metrics populated.
         """
         if level in ("entity", "both"):

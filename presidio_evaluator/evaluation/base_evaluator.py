@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
 from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.evaluation.skipwords import get_skip_words
 from presidio_evaluator.models import BaseModel
@@ -17,23 +16,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 GENERIC_ENTITIES = ("PII", "ID", "PII", "PHI", "ID_NUM", "NUMBER", "NUM", "GENERIC_PII")
-
-
-def _to_l1(entity: str, hierarchy: EntityHierarchy) -> str:
-    """Map an entity label to its depth-2 (branch) ancestor."""
-    if entity == "O":
-        return "O"
-    branch = hierarchy.canonical_to_branch.get(entity)
-    if branch is None:
-        return entity  # unknown entity — pass through unchanged
-    if len(branch) >= 2:
-        return branch[1]  # e.g. ['PII', 'PERSON', 'NAME'] -> 'PERSON'
-    return branch[0]  # depth-1 node (PII itself)
-
-
-def _to_l0(entity: str) -> str:
-    """Map any non-O entity label to 'PII'."""
-    return "O" if entity == "O" else "PII"
 
 
 class DeprecationError(RuntimeError):
@@ -300,7 +282,19 @@ class BaseEvaluator(ABC):
             )
 
         return {
-            "binary": self.calculate_score_on_df(results.binary, beta=beta),
-            "branch": self.calculate_score_on_df(results.branch, beta=beta),
-            "detailed": self.calculate_score_on_df(results.detailed, beta=beta),
+            "binary": self.calculate_score_on_df(
+                results.binary,
+                beta=beta,
+                allow_generic_entities=False,
+            ),
+            "branch": self.calculate_score_on_df(
+                results.branch,
+                beta=beta,
+                allow_generic_entities=False,
+            ),
+            "detailed": self.calculate_score_on_df(
+                results.detailed,
+                beta=beta,
+                allow_generic_entities=False,
+            ),
         }

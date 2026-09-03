@@ -7,7 +7,10 @@ import pytest
 from presidio_analyzer import AnalyzerEngine
 
 from presidio_evaluator import InputSample
-from presidio_evaluator.entity_mapping import CanonicalMapper, IssueType
+from presidio_evaluator.entity_mapping import (
+    CanonicalMapper,
+    IssueType,
+)
 from presidio_evaluator.evaluation import ModelError, Plotter, SpanEvaluator
 from presidio_evaluator.evaluation.token_evaluator import TokenEvaluator
 from presidio_evaluator.experiment_tracking import get_experiment_tracker

@@ -117,9 +117,7 @@ class EntityHierarchy:
             if canonical is not None:
                 branch = self.canonical_to_branch.get(canonical)
         if branch is None:
-            raise EntityNotMappedError(
-                f"Entity {entity!r} has no branch in hierarchy"
-            )
+            raise EntityNotMappedError(f"Entity {entity!r} has no branch in hierarchy")
         return len(branch)
 
     def add_alias(self, entity_name: str, alias: str) -> None:

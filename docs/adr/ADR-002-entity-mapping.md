@@ -61,7 +61,7 @@ BIO/BIOES/BILOU prefixes are stripped transparently before lookup (`B-PERSON` �
 | **COLLISION_CROSS_BRANCH** | WARNING | A prediction label and annotation label co-occur on the same tokens but map to different hierarchy branches. This may be a **vocabulary mismatch** (e.g., the model calls it `ORG` while the dataset calls it `COMPANY`) that can be fixed with `map()`. Even when not remapped, it is surfaced so the user is aware of the mismatch when interpreting results. | Surfaced in audit table with token counts; does not block |
 | **PREDICTION_ONLY** | WARNING | Prediction entity in hierarchy but never annotated by the dataset | Surfaced in audit table; does not block |
 | **DATASET_ONLY** | WARNING | Annotation entity never predicted by the model (nor any descendant) | Surfaced in audit table; does not block |
-| **COLLISION_SAME_BRANCH** | INFO | A prediction label and annotation label co-occur on the same tokens and map to the **same hierarchy branch** but at different depths (e.g., model predicts `PERSON`, dataset annotates `NAME`). This is not a mapping problem — it is handled correctly by the hierarchical evaluation step (see ADR-003). | Shown inline in audit table for awareness; does not block |
+| **COLLISION_SAME_BRANCH** | INFO | Annotation and prediction labels use the **same hierarchy branch** at different depths. `CanonicalMapper` projects each prediction to the deepest annotated ancestor of its own label, so this is never a mapping decision — including when the annotations themselves mix depths on one branch. | Surfaced in audit table for awareness; does not block |
 
 Issues are ordered by severity (ERROR > WARNING > INFO), then by affected token count (descending).
 

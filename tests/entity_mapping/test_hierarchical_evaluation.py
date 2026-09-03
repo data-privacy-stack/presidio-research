@@ -3,9 +3,14 @@
 import pandas as pd
 import pytest
 
-from presidio_evaluator.entity_mapping import CanonicalMapper, MappedResults
+from presidio_evaluator.entity_mapping import (
+    CanonicalMapper,
+    EntityHierarchy,
+    MappedResults,
+)
 from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.evaluation.span_evaluator import SpanEvaluator
+from presidio_evaluator.evaluation.token_evaluator import TokenEvaluator
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -26,6 +31,25 @@ def _make_results(annotations: list[str], predictions: list[str]) -> MappedResul
             "annotation": annotations,
             "prediction": predictions,
             "start_indices": list(range(n)),
+        }
+    )
+    mapper = CanonicalMapper()
+    mapper.analyze(df)
+    return mapper.get_mapped_results_dataframe()
+
+
+def _make_single_sentence_results(
+    annotations: list[str],
+    predictions: list[str],
+) -> MappedResults:
+    """Build MappedResults where all tokens belong to one sentence."""
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * len(annotations),
+            "token": [f"tok{i}" for i in range(len(annotations))],
+            "annotation": annotations,
+            "prediction": predictions,
+            "start_indices": [i * 5 for i in range(len(annotations))],
         }
     )
     mapper = CanonicalMapper()
@@ -147,14 +171,85 @@ class TestDetailedLevel:
 
 
 class TestGranularityBonus:
-    def test_specific_prediction_scores_tp_at_all_levels(self):
-        """Model predicting NAME (depth-3) on NAME annotation gets TP at all levels."""
-        results = _make_results(["NAME", "O"], ["NAME", "O"])
-        scores = _evaluator.calculate_hierarchical_scores(results)
+    @pytest.mark.parametrize(
+        ("annotation", "prediction"),
+        [
+            ("PERSON", "NAME"),
+            ("DATE_TIME", "DATE"),
+        ],
+    )
+    @pytest.mark.parametrize("evaluator_type", [SpanEvaluator, TokenEvaluator])
+    def test_specific_prediction_scores_tp_at_all_levels(
+        self,
+        annotation,
+        prediction,
+        evaluator_type,
+    ):
+        """A descendant prediction satisfies a less-specific annotation."""
+        results = _make_results([annotation, "O"], [prediction, "O"])
+        scores = evaluator_type(skip_words=[]).calculate_hierarchical_scores(results)
         for level in ("binary", "branch", "detailed"):
             assert scores[level].pii_f == pytest.approx(1.0, abs=1e-6), (
                 f"Expected perfect score at {level}"
             )
+        assert scores["detailed"].per_type[annotation].true_positives == 1
+        assert scores["detailed"].results[(annotation, annotation)] == 1
+
+    def test_multiple_descendant_spans_combine_for_span_iou(self):
+        """Different descendants can jointly cover one broader annotation."""
+        results = _make_single_sentence_results(
+            ["PERSON", "PERSON"],
+            ["NAME", "TITLE"],
+        )
+        scores = SpanEvaluator(
+            skip_words=[],
+            iou_threshold=1.0,
+            char_based=False,
+        ).calculate_hierarchical_scores(results)
+        person = scores["detailed"].per_type["PERSON"]
+        assert person.true_positives == 1
+        assert person.num_predicted == 1
+        assert person.false_positives == 0
+        assert person.false_negatives == 0
+
+    def test_low_iou_descendants_use_the_projected_type(self):
+        """A failed descendant match is attributed to the mapped scoring label."""
+        results = _make_single_sentence_results(
+            ["PERSON", "PERSON", "PERSON", "PERSON"],
+            ["NAME", "O", "NAME", "O"],
+        )
+        scores = SpanEvaluator(
+            skip_words=[],
+            iou_threshold=1.0,
+            char_based=False,
+        ).calculate_hierarchical_scores(results)
+        detailed = scores["detailed"]
+        assert detailed.per_type["PERSON"].false_negatives == 1
+        assert detailed.per_type["PERSON"].false_positives == 1
+        assert detailed.results[("O", "PERSON")] == 1
+        assert detailed.results[("O", "NAME")] == 0
+
+    def test_custom_hierarchy_is_used_for_descendant_credit(self):
+        """Callers can score descendant relationships from a custom taxonomy."""
+        hierarchy = EntityHierarchy(
+            hierarchy={"PII": {"CUSTOM_PARENT": {"CUSTOM_CHILD": []}}},
+            canonical_depth=10,
+        )
+        df = pd.DataFrame(
+            {
+                "sentence_id": [0],
+                "token": ["value"],
+                "annotation": ["CUSTOM_PARENT"],
+                "prediction": ["CUSTOM_CHILD"],
+                "start_indices": [0],
+            }
+        )
+        mapper = CanonicalMapper(hierarchy=hierarchy)
+        mapper.analyze(df)
+        scores = SpanEvaluator(skip_words=[]).calculate_hierarchical_scores(
+            mapper.get_mapped_results_dataframe()
+        )
+        assert scores["detailed"].per_type["CUSTOM_PARENT"].true_positives == 1
 
     def test_coarse_prediction_scores_tp_at_binary_branch_but_not_detailed(self):
         """Model predicting PERSON (depth-2) on NAME: TP at binary/branch but not detailed."""
@@ -167,6 +262,18 @@ class TestGranularityBonus:
         name_detailed = scores["detailed"].per_type.get("NAME")
         assert name_detailed is not None
         assert name_detailed.recall == pytest.approx(0.0, abs=1e-6)
+
+    def test_coarse_generic_prediction_is_not_forgiven_for_tokens(self):
+        """Hierarchy scoring must not treat a coarse PII prediction as exact."""
+        results = _make_results(["PERSON"], ["PII"])
+        direct = TokenEvaluator(skip_words=[]).calculate_score_on_df(results.detailed)
+        assert direct.per_type["PERSON"].true_positives == 1
+
+        scores = TokenEvaluator(skip_words=[]).calculate_hierarchical_scores(results)
+        person = scores["detailed"].per_type["PERSON"]
+        assert person.true_positives == 0
+        assert person.false_negatives == 1
+        assert scores["detailed"].per_type["PII"].false_positives == 1
 
     def test_calculate_score_on_df_matches_branch_level(self):
         """calculate_score_on_df(results.branch) == scores['branch']."""
@@ -213,8 +320,8 @@ class TestMappingProjectionScenarios:
         assert pii_m.recall == pytest.approx(1.0, abs=1e-6)
         assert pii_m.precision == pytest.approx(1.0, abs=1e-6)
 
-    def test_scenario1_branch_pii_annotation_misses_person_predictions(self):
-        """S1 branch: PII annotation (depth-1, stays PII) vs PERSON predictions → FN/FP."""
+    def test_scenario1_branch_credits_descendant_predictions(self):
+        """S1 branch: specific predictions satisfy the PII annotation."""
         results = _make_results(
             ["PII", "PII", "PII"],
             ["PERSON", "NAME", "FIRST_NAME"],
@@ -222,17 +329,14 @@ class TestMappingProjectionScenarios:
         scores = _evaluator.calculate_hierarchical_scores(results)
         pii_m = scores["branch"].per_type.get("PII")
         assert pii_m is not None
-        assert pii_m.recall == pytest.approx(0.0, abs=1e-6)
-        # All depth-2/3/4 predictions collapse to PERSON at branch
-        person_m = scores["branch"].per_type.get("PERSON")
-        assert person_m is not None
-        assert person_m.false_positives > 0
+        assert pii_m.recall == pytest.approx(1.0, abs=1e-6)
+        assert pii_m.precision == pytest.approx(1.0, abs=1e-6)
 
-    def test_scenario1_detailed_pii_annotation_misses_granular_predictions(self):
-        """S1 detailed: PII annotation stays PII; predictions stay at their canonical depth.
+    def test_scenario1_detailed_credits_descendant_predictions(self):
+        """S1 detailed: more-specific predictions satisfy the PII annotation.
 
         Note: FIRST_NAME resolves to NAME at the default canonical_depth=3, so only
-        PERSON and NAME appear as distinct prediction labels in per_type.
+        PERSON and NAME appear as distinct prediction labels before scoring.
         """
         results = _make_results(
             ["PII", "PII", "PII"],
@@ -241,28 +345,26 @@ class TestMappingProjectionScenarios:
         scores = _evaluator.calculate_hierarchical_scores(results)
         pii_m = scores["detailed"].per_type.get("PII")
         assert pii_m is not None
-        assert pii_m.recall == pytest.approx(0.0, abs=1e-6)
-        # PERSON and NAME appear as FPs (FIRST_NAME collapses to NAME at canonical_depth=3)
-        assert scores["detailed"].per_type.get("PERSON") is not None
-        assert scores["detailed"].per_type.get("NAME") is not None
+        assert pii_m.recall == pytest.approx(1.0, abs=1e-6)
+        assert pii_m.precision == pytest.approx(1.0, abs=1e-6)
 
     # ------------------------------------------------------------------
-    # Scenario 2: dataset=depths 2, 3, 4; model=depth-1 (PII)
+    # Scenario 2: dataset=depth-3; model=depth-1 (PII)
     # ------------------------------------------------------------------
 
     def test_scenario2_binary_is_perfect(self):
         """S2 binary: granular annotations collapse to PII, matching PII predictions."""
         results = _make_results(
-            ["PERSON", "NAME", "FIRST_NAME"],
+            ["NAME", "NAME", "NAME"],
             ["PII", "PII", "PII"],
         )
         scores = _evaluator.calculate_hierarchical_scores(results)
         assert scores["binary"].pii_recall == pytest.approx(1.0, abs=1e-6)
 
     def test_scenario2_branch_person_annotations_miss_pii_predictions(self):
-        """S2 branch: PERSON/NAME/FIRST_NAME all become PERSON; PII prediction stays PII → mismatch."""
+        """S2 branch: NAME becomes PERSON; PII prediction remains too coarse."""
         results = _make_results(
-            ["PERSON", "NAME", "FIRST_NAME"],
+            ["NAME", "NAME", "NAME"],
             ["PII", "PII", "PII"],
         )
         scores = _evaluator.calculate_hierarchical_scores(results)
@@ -273,23 +375,16 @@ class TestMappingProjectionScenarios:
         assert pii_m is not None
         assert pii_m.false_positives > 0
 
-    def test_scenario2_detailed_all_annotation_types_miss(self):
-        """S2 detailed: each granular annotation type gets recall=0 vs the coarse PII prediction.
-
-        Note: FIRST_NAME resolves to NAME at canonical_depth=3, so per_type only contains
-        PERSON and NAME (with num_annotated=2 for NAME, covering both NAME and FIRST_NAME tokens).
-        """
+    def test_scenario2_detailed_annotation_type_misses(self):
+        """S2 detailed: NAME gets recall=0 against the coarse PII prediction."""
         results = _make_results(
-            ["PERSON", "NAME", "FIRST_NAME"],
+            ["NAME", "NAME", "NAME"],
             ["PII", "PII", "PII"],
         )
         scores = _evaluator.calculate_hierarchical_scores(results)
-        for entity in ("PERSON", "NAME"):
-            m = scores["detailed"].per_type.get(entity)
-            assert m is not None, f"Expected {entity} in detailed per_type"
-            assert m.recall == pytest.approx(0.0, abs=1e-6), (
-                f"Expected recall=0 for {entity} at detailed level"
-            )
+        name = scores["detailed"].per_type.get("NAME")
+        assert name is not None
+        assert name.recall == pytest.approx(0.0, abs=1e-6)
 
     # ------------------------------------------------------------------
     # Scenario 3: dataset=2×depth-2 + 2×depth-3; model=depth-2 only
@@ -397,18 +492,15 @@ class TestMappingProjectionScenarios:
         assert person_m.recall == pytest.approx(1.0, abs=1e-6)
         assert person_m.precision == pytest.approx(1.0, abs=1e-6)
 
-    def test_scenario5_detailed_misses_because_labels_differ(self):
+    def test_scenario5_detailed_credits_more_specific_prediction(self):
         """S5 detailed: PERSON annotation vs FIRST_NAME prediction (→NAME at canonical_depth=3).
 
         FIRST_NAME resolves to NAME, so the prediction entity is NAME at detailed level.
-        NAME prediction does not match PERSON annotation → FN for PERSON, FP for NAME.
+        NAME is a descendant of PERSON, so the prediction receives full credit.
         """
         results = _make_results(["PERSON"], ["FIRST_NAME"])
         scores = _evaluator.calculate_hierarchical_scores(results)
         person_m = scores["detailed"].per_type.get("PERSON")
         assert person_m is not None
-        assert person_m.recall == pytest.approx(0.0, abs=1e-6)
-        # FIRST_NAME resolves to NAME at canonical_depth=3 → NAME is the FP
-        name_m = scores["detailed"].per_type.get("NAME")
-        assert name_m is not None
-        assert name_m.false_positives > 0
+        assert person_m.recall == pytest.approx(1.0, abs=1e-6)
+        assert person_m.precision == pytest.approx(1.0, abs=1e-6)

@@ -25,12 +25,13 @@ Examples:
 - `GERMANY_PASSPORT_NUMBER` → country prefix is recognized, becomes `PASSPORT`
 - `CREDITCARD`, `credit_card` → case and delimiters don't matter, becomes `FINANCIAL`
 
-**Phase 2 — Project:** canonical entities are projected onto the *canonical surface* — a set of entities at a
-depth computed by majority vote from the **dataset annotation labels**. A label that sits on the same
-branch as its co-occurring annotations but at a different depth (e.g. prediction `PERSON` vs annotation
-`NAME`) is reported as `COLLISION_SAME_BRANCH` (INFO) and handled automatically by hierarchical
-evaluation. A label on a *different* branch is reported as `COLLISION_CROSS_BRANCH` (WARNING) and
-must be resolved with `map()`.
+**Phase 2 — Project:** each canonical prediction is projected upward to the **deepest dataset
+annotation label that is an ancestor-or-self of it**. For example, `NAME` is projected to `PERSON`
+when the annotations use `PERSON`. A prediction with no annotated ancestor is left unchanged, so a
+less-specific prediction is never projected downward and sibling entities are never conflated.
+Annotations that mix depths on one branch need no decision — they are reported as
+`COLLISION_SAME_BRANCH` (INFO). A label on a different branch is reported as
+`COLLISION_CROSS_BRANCH` (WARNING).
 
 Labels that can't be resolved automatically are flagged for you to handle manually.
 
@@ -108,9 +109,11 @@ The canonical entities are organized in a hierarchy. At the default evaluation l
 
 (Full list: `DEMOGRAPHIC`, `EMPLOYMENT`, `DEVICE_IDENTIFIER`, `BIOMETRIC`, `NETWORK_IDENTIFIER`, `AUTHENTICATION`, `VEHICLE_PII`, `LEGAL_PII`, `TRAVEL_PII`, `EDUCATION`)
 
-The **evaluation depth is data-driven**: `CanonicalMapper` computes a weighted majority vote across the
-annotation labels in your results DataFrame and selects depth 2 or 3 (capped at 3). Depth 3 is the most
-common outcome when a dataset uses fine-grained entity types like `EMAIL_ADDRESS`, `NAME`, or `SSN`.
+The **evaluation granularity is annotation-driven and decided per prediction**. `CanonicalMapper`
+projects each prediction to the deepest annotated ancestor of its own label. A branch may therefore
+carry several annotated depths at once: with `PERSON` and `TITLE` both annotated, a `TITLE` prediction
+stays `TITLE` while a `NAME` prediction becomes `PERSON`, so each annotated depth keeps its own
+metrics and no mapping decision is required.
 
 For more on why this approach was chosen over alternatives, see [Why canonical entity mapping](why_canonical_entity_mapping.md).
 
@@ -130,12 +133,12 @@ mapper.render_html()                               # visual overview in Jupyter
 for issue in mapper.get_issues():
     print(f"[{issue.severity.value}] {issue.type.value}: {issue.labels}")
 
-# 4. Fix WARNING/ERROR issues before extracting the DataFrame
+# 4. Fix ERROR issues before extracting the DataFrame
 #    map to a canonical entity, or None to suppress
 mapper.map({"MY_CUSTOM_LABEL": "EMAIL_ADDRESS"})
 mapper.map({"JUNK_LABEL": None})                    # None = exclude from evaluation
 
-# 5. get_mapped_results_dataframe() raises IncompleteMapping if WARNING/ERROR issues remain
+# 5. get_mapped_results_dataframe() raises IncompleteMapping if ERROR issues remain
 try:
     mapped_df = mapper.get_mapped_results_dataframe()
 except IncompleteMapping:
@@ -154,14 +157,16 @@ mapper.map({"MY_CUSTOM_LABEL": "EMAIL_ADDRESS", "JUNK_LABEL": None})
 mapper.analyze(results_df)
 ```
 
-**Multi-model comparison:** the canonical surface (set of entities used for evaluation) is locked after the
-first `analyze()` call. Subsequent `analyze()` calls for other models reuse the same surface, ensuring
-all models are evaluated on the same entity set:
+**Multi-model comparison:** analyze each model against the same annotation vocabulary. Each `analyze()`
+call resets inferred state while preserving explicit `map()` decisions, so the annotations independently
+define the same branch-specific projection targets:
 
 ```python
 mapper = CanonicalMapper()
-mapper.analyze(model_a_df)   # locks canonical surface from dataset annotations
-mapper.analyze(model_b_df)   # reuses the same locked canonical surface
+mapper.analyze(model_a_df)
+model_a_results = mapper.get_mapped_results_dataframe()
+mapper.analyze(model_b_df)
+model_b_results = mapper.get_mapped_results_dataframe()
 ```
 
 ---
@@ -173,12 +178,12 @@ When you call `mapper.analyze(df)`, the mapper checks for problems that could si
 | Type | Severity | Meaning |
 |------|----------|---------|
 | `UNRESOLVED` | ERROR | Label could not be matched — blocks `get_mapped_results_dataframe()` |
-| `COLLISION_CROSS_BRANCH` | WARNING | Label maps across hierarchy branches — blocks extraction |
-| `PREDICTION_ONLY` | WARNING | Label only in predictions, not dataset — blocks extraction |
-| `COLLISION_SAME_BRANCH` | INFO | Label and annotation share a branch at different depths — handled by hierarchical evaluation |
+| `COLLISION_CROSS_BRANCH` | WARNING | Label maps across hierarchy branches — review before evaluation |
+| `PREDICTION_ONLY` | WARNING | Label only in predictions, not dataset — review before evaluation |
+| `COLLISION_SAME_BRANCH` | INFO | Different depths on one branch — handled automatically by projecting each prediction to its deepest annotated ancestor |
 | `DATASET_ONLY` | INFO | Label only in dataset annotations (model never predicts it) |
 
-> **Warning**: `get_mapped_results_dataframe()` raises `IncompleteMapping` if any WARNING or ERROR issues remain. INFO issues are non-blocking.
+> **Warning**: `get_mapped_results_dataframe()` raises `IncompleteMapping` if any ERROR issues remain. WARNING and INFO issues are non-blocking but should still be reviewed.
 
 ### 1. A label could not be resolved to any canonical entity
 
@@ -217,10 +222,10 @@ mapper.map({"MY_LOCATION": "ADDRESS"})      # go specific
 mapper.map({"MY_CITY": "LOCATION"})          # go broad
 ```
 
-**Fix 2. — align to the depth the canonical surface uses.** The canonical surface is computed automatically
-from the dataset annotations. If your dataset uses depth-2 labels (e.g. `PERSON`), the canonical surface
-will be at depth 2, and depth-3 model labels will auto-collapse. If the dataset uses depth-3 labels,
-use `map()` to remap the model's depth-2 label to a specific depth-3 target:
+**Fix 2. — align annotation depth on the branch.** If your dataset uses a single depth-2 label
+(e.g. `PERSON`) on a branch, deeper model labels auto-collapse to it. If annotations use depth 3,
+a depth-2 prediction is intentionally not projected downward; use `map()` only when you can choose
+the correct specific target:
 ```python
 mapper.map({"PERSON": "NAME"})  # pick the right depth-3 entity
 ```
@@ -256,15 +261,14 @@ mapper.map({"STREET_NUMBER": None})
 
 **Fix 2. — add the missing annotations:** If the model is actually finding real PII that was missed during annotation, the right fix is to go back and annotate those spans.
 
-### 5. The canonical surface is locked — a new model uses different entities
+### 5. A new model uses different entities
 
-The canonical surface (set of entities used for evaluation) is **locked after the first `analyze()` call**.
-This ensures all models are evaluated on the same entity set for fair comparison.
+Each `analyze()` call derives projection targets from that DataFrame's annotations. Explicit mappings
+created with `map()` are preserved, but inferred labels and issues are recalculated.
 
-**Example:** You evaluated model A and locked the surface at depth 3. Model B predicts a label that
-would have changed the canonical depth if analyzed alone. It's projected onto the existing locked surface.
+**Example:** Model B predicts a new label that model A did not use. It is resolved against the hierarchy
+and projected only when it is more specific than the single annotation depth on its branch.
 
-**This is intentional.** The dataset annotations define the ground truth, so the canonical surface is
-anchored to the first model's dataset. If model B has labels that don't fit the surface, they appear
-as `COLLISION_CROSS_BRANCH` or `PREDICTION_ONLY` issues — resolve them with `map()` before extracting
-results.
+For fair comparisons, pass the same gold annotations for every model and apply the same explicit mapping
+policy. New model labels may appear as `COLLISION_CROSS_BRANCH` or `PREDICTION_ONLY` warnings; review
+them and use `map()` when a manual decision is required.

@@ -51,6 +51,19 @@ class TestConstructor:
         mapper = CanonicalMapper(hierarchy=custom)
         assert "MY_TYPE" in mapper._hierarchy.all_canonical_entities
 
+    def test_hierarchy_mutation_after_construction_updates_projection(self):
+        from presidio_evaluator.entity_mapping import EntityHierarchy  # noqa: PLC0415
+
+        hierarchy = EntityHierarchy(
+            hierarchy={"PII": {"CUSTOM_PARENT": {"CUSTOM_CHILD": []}}},
+            canonical_depth=10,
+        )
+        mapper = CanonicalMapper(hierarchy=hierarchy)
+        hierarchy.add_alias("CUSTOM_CHILD", "NEW_CHILD_ALIAS")
+        mapper.analyze(_make_df(["CUSTOM_PARENT"], ["NEW_CHILD_ALIAS"]))
+        mapped = mapper.get_mapped_results_dataframe()
+        assert mapped.detailed["prediction"].tolist() == ["CUSTOM_PARENT"]
+
     def test_repr(self):
         mapper = CanonicalMapper()
         assert "CanonicalMapper" in repr(mapper)
@@ -218,6 +231,44 @@ class TestIssues:
         for issue in same_branch:
             assert issue.severity == IssueSeverity.INFO
             assert issue.overlap_counts is not None
+
+    def test_mixed_annotation_depths_are_informational(self):
+        df = _make_df(["PERSON", "NAME"], ["NAME", "NAME"])
+        mapper = CanonicalMapper()
+        mapper.analyze(df, min_severity="INFO")
+        issues = [
+            issue
+            for issue in mapper.get_issues()
+            if issue.type == IssueType.COLLISION_SAME_BRANCH
+            and "multiple hierarchy depths" in issue.message
+        ]
+        assert len(issues) == 1
+        assert issues[0].severity == IssueSeverity.INFO
+        assert issues[0].resolution_options == []
+
+        mapped = mapper.get_mapped_results_dataframe()
+        assert mapped.detailed["annotation"].tolist() == ["PERSON", "NAME"]
+        # NAME is itself annotated, so NAME predictions stay at NAME.
+        assert mapped.detailed["prediction"].tolist() == ["NAME", "NAME"]
+
+    def test_root_and_deeper_annotations_report_one_mixed_depth_info(self):
+        df = _make_df(["PII", "PERSON", "NAME"], ["PII", "PERSON", "NAME"])
+        mapper = CanonicalMapper()
+        mapper.analyze(df, min_severity="INFO")
+        issues = [
+            issue
+            for issue in mapper.get_issues()
+            if issue.type == IssueType.COLLISION_SAME_BRANCH
+            and "multiple hierarchy depths" in issue.message
+        ]
+
+        assert len(issues) == 1
+        assert issues[0].severity == IssueSeverity.INFO
+        assert issues[0].labels == ["NAME", "PERSON", "PII"]
+        # Every gold depth is preserved; each prediction matches its own gold.
+        mapped = mapper.get_mapped_results_dataframe()
+        assert mapped.detailed["annotation"].tolist() == ["PII", "PERSON", "NAME"]
+        assert mapped.detailed["prediction"].tolist() == ["PII", "PERSON", "NAME"]
 
     def test_cross_branch_suppressed_when_same_branch_hit_exists(self):
         # LOCATION has same-branch hits (predicted on STREET_ADDRESS tokens) AND
@@ -613,21 +664,43 @@ class TestMappedResultsProjectionScenarios:
         assert set(r.binary["annotation"].unique()) == {"PII"}
         assert set(r.binary["prediction"].unique()) == {"PII"}
 
-    def test_scenario1_branch_annotation_stays_pii_prediction_becomes_person(self):
-        """PII (depth-1) has no depth-2 ancestor; stays as PII. PERSON/NAME → PERSON."""
+    def test_scenario1_branch_projects_predictions_to_pii(self):
+        """A root-level gold vocabulary projects all descendant predictions to PII."""
         r = self._mapped(["PII", "PII"], ["PERSON", "NAME"])
         assert r.branch["annotation"].tolist() == ["PII", "PII"]
-        assert r.branch["prediction"].tolist() == ["PERSON", "PERSON"]
+        assert r.branch["prediction"].tolist() == ["PII", "PII"]
 
-    def test_scenario1_detailed_annotation_stays_pii_prediction_uses_native_depth(self):
-        """PII stays PII; PERSON stays PERSON; NAME stays NAME at detailed level."""
+    def test_scenario1_detailed_projects_predictions_to_pii(self):
+        """Detailed mapping uses the single root-level gold target."""
         r = self._mapped(["PII", "PII"], ["PERSON", "NAME"])
         assert r.detailed["annotation"].tolist() == ["PII", "PII"]
-        assert r.detailed["prediction"].tolist() == ["PERSON", "NAME"]
+        assert r.detailed["prediction"].tolist() == ["PII", "PII"]
 
     # ------------------------------------------------------------------
     # Scenario 2: dataset=depths 2 & 3, model=depth-1 (PII)
     # ------------------------------------------------------------------
+
+    def test_scenario2_mixed_depth_gold_is_informational_only(self):
+        """Mixed gold depths are reported but never block mapping."""
+        df = _make_df(["PERSON", "NAME"], ["PII", "PII"])
+        mapper = CanonicalMapper()
+        mapper.analyze(df, min_severity="INFO")
+        blocking = [
+            issue
+            for issue in mapper.get_issues()
+            if issue.severity == IssueSeverity.ERROR
+        ]
+        assert blocking == []
+        mixed = [
+            issue
+            for issue in mapper.get_issues()
+            if issue.type == IssueType.COLLISION_SAME_BRANCH
+            and "multiple hierarchy depths" in issue.message
+        ]
+        assert len(mixed) == 1
+        assert mixed[0].severity == IssueSeverity.INFO
+        assert mixed[0].resolution_options == []
+        assert mixed[0].labels == ["NAME", "PERSON"]
 
     def test_scenario2_original_preserves_raw_labels(self):
         r = self._mapped(["PERSON", "NAME"], ["PII", "PII"])
@@ -639,17 +712,23 @@ class TestMappedResultsProjectionScenarios:
         assert set(r.binary["annotation"].unique()) == {"PII"}
         assert set(r.binary["prediction"].unique()) == {"PII"}
 
-    def test_scenario2_branch_annotation_becomes_person_prediction_stays_pii(self):
-        """PERSON → PERSON, NAME → PERSON at branch; PII stays PII."""
+    def test_scenario2_branch_annotations_become_person_prediction_stays_pii(self):
+        """Both gold depths land on the PERSON branch; PII is too coarse to project."""
         r = self._mapped(["PERSON", "NAME"], ["PII", "PII"])
         assert r.branch["annotation"].tolist() == ["PERSON", "PERSON"]
         assert r.branch["prediction"].tolist() == ["PII", "PII"]
 
-    def test_scenario2_detailed_annotation_native_prediction_stays_pii(self):
-        """PERSON stays PERSON, NAME stays NAME; PII stays PII at detailed."""
+    def test_scenario2_detailed_keeps_each_gold_depth_distinct(self):
+        """No collapsing: PERSON and NAME each keep their own detailed row."""
         r = self._mapped(["PERSON", "NAME"], ["PII", "PII"])
         assert r.detailed["annotation"].tolist() == ["PERSON", "NAME"]
         assert r.detailed["prediction"].tolist() == ["PII", "PII"]
+
+    def test_scenario2_predictions_keep_their_depth_when_both_depths_are_gold(self):
+        """NAME is itself annotated, so a NAME prediction is not folded into PERSON."""
+        r = self._mapped(["PERSON", "NAME"], ["NAME", "PERSON"])
+        assert r.detailed["annotation"].tolist() == ["PERSON", "NAME"]
+        assert r.detailed["prediction"].tolist() == ["NAME", "PERSON"]
 
     # ------------------------------------------------------------------
     # Scenario 3: dataset=depth-2 + depth-3; model=depth-2 only
@@ -657,35 +736,27 @@ class TestMappedResultsProjectionScenarios:
     # Predictions: PERSON, PERSON, LOCATION, LOCATION
     # ------------------------------------------------------------------
 
-    def test_scenario3_binary_all_pii(self):
-        r = self._mapped(
+    def test_scenario3_mixed_depth_gold_reports_one_info_per_branch(self):
+        df = _make_df(
             ["PERSON", "NAME", "LOCATION", "GPE"],
             ["PERSON", "PERSON", "LOCATION", "LOCATION"],
         )
-        assert set(r.binary["annotation"].unique()) == {"PII"}
-        assert set(r.binary["prediction"].unique()) == {"PII"}
-
-    def test_scenario3_branch_depth3_annotations_fold_to_depth2(self):
-        """NAME→PERSON, GPE→LOCATION at branch; depth-2 annotations/predictions unchanged."""
-        r = self._mapped(
-            ["PERSON", "NAME", "LOCATION", "GPE"],
-            ["PERSON", "PERSON", "LOCATION", "LOCATION"],
-        )
-        assert r.branch["annotation"].tolist() == [
-            "PERSON",
-            "PERSON",
-            "LOCATION",
-            "LOCATION",
+        mapper = CanonicalMapper()
+        mapper.analyze(df, min_severity="INFO")
+        assert [
+            i for i in mapper.get_issues() if i.severity == IssueSeverity.ERROR
+        ] == []
+        mixed = [
+            issue
+            for issue in mapper.get_issues()
+            if issue.type == IssueType.COLLISION_SAME_BRANCH
+            and "multiple hierarchy depths" in issue.message
         ]
-        assert r.branch["prediction"].tolist() == [
-            "PERSON",
-            "PERSON",
-            "LOCATION",
-            "LOCATION",
-        ]
+        assert len(mixed) == 2
+        assert all(issue.severity == IssueSeverity.INFO for issue in mixed)
 
-    def test_scenario3_detailed_depth2_annotations_stay_depth3_annotations_stay(self):
-        """At detailed: PERSON stays PERSON, NAME stays NAME, GPE stays GPE; predictions stay depth-2."""
+    def test_scenario3_detailed_credits_shallow_gold_and_misses_deep_gold(self):
+        """Depth-2 gold is matched by the depth-2 prediction; depth-3 gold is not."""
         r = self._mapped(
             ["PERSON", "NAME", "LOCATION", "GPE"],
             ["PERSON", "PERSON", "LOCATION", "LOCATION"],
@@ -739,11 +810,11 @@ class TestMappedResultsProjectionScenarios:
         assert r.branch["annotation"].tolist() == ["PERSON"]
         assert r.branch["prediction"].tolist() == ["PERSON"]
 
-    def test_scenario5_detailed_annotation_is_person_prediction_is_name(self):
-        """PERSON stays PERSON; FIRST_NAME resolves to NAME at canonical_depth=3."""
+    def test_scenario5_detailed_prediction_projects_to_person(self):
+        """The more-specific NAME prediction projects to the PERSON gold depth."""
         r = self._mapped(["PERSON"], ["FIRST_NAME"])
         assert r.detailed["annotation"].tolist() == ["PERSON"]
-        assert r.detailed["prediction"].tolist() == ["NAME"]
+        assert r.detailed["prediction"].tolist() == ["PERSON"]
 
 
 # ---------------------------------------------------------------------------
@@ -866,6 +937,15 @@ class TestRenderHtml:
         # The gap card text for COLLISION_SAME_BRANCH should NOT appear in gap_cards
         assert "Handled automatically" not in html
 
+    def test_mixed_depth_card_explains_deepest_ancestor_projection(self):
+        df = _make_df(["PERSON", "NAME"], ["NAME", "NAME"])
+        mapper = CanonicalMapper()
+        mapper.analyze(df, min_severity="INFO")
+        html = MapperRenderer(mapper).build_html()
+        assert "multiple hierarchy depths" in html
+        assert "deepest annotated ancestor" in html
+        assert "No action required" in html
+
 
 # ---------------------------------------------------------------------------
 # EntityHierarchy.get_depth
@@ -943,3 +1023,73 @@ class TestIntegration:
         mapper.map({"UNKNOWN_XYZZY_99": "NAME"})
         result = mapper.get_mapped_results_dataframe()
         assert isinstance(result, MappedResults)
+
+
+# ---------------------------------------------------------------------------
+# Regression: the repository's primary dataset must map without intervention
+# ---------------------------------------------------------------------------
+
+#: Entity types annotated in ``data/synth_dataset_v2.json`` (used by notebooks 4 & 5).
+#: ``PERSON`` (depth 2) and ``TITLE`` (depth 3) sit on the same branch at
+#: different depths, which is the case that motivated the deepest-ancestor rule.
+_SYNTH_V2_ENTITIES = [
+    "AGE",
+    "CREDIT_CARD",
+    "DATE_TIME",
+    "DOMAIN_NAME",
+    "EMAIL_ADDRESS",
+    "GPE",
+    "IBAN_CODE",
+    "IP_ADDRESS",
+    "NRP",
+    "ORGANIZATION",
+    "PERSON",
+    "PHONE_NUMBER",
+    "STREET_ADDRESS",
+    "TITLE",
+    "US_DRIVER_LICENSE",
+    "US_SSN",
+    "ZIP_CODE",
+]
+
+
+class TestSynthDatasetV2Vocabulary:
+    """Pin that the shipped dataset's gold vocabulary needs no mapping decision."""
+
+    def test_full_vocabulary_maps_without_blocking(self):
+        df = _make_df(_SYNTH_V2_ENTITIES, _SYNTH_V2_ENTITIES)
+        mapper = CanonicalMapper()
+        mapper.analyze(df)
+        assert [
+            i for i in mapper.get_issues() if i.severity == IssueSeverity.ERROR
+        ] == []
+        mapper.get_mapped_results_dataframe()  # must not raise
+
+    def test_title_survives_detailed_mapping(self):
+        """TITLE must keep its own detailed rows rather than collapsing into PERSON."""
+        df = _make_df(_SYNTH_V2_ENTITIES, _SYNTH_V2_ENTITIES)
+        mapper = CanonicalMapper()
+        mapper.analyze(df)
+        detailed = mapper.get_mapped_results_dataframe().detailed
+        assert "TITLE" in set(detailed["annotation"])
+        assert "TITLE" in set(detailed["prediction"])
+
+    def test_person_and_title_need_no_resolution(self):
+        """Minimal reproduction of the PERSON (depth-2) + TITLE (depth-3) collision."""
+        df = _make_df(["PERSON", "TITLE", "PERSON"], ["NAME", "TITLE", "PERSON"])
+        mapper = CanonicalMapper()
+        mapper.analyze(df)
+        detailed = mapper.get_mapped_results_dataframe().detailed
+        assert detailed["annotation"].tolist() == ["PERSON", "TITLE", "PERSON"]
+        # NAME has no annotated NAME ancestor, so it credits PERSON; TITLE is
+        # annotated in its own right and is therefore preserved.
+        assert detailed["prediction"].tolist() == ["PERSON", "TITLE", "PERSON"]
+
+    def test_coarse_prediction_does_not_steal_credit_from_title(self):
+        """A PERSON prediction over a TITLE gold stays a mismatch."""
+        df = _make_df(["PERSON", "TITLE"], ["PERSON", "PERSON"])
+        mapper = CanonicalMapper()
+        mapper.analyze(df)
+        detailed = mapper.get_mapped_results_dataframe().detailed
+        assert detailed["annotation"].tolist() == ["PERSON", "TITLE"]
+        assert detailed["prediction"].tolist() == ["PERSON", "PERSON"]
