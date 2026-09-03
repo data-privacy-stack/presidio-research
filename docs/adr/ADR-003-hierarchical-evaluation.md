@@ -12,14 +12,25 @@ Superseded
 
 The evaluator-side descendant-credit design below was not adopted. Hierarchy-aware
 granularity projection is implemented in `CanonicalMapper` instead, keeping
-`SpanEvaluator` and `TokenEvaluator` independent of the hierarchy:
+`SpanEvaluator` and `TokenEvaluator` independent of the hierarchy.
 
-- More-specific predictions are projected upward to the single annotation depth used
-  on their hierarchy branch.
-- Less-specific predictions are not projected downward and remain detailed-level
-  mismatches.
-- Mixed annotation depths on one branch are a blocking mapping issue requiring an
-  explicit `map()` decision.
+**The projection rule: the gold annotation decides the granularity.** Each prediction
+is projected to the **deepest annotated ancestor-or-self of its own label**; if the
+prediction has no annotated ancestor, it is left unchanged.
+
+Because the walk follows the prediction's own ancestor chain, the rule is per
+prediction rather than per branch:
+
+- A prediction more specific than the gold is credited to the gold label it falls
+  under (`NAME` → `PERSON` when the dataset annotates `PERSON`).
+- A prediction coarser than the gold is never pushed downward and stays a
+  detailed-level mismatch (`PERSON` over a `NAME` gold).
+- Siblings are never conflated, because neither is an ancestor of the other
+  (`DATE` never credits a `TIME` gold).
+- Mixed annotation depths on one branch need no decision. When a dataset annotates
+  both `PERSON` (depth 2) and `TITLE` (depth 3), a `TITLE` prediction stays `TITLE`
+  and a `NAME` prediction becomes `PERSON`, so each annotated depth keeps its own
+  metrics. This is reported as an INFO issue only.
 - Low-IoU errors are attributed to the projected scoring label.
 
 The remainder of this ADR is retained as the original proposal and rationale.

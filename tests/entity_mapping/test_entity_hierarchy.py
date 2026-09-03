@@ -656,7 +656,6 @@ class TestBranchAliases:
             EntityHierarchy()
         assert not [r for r in caplog.records if "shadowed" in r.message]
 
-
     def test_i2b2_patient_is_a_name_not_a_record_number(self):
         # In the i2b2/n2c2 2014 de-identification schema, PATIENT and DOCTOR are
         # both subtypes of the NAME category; MEDICALRECORD is the ID subtype.

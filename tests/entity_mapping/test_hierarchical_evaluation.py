@@ -6,7 +6,6 @@ import pytest
 from presidio_evaluator.entity_mapping import (
     CanonicalMapper,
     EntityHierarchy,
-    IncompleteMapping,
     MappedResults,
 )
 from presidio_evaluator.evaluation import EvaluationResult
@@ -393,13 +392,49 @@ class TestMappingProjectionScenarios:
     # Predictions: PERSON, LOCATION, PERSON, LOCATION
     # ------------------------------------------------------------------
 
-    def test_scenario3_mixed_gold_depths_block_mapping(self):
-        """S3 cannot choose one detailed projection depth for either branch."""
-        with pytest.raises(IncompleteMapping, match="blocking issue"):
-            _make_results(
-                ["PERSON", "LOCATION", "NAME", "GPE"],
-                ["PERSON", "LOCATION", "PERSON", "LOCATION"],
-            )
+    def test_scenario3_binary_is_perfect(self):
+        """S3 binary: all non-O labels collapse to PII on both sides → all TP."""
+        results = _make_results(
+            ["PERSON", "LOCATION", "NAME", "GPE"],
+            ["PERSON", "LOCATION", "PERSON", "LOCATION"],
+        )
+        scores = _evaluator.calculate_hierarchical_scores(results)
+        assert scores["binary"].pii_recall == pytest.approx(1.0, abs=1e-6)
+        assert scores["binary"].pii_precision == pytest.approx(1.0, abs=1e-6)
+
+    def test_scenario3_branch_all_tp_because_depth3_maps_to_same_branch(self):
+        """S3 branch: NAME→PERSON and GPE→LOCATION, matching depth-2 predictions → all TP."""
+        results = _make_results(
+            ["PERSON", "LOCATION", "NAME", "GPE"],
+            ["PERSON", "LOCATION", "PERSON", "LOCATION"],
+        )
+        scores = _evaluator.calculate_hierarchical_scores(results)
+        person_m = scores["branch"].per_type.get("PERSON")
+        location_m = scores["branch"].per_type.get("LOCATION")
+        assert person_m is not None
+        assert location_m is not None
+        assert person_m.recall == pytest.approx(1.0, abs=1e-6)
+        assert location_m.recall == pytest.approx(1.0, abs=1e-6)
+
+    def test_scenario3_detailed_depth2_annotations_hit_depth3_annotations_miss(self):
+        """S3 detailed: PERSON/LOCATION annotations (depth-2) are TPs; NAME/GPE (depth-3) are FNs."""
+        results = _make_results(
+            ["PERSON", "LOCATION", "NAME", "GPE"],
+            ["PERSON", "LOCATION", "PERSON", "LOCATION"],
+        )
+        scores = _evaluator.calculate_hierarchical_scores(results)
+        # Depth-2 annotations matched by depth-2 predictions → TP
+        assert scores["detailed"].per_type["PERSON"].recall == pytest.approx(
+            1.0, abs=1e-6
+        )
+        assert scores["detailed"].per_type["LOCATION"].recall == pytest.approx(
+            1.0, abs=1e-6
+        )
+        # Depth-3 annotations miss because model only predicts at depth-2
+        assert scores["detailed"].per_type["NAME"].recall == pytest.approx(
+            0.0, abs=1e-6
+        )
+        assert scores["detailed"].per_type["GPE"].recall == pytest.approx(0.0, abs=1e-6)
 
     # ------------------------------------------------------------------
     # Scenario 4: dataset=depth-4 (FIRST_NAME), model=depth-2 (PERSON)

@@ -32,7 +32,7 @@ The model emits thousands of fine-grained labels; the dataset uses ≤10 broad c
 
 **Real example (Notebook 5):** The OpenMed HuggingFace model predicts `PERSON`, `LOCATION`, `ORGANIZATION`, etc., while the synth dataset labels `city`, `country`, `street_address`, `state`, `county`, `coordinate`, `postcode` as separate entities.
 
-**Issue type produced:** `COLLISION_SAME_BRANCH` (INFO) — non-blocking when the annotations use one depth. Less-specific predictions such as `LOCATION` remain mismatches at the detailed level because the mapper never projects downward.
+**Issue type produced:** `COLLISION_SAME_BRANCH` (INFO) — non-blocking. Less-specific predictions such as `LOCATION` remain mismatches at the detailed level because the mapper never projects downward.
 
 **Projection rules in action:** If the dataset uses depth-2 labels, fine-grained model labels like `STREET_ADDRESS` auto-collapse to `LOCATION` — also reported as `COLLISION_SAME_BRANCH` (INFO, non-blocking).
 
@@ -112,8 +112,8 @@ The same string alias appears under multiple canonical entities in the hierarchy
 
 **Issue types produced:**
 
-- `COLLISION_CROSS_BRANCH` (WARNING) — blocking. Raised when a label resolves to a canonical entity that has co-occurring labels on the same tokens mapping to a different hierarchy branch. Must be resolved with `map()` before extracting results.
-- `COLLISION_SAME_BRANCH` (INFO or ERROR) — more-specific predictions are projected upward when annotations use one depth. Mixed annotation depths on a branch are blocking and require an explicit `map()` decision.
+- `COLLISION_CROSS_BRANCH` (WARNING) — non-blocking; review before evaluation. Raised when a label resolves to a canonical entity that has co-occurring labels on the same tokens mapping to a different hierarchy branch. Use `map()` if the mismatch is a vocabulary difference rather than a genuine model error.
+- `COLLISION_SAME_BRANCH` (INFO) — non-blocking. More-specific predictions are projected up to the deepest annotated ancestor of their own label. Mixed annotation depths on a branch are reported for awareness and need no `map()` decision.
 
 ---
 
@@ -131,7 +131,7 @@ The model finds PII types the dataset creators never labeled — every detection
 
 **Real example (Notebook 5):** After mapping, several Presidio predictions had no dataset counterpart.
 
-**Issue type produced:** `PREDICTION_ONLY` (WARNING) — blocking. These labels inflate precision with false positives. You have three resolution options:
+**Issue type produced:** `PREDICTION_ONLY` (WARNING) — non-blocking; review before evaluation. These labels inflate precision with false positives. You have three resolution options:
 
 1. **Suppress** — `mapper.map({'CREDIT_CARD': None})` excludes the label from evaluation entirely
 2. **Remap** — `mapper.map({'CREDIT_CARD': 'FINANCIAL'})` counts detections against the `FINANCIAL` annotation set

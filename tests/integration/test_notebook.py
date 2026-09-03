@@ -9,7 +9,6 @@ from presidio_analyzer import AnalyzerEngine
 from presidio_evaluator import InputSample
 from presidio_evaluator.entity_mapping import (
     CanonicalMapper,
-    IssueSeverity,
     IssueType,
 )
 from presidio_evaluator.evaluation import ModelError, Plotter, SpanEvaluator
@@ -93,11 +92,6 @@ def test_notebook(dataset: list[InputSample], analyzer_engine: AnalyzerEngine):
             elif issue.type in (IssueType.UNRESOLVED, IssueType.PREDICTION_ONLY):
                 for lbl in issue.labels:
                     resolutions[lbl] = None
-            elif (
-                issue.type == IssueType.COLLISION_SAME_BRANCH
-                and issue.severity == IssueSeverity.ERROR
-            ):
-                resolutions.update(issue.resolution_options[0].mapper_call)
         if resolutions:
             m.map(resolutions)
 
@@ -202,11 +196,6 @@ def test_full_pipeline_integration(
         elif issue.type in (IssueType.UNRESOLVED, IssueType.PREDICTION_ONLY):
             for lbl in issue.labels:
                 resolutions[lbl] = None
-        elif (
-            issue.type == IssueType.COLLISION_SAME_BRANCH
-            and issue.severity == IssueSeverity.ERROR
-        ):
-            resolutions.update(issue.resolution_options[0].mapper_call)
     if resolutions:
         mapper.map(resolutions)
     mapped_results = mapper.get_mapped_results_dataframe()

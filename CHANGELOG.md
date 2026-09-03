@@ -4,7 +4,11 @@
 
 ### Behavior Changes
 
-- **More-specific predictions are projected to the gold annotation depth during canonical mapping** — for example, a `NAME` prediction is mapped to `PERSON` when the dataset uses the broader `PERSON` label, and `DATE` is mapped to `DATE_TIME`. Less-specific predictions remain mismatches. If annotations mix hierarchy depths on the same branch, mapping now blocks until the vocabulary is aligned explicitly. Low-IoU errors are attributed to the projected scoring label.
+- **Predictions are projected to the deepest annotated ancestor during canonical mapping** — the gold vocabulary decides the granularity, per prediction. A `NAME` prediction is mapped to `PERSON` when the dataset annotates `PERSON`, and `DATE` is mapped to `DATE_TIME` when the dataset annotates `DATE_TIME`. A prediction with no annotated ancestor is left unchanged, so a coarser prediction is never pushed down onto a finer gold label and siblings are never conflated. Datasets that annotate several depths on one branch (e.g. `PERSON` and `TITLE` in `data/synth_dataset_v2.json`) need no mapping decision: `TITLE` predictions stay `TITLE` while `NAME` predictions become `PERSON`, so every annotated depth keeps its own metrics. Mixed annotation depths are reported as an INFO issue. Low-IoU errors are attributed to the projected scoring label.
+
+### Bug Fixes
+
+- **Hierarchy projection now honours a custom hierarchy** — the full-depth view used for branch and detailed projection was built from a module-level default hierarchy, so a `CanonicalMapper` constructed with a custom `EntityHierarchy` projected against the built-in taxonomy instead of its own. The full-depth view is now derived from the mapper's configured hierarchy.
 
 ## Version 0.3.2
 

@@ -56,12 +56,13 @@ Depth 2 (the domain branches) is useful for coarse-grained comparison (e.g. "did
 Depth 3 provides enough specificity for meaningful evaluation without fragmenting into micro-types that no realistic
 model distinguishes. Depth-4+ entities exist for completeness but are intentionally aggregated upward during evaluation.
 
-**Granularity is now branch-specific and data-driven:** rather than accepting a fixed
-`canonical_depth` parameter, `CanonicalMapper` uses the annotation depth on each hierarchy branch.
-More-specific predictions are projected upward to that depth, while less-specific predictions are
-not projected downward. Mixed annotation depths on one branch block evaluation until the caller makes
-an explicit mapping decision.
+**Granularity is now annotation-driven and decided per prediction:** rather than accepting a fixed
+`canonical_depth` parameter, `CanonicalMapper` projects each prediction to the deepest annotation
+label that is an ancestor-or-self of it. More-specific predictions are credited to the gold label
+they fall under, while less-specific predictions are not projected downward. A branch may carry
+several annotated depths at once — with `PERSON` and `TITLE` both annotated, a `TITLE` prediction
+stays `TITLE` and a `NAME` prediction becomes `PERSON`.
 
-This requires no manual tuning when each annotation branch uses one granularity. Multi-model
-comparisons remain consistent when every model is analyzed against the same annotations and explicit
-mapping policy.
+This requires no manual tuning and no mapping decision. Multi-model comparisons remain consistent
+because the projection depends only on the annotation vocabulary, which is the same for every model
+evaluated on that dataset.

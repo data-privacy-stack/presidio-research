@@ -25,11 +25,12 @@ Examples:
 - `GERMANY_PASSPORT_NUMBER` → country prefix is recognized, becomes `PASSPORT`
 - `CREDITCARD`, `credit_card` → case and delimiters don't matter, becomes `FINANCIAL`
 
-**Phase 2 — Project:** canonical predictions are projected upward to the depth used by the
-**dataset annotation labels** on each hierarchy branch. For example, `NAME` is projected to `PERSON`
-when the annotations use `PERSON`. A less-specific prediction is never projected downward. If the
-annotations mix depths on one branch, `COLLISION_SAME_BRANCH` is an ERROR and the labels must be
-aligned explicitly with `map()`. A label on a different branch is reported as
+**Phase 2 — Project:** each canonical prediction is projected upward to the **deepest dataset
+annotation label that is an ancestor-or-self of it**. For example, `NAME` is projected to `PERSON`
+when the annotations use `PERSON`. A prediction with no annotated ancestor is left unchanged, so a
+less-specific prediction is never projected downward and sibling entities are never conflated.
+Annotations that mix depths on one branch need no decision — they are reported as
+`COLLISION_SAME_BRANCH` (INFO). A label on a different branch is reported as
 `COLLISION_CROSS_BRANCH` (WARNING).
 
 Labels that can't be resolved automatically are flagged for you to handle manually.
@@ -108,10 +109,11 @@ The canonical entities are organized in a hierarchy. At the default evaluation l
 
 (Full list: `DEMOGRAPHIC`, `EMPLOYMENT`, `DEVICE_IDENTIFIER`, `BIOMETRIC`, `NETWORK_IDENTIFIER`, `AUTHENTICATION`, `VEHICLE_PII`, `LEGAL_PII`, `TRAVEL_PII`, `EDUCATION`)
 
-The **evaluation granularity is branch-specific and annotation-driven**. On each hierarchy branch,
-`CanonicalMapper` keeps the single depth used by the annotations and projects more-specific predictions
-up to that depth. If annotations mix depths on one branch, mapping blocks until you explicitly collapse
-deeper labels or suppress shallower labels.
+The **evaluation granularity is annotation-driven and decided per prediction**. `CanonicalMapper`
+projects each prediction to the deepest annotated ancestor of its own label. A branch may therefore
+carry several annotated depths at once: with `PERSON` and `TITLE` both annotated, a `TITLE` prediction
+stays `TITLE` while a `NAME` prediction becomes `PERSON`, so each annotated depth keeps its own
+metrics and no mapping decision is required.
 
 For more on why this approach was chosen over alternatives, see [Why canonical entity mapping](why_canonical_entity_mapping.md).
 
@@ -178,7 +180,7 @@ When you call `mapper.analyze(df)`, the mapper checks for problems that could si
 | `UNRESOLVED` | ERROR | Label could not be matched — blocks `get_mapped_results_dataframe()` |
 | `COLLISION_CROSS_BRANCH` | WARNING | Label maps across hierarchy branches — review before evaluation |
 | `PREDICTION_ONLY` | WARNING | Label only in predictions, not dataset — review before evaluation |
-| `COLLISION_SAME_BRANCH` | INFO or ERROR | Different depths on one branch — projected automatically for one gold depth; blocking when gold mixes depths |
+| `COLLISION_SAME_BRANCH` | INFO | Different depths on one branch — handled automatically by projecting each prediction to its deepest annotated ancestor |
 | `DATASET_ONLY` | INFO | Label only in dataset annotations (model never predicts it) |
 
 > **Warning**: `get_mapped_results_dataframe()` raises `IncompleteMapping` if any ERROR issues remain. WARNING and INFO issues are non-blocking but should still be reviewed.
