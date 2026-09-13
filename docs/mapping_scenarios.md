@@ -104,7 +104,6 @@ The same string alias appears under multiple canonical entities in the hierarchy
 
 | Alias | Branch 1 | Branch 2 | Problem |
 |---|---|---|---|
-| `LICENSE` | `EMPLOYMENT → LICENSE` | `GOVERNMENT_ID → PROFESSIONAL_LICENSE` | Last-write-wins in alias map |
 | `VIN` | `GOVERNMENT_ID → VIN` | `VEHICLE_PII → VIN` | Duplicate canonical node |
 | `LICENSE_PLATE` | `GOVERNMENT_ID → LICENSE_PLATE_NUMBER` | `VEHICLE_PII → LICENSE_PLATE` | Two branches claim the same concept |
 | `VRN` | alias of `LICENSE_PLATE_NUMBER` | alias of `LICENSE_PLATE` (under `VEHICLE_PII`) | Ambiguous resolution |
