@@ -12,6 +12,7 @@
 
 ### Bug Fixes
 
+- **`LICENSE` is no longer defined twice in the entity hierarchy** — it was both a leaf under `EMPLOYMENT` and an alias of `GOVERNMENT_ID` > `PROFESSIONAL_LICENSE`, so `canonicalize("LICENSE")` returned `PROFESSIONAL_LICENSE` while `to_branch("LICENSE")` returned `EMPLOYMENT`. The `EMPLOYMENT` leaf is removed: `LICENSE` now resolves to `PROFESSIONAL_LICENSE` under `GOVERNMENT_ID` in every lookup, and `add_alias("LICENSE", ...)` targets `PROFESSIONAL_LICENSE`. Datasets annotated with a `LICENSE` label now evaluate against the `GOVERNMENT_ID` branch.
 - **Hierarchy projection now honours a custom hierarchy** — the full-depth view used for branch and detailed projection was built from a module-level default hierarchy, so a `CanonicalMapper` constructed with a custom `EntityHierarchy` projected against the built-in taxonomy instead of its own. The full-depth view is now derived from the mapper's configured hierarchy.
 
 ## Version 0.3.2
