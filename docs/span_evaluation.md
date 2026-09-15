@@ -73,35 +73,68 @@ The matching process follows these steps:
 
 ## Metric Calculation
 
-The evaluator calculates both per-entity-type metrics and global PII metrics:
+The evaluator calculates both per-entity-type metrics and global PII metrics.
+Recall is counted per annotation: each annotation is a true positive if
+predictions of its type cover it at IoU ≥ threshold, and a false negative
+otherwise. Precision is counted per prediction span: each span is counted once
+in `num_predicted`, either credited by a successful match or counted as a
+false positive.
 
 ### Per-Entity-Type Metrics
 
-- **Precision**: TP / num_predicted
+- **Precision**: (num_predicted − FP) / num_predicted
 - **Recall**: TP / num_annotated
 - **F-beta**: (1 + beta²) * (precision * recall) / (beta² * precision + recall)
+
+Note that precision is not TP / num_predicted: TP counts covered annotations,
+and a single prediction covering two annotations is two TPs but one prediction.
 
 ### Global PII Metrics
 
 - Treat every entity type as if it were a single PII type
 - Calculate global precision, recall, and F-score on PII/not PII values
 
+### Confusion Matrix and Error Records
+
+The confusion matrix (`EvaluationResult.results`) is annotation-centric:
+
+- Every annotation lands in exactly one cell: `(type, type)` when covered,
+  `(type, predicted type)` when a different type covers it at IoU ≥ threshold,
+  and `(type, "O")` when nothing does. Row totals therefore equal
+  `num_annotated` per type. When several types reach the threshold on the same
+  annotation (possible at thresholds of 0.5 or below), the annotation's own
+  type claims the cell; otherwise the wrong type with the highest IoU does.
+  Spans of the other types are false positives in the `"O"` row.
+- The `"O"` row holds prediction spans that appear in no annotation cell: false
+  positives that overlap nothing, or overlap an annotation below the threshold.
+  A prediction already represented by a `(type, predicted type)` cell is not
+  added to the `"O"` row again.
+- Column totals are not the prediction ledger. One prediction that covers two
+  annotations appears in two cells while counting once in `num_predicted`. Use
+  `num_predicted` and `false_positives` for prediction-side totals.
+
+Confusion-matrix cells and `ModelError` records are written by the per-type
+pass only. The global PII pass updates the `pii_*` counters and nothing else,
+so `calculate_score_on_df(level="both")` records each error once.
+
 
 ## Evaluation Process
 
 1. For each annotation, find all overlapping prediction spans
 2. Group overlapping spans by entity type
-3. Calculate combined IoU for each group
+3. Calculate the same-type coverage (pairwise IoU for a single span, combined
+   IoU for several)
 4. Determine match status based on IoU and entity type
-5. Mark remaining predictions (with no overlap) as FPs
+5. Count each prediction span once: credited if it participated in a
+   successful match, otherwise a false positive
 
 See more info on the [Span Matching Strategies](span_matching_strategies.md) document.
 
 ## Counting Strategy
 
-- Multiple predictions of the same type overlapping with one annotation count as a single prediction
+- Every annotation is counted once in `num_annotated` and receives one verdict
+  (TP or FN), regardless of how many predictions or types intersect with it
+- Every prediction span is counted once in `num_predicted` — a span is not
+  re-counted per annotation it overlaps, and grouped spans that jointly fail
+  count one FP each
 - Different entity types are counted separately
-- An annotation is only counted once as annotated (denominator for precision and recall),
-  regardless of how many types intersect with it
-
-

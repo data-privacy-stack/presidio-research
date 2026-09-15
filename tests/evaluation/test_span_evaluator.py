@@ -237,13 +237,13 @@ def test_scenario_group1(
             ["The", "New", "York", "Mets", "visited"],
             [0, 4, 8, 13, 18],
             0,  # true positives
-            1,  # false positives
+            2,  # false positives (each failed prediction span counts once)
             1,  # false negatives
             {
                 ("ORGANIZATION", "O"): 1,
-                ("O", "ORGANIZATION"): 1,
+                ("O", "ORGANIZATION"): 2,
             },  # confusion matrix
-            [ErrorType.FN, ErrorType.FP],  # errors
+            [ErrorType.FN, ErrorType.FP, ErrorType.FP],  # errors
         ),
         # Scenario 7A: Cumulative IoU with spans of different types > threshold
         (
@@ -436,14 +436,14 @@ def test_scenario_group2(
             ["O", "LOCATION", "ORGANIZATION", "O", "PERSON", "O"],
             ["The", "John", "Smith", "Jr", "Doe", "visited"],
             [0, 4, 9, 15, 18, 22],
-            1.0,  # precision (1 TP out of 1 predicted PII span)
+            1.0,  # precision (both predicted spans credited by the joint match)
             1.0,  # recall (1 TP out of 1 annotated PII span)
             1.0,  # F1 score
             1,  # true positives
             0,  # false positives
             0,  # false negatives
             1,  # annotated PII spans (one PERSON span)
-            1,  # predicted PII spans (multiple entity types become single PII span)
+            2,  # predicted PII spans (each actual span counts once)
         ),
         # Global entities with standalone predictions (no annotation overlap) - results in FP count update
         (
@@ -867,8 +867,14 @@ def test_calculate_iou_token_based():
             [0, 4, 8, 13],
             [ErrorType.FN, ErrorType.FP, ErrorType.WrongEntity],
             3,
-            ["Wrong entity type: LOCATION detected as PERSON"],
-            {("LOCATION", "PERSON"): 1},
+            [
+                "Entity LOCATION not detected. iou with PERSON=",
+                "Wrong entity type: LOCATION detected as PERSON",
+                "Entity PERSON falsely detected",
+            ],
+            # Both spans are represented by the wrong-entity cell only:
+            # no ("O", PERSON) for the prediction, no (LOCATION, "O") for the gold
+            {("LOCATION", "PERSON"): 1, ("O", "PERSON"): 0, ("LOCATION", "O"): 0},
         ),
         # Single overlapping prediction: Same type, low IoU → FN
         (
@@ -907,13 +913,14 @@ def test_calculate_iou_token_based():
             ["ADDRESS", "O", "ADDRESS", "ADDRESS", "ADDRESS", "O"],
             ["123", "Main", "Street", "Suite", "100", "is"],
             [0, 4, 9, 16, 22, 26],
-            [ErrorType.FN, ErrorType.FP],
-            2,
+            [ErrorType.FN, ErrorType.FP, ErrorType.FP],
+            3,
             [
                 "Entity ADDRESS not detected due to low iou=",
                 "Entity ADDRESS falsely detected",
+                "Entity ADDRESS falsely detected",
             ],
-            {("ADDRESS", "O"): 1, ("O", "ADDRESS"): 1},
+            {("ADDRESS", "O"): 1, ("O", "ADDRESS"): 2},
         ),
         # Multiple overlapping predictions: Same type, low cumulative IoU → FN
         (
@@ -922,13 +929,14 @@ def test_calculate_iou_token_based():
             ["O", "ORGANIZATION", "O", "ORGANIZATION", "O"],
             ["The", "New", "York", "Mets", "visited"],
             [0, 4, 8, 13, 18],
-            [ErrorType.FN, ErrorType.FP],
-            2,
+            [ErrorType.FN, ErrorType.FP, ErrorType.FP],
+            3,
             [
                 "Entity ORGANIZATION not detected due to low iou",
                 "Entity ORGANIZATION falsely detected",
+                "Entity ORGANIZATION falsely detected",
             ],
-            {("ORGANIZATION", "O"): 1, ("O", "ORGANIZATION"): 1},
+            {("ORGANIZATION", "O"): 1, ("O", "ORGANIZATION"): 2},
         ),
         # Multiple overlapping predictions: Different type, high cumulative IoU → WrongEntity
         (
@@ -941,11 +949,18 @@ def test_calculate_iou_token_based():
             4,
             [
                 "Entity PERSON not detected due to low iou",
-                "Entity PERSON falsely detected",
                 "Wrong entity type: PERSON detected as LOCATION",
+                "Entity PERSON falsely detected",
                 "Entity LOCATION falsely detected",
             ],
-            {("PERSON", "LOCATION"): 1, ("O", "PERSON"): 1, ("PERSON", "O"): 1},
+            # Gold PERSON and the LOCATION preds are represented by the
+            # wrong-entity cell only — neither falls back to the "O" row/column
+            {
+                ("PERSON", "LOCATION"): 1,
+                ("O", "PERSON"): 1,
+                ("O", "LOCATION"): 0,
+                ("PERSON", "O"): 0,
+            },
         ),
         # Multiple overlapping predictions: Different type, low cumulative IoU → FN + FP
         (
@@ -1021,12 +1036,18 @@ def test_calculate_iou_token_based():
             5,
             [
                 "Entity PERSON not detected.",
-                "Wrong entity type: LOCATION detected as PERSON",
                 "Entity LOCATION not detected. iou with PERSON=1.00",
+                "Wrong entity type: LOCATION detected as PERSON",
                 "Entity PERSON falsely detected",
                 "False prediction with no overlap: PHONE_NUMBER",
             ],
-            {("PERSON", "O"): 1, ("LOCATION", "PERSON"): 1, ("O", "PHONE_NUMBER"): 1},
+            {
+                ("PERSON", "O"): 1,  # the missed "Alice" annotation
+                ("LOCATION", "PERSON"): 1,
+                ("LOCATION", "O"): 0,  # gold LOCATION shown as wrong-entity, not missed
+                ("O", "PERSON"): 0,  # PERSON pred shown as wrong-entity, not FP row
+                ("O", "PHONE_NUMBER"): 1,
+            },
         ),
     ],
 )
@@ -1779,3 +1800,464 @@ def test_multi_sentence_df_does_not_merge_separated_same_type_spans(span_evaluat
     )
     assert person.num_predicted == 4
     assert person.true_positives == 4
+
+
+@pytest.mark.parametrize(
+    "tau, tokens, annotation, expected",
+    [
+        pytest.param(
+            0.9,
+            ["John", "Smith", "met", "Mary", "Jones"],
+            ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
+            # Blob misses both golds (IoU ~0.4 each): both golds are FNs, but
+            # the blob is ONE wrong prediction, not two.
+            {
+                "precision": 0.0,
+                "recall": 0.0,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "false_positives": 1,
+                "false_negatives": 2,
+            },
+            id="strict-blob-misses-both-one-fp",
+        ),
+        pytest.param(
+            0.3,
+            ["John", "Smith", "met", "Mary", "Jones"],
+            ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
+            # At a deliberately lenient threshold the blob covers both golds:
+            # full recall credit (2 golds found), full precision credit for
+            # ONE prediction — not two TPs from a single span.
+            {
+                "precision": 1.0,
+                "recall": 1.0,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "false_positives": 0,
+                "false_negatives": 0,
+            },
+            id="lenient-blob-covers-both-counted-once",
+        ),
+        pytest.param(
+            0.6,
+            ["John", "met", "Mary", "Jones", "Wilson", "Brown"],
+            ["PERSON", "O", "PERSON", "PERSON", "PERSON", "PERSON"],
+            # Short gold ("John", IoU ~0.1) swallowed, long gold
+            # ("Mary Jones Wilson Brown", IoU ~0.7) matched: the swallowed
+            # gold is an FN, but the blob already earned its single precision
+            # entry by matching the long gold — no extra FP, no phantom
+            # prediction.
+            {
+                "precision": 1.0,
+                "recall": 0.5,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "false_positives": 0,
+                "false_negatives": 1,
+            },
+            id="mixed-short-swallowed-fn-only",
+        ),
+    ],
+)
+def test_single_prediction_overlapping_multiple_annotations_counted_once(
+    span_evaluator, tau, tokens, annotation, expected
+):
+    """A prediction span overlapping several annotations is still ONE prediction.
+
+    Regression test for per-annotation double counting: the matching loop
+    processes each annotation independently and increments num_predicted (and
+    TP/FP) for every annotation a prediction overlaps, so a single blob
+    prediction covering two golds enters the precision denominator twice.
+    Desired semantics are two-sided: recall asks, per annotation, "was I
+    covered at IoU >= threshold?"; precision asks, per prediction (counted
+    once), "did I participate in any successful match?".
+    """
+    prediction = ["PERSON"] * len(tokens)
+    starts, pos = [], 0
+    for tok in tokens:
+        starts.append(pos)
+        pos += len(tok) + 1
+
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * len(tokens),
+            "token": tokens,
+            "annotation": annotation,
+            "prediction": prediction,
+            "start_indices": starts,
+        }
+    )
+
+    evaluator = SpanEvaluator(iou_threshold=tau, char_based=True, skip_words=None)
+    result = evaluator.calculate_score_on_df(results_df=df, level="entity")
+    metrics = result.per_type["PERSON"]
+
+    for field, want in expected.items():
+        got = getattr(metrics, field)
+        assert got == pytest.approx(want), (
+            f"{field}: expected {want}, got {got} "
+            f"(tp={metrics.true_positives}, fp={metrics.false_positives}, "
+            f"fn={metrics.false_negatives}, num_predicted={metrics.num_predicted})"
+        )
+
+
+@pytest.mark.parametrize(
+    "tau, tokens, annotation, prediction, expected",
+    [
+        pytest.param(
+            0.75,
+            ["John", "Smith", "Jr", "Doe"],
+            ["PERSON", "PERSON", "PERSON", "PERSON"],
+            ["PERSON", "PERSON", "O", "PERSON"],
+            # Two spans jointly cover the gold at combined IoU >= tau:
+            # one TP on the recall side, both spans credited on the precision side.
+            {
+                "true_positives": 1,
+                "false_negatives": 0,
+                "false_positives": 0,
+                "num_predicted": 2,
+                "num_annotated": 1,
+                "precision": 1.0,
+                "recall": 1.0,
+            },
+            id="1-two-preds-joint-coverage-above-tau-tp",
+        ),
+        pytest.param(
+            0.75,
+            ["New", "York", "Mets"],
+            ["ORGANIZATION", "ORGANIZATION", "ORGANIZATION"],
+            ["ORGANIZATION", "O", "ORGANIZATION"],
+            # Two spans jointly fail (combined IoU < tau): the gold is one FN,
+            # and each failed span is its own FP.
+            {
+                "true_positives": 0,
+                "false_negatives": 1,
+                "false_positives": 2,
+                "num_predicted": 2,
+                "num_annotated": 1,
+                "precision": 0.0,
+                "recall": 0.0,
+            },
+            id="2-two-preds-joint-coverage-below-tau-1fn-2fp",
+        ),
+        pytest.param(
+            0.75,
+            ["Alice", "visited", "Bob"],
+            ["O", "O", "O"],
+            ["PERSON", "O", "PERSON"],
+            # Two standalone predictions with no gold at all: two FPs.
+            # Recall is undefined (nothing annotated).
+            {
+                "true_positives": 0,
+                "false_negatives": 0,
+                "false_positives": 2,
+                "num_predicted": 2,
+                "num_annotated": 0,
+                "precision": 0.0,
+                "recall": np.nan,
+            },
+            id="3-two-standalone-preds-2fp",
+        ),
+        pytest.param(
+            0.3,
+            ["John", "Smith", "met", "Mary", "Jones"],
+            ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
+            ["PERSON", "PERSON", "PERSON", "PERSON", "PERSON"],
+            # One blob covers both golds, each pairwise IoU >= tau: two recall
+            # TPs, but the blob enters the precision denominator once.
+            # Precision is (np - fp)/np = 1.0, NOT tp/np (which would be 2.0).
+            {
+                "true_positives": 2,
+                "false_negatives": 0,
+                "false_positives": 0,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "precision": 1.0,
+                "recall": 1.0,
+            },
+            id="4-one-pred-two-golds-above-tau-2tp",
+        ),
+        pytest.param(
+            0.9,
+            ["John", "Smith", "met", "Mary", "Jones"],
+            ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
+            ["PERSON", "PERSON", "PERSON", "PERSON", "PERSON"],
+            # One blob misses both golds: two FNs, but only ONE FP — the model
+            # emitted a single span.
+            {
+                "true_positives": 0,
+                "false_negatives": 2,
+                "false_positives": 1,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "precision": 0.0,
+                "recall": 0.0,
+            },
+            id="5-one-pred-two-golds-below-tau-2fn-1fp",
+        ),
+        pytest.param(
+            0.6,
+            ["John", "met", "Mary", "Jones", "Wilson", "Brown"],
+            ["PERSON", "O", "PERSON", "PERSON", "PERSON", "PERSON"],
+            ["PERSON", "PERSON", "PERSON", "PERSON", "PERSON", "PERSON"],
+            # Mixed: the blob matches the long gold (IoU ~0.7) and swallows the
+            # short one (IoU ~0.1). The miss costs recall once (FN); the blob is
+            # credited via the long match, so no FP.
+            {
+                "true_positives": 1,
+                "false_negatives": 1,
+                "false_positives": 0,
+                "num_predicted": 1,
+                "num_annotated": 2,
+                "precision": 1.0,
+                "recall": 0.5,
+            },
+            id="6-one-pred-long-matched-short-swallowed-1tp-1fn",
+        ),
+    ],
+)
+def test_two_sided_counting_semantics(
+    span_evaluator, tau, tokens, annotation, prediction, expected
+):
+    """The counting-semantics contract of two-sided matching, one case per scenario.
+
+    Recall side: every annotation gets exactly one verdict (TP if covered by
+    same-type predictions at IoU >= threshold — pairwise for one span, combined
+    for several — else FN), so tp + fn == num_annotated.
+
+    Precision side: every prediction span enters num_predicted exactly once and
+    is either credited (participated in a successful match) or an FP, so
+    precision == (num_predicted - false_positives) / num_predicted.
+    """
+    starts, pos = [], 0
+    for tok in tokens:
+        starts.append(pos)
+        pos += len(tok) + 1
+
+    df = pd.DataFrame(
+        {
+            "sentence_id": [0] * len(tokens),
+            "token": tokens,
+            "annotation": annotation,
+            "prediction": prediction,
+            "start_indices": starts,
+        }
+    )
+
+    evaluator = SpanEvaluator(iou_threshold=tau, char_based=True, skip_words=None)
+    result = evaluator.calculate_score_on_df(results_df=df, level="entity")
+    entity_type = next(t for t in annotation + prediction if t != "O")
+    metrics = result.per_type[entity_type]
+
+    for field, want in expected.items():
+        got = getattr(metrics, field)
+        if isinstance(want, float) and np.isnan(want):
+            assert np.isnan(got), f"{field}: expected nan, got {got}"
+        else:
+            assert got == pytest.approx(want), (
+                f"{field}: expected {want}, got {got} "
+                f"(tp={metrics.true_positives}, fp={metrics.false_positives}, "
+                f"fn={metrics.false_negatives}, np={metrics.num_predicted}, "
+                f"na={metrics.num_annotated})"
+            )
+
+    # The two ledger invariants hold in every scenario.
+    assert metrics.true_positives + metrics.false_negatives == metrics.num_annotated
+    assert metrics.false_positives <= metrics.num_predicted
+
+
+def _single_sentence_df(tokens, annotation, prediction):
+    starts, pos = [], 0
+    for tok in tokens:
+        starts.append(pos)
+        pos += len(tok) + 1
+    return pd.DataFrame(
+        {
+            "sentence_id": [0] * len(tokens),
+            "token": tokens,
+            "annotation": annotation,
+            "prediction": prediction,
+            "start_indices": starts,
+        }
+    )
+
+
+def test_level_both_records_each_error_once():
+    """The global PII pass must not duplicate confusion cells or error records.
+
+    With the default level="both", the per-type pass and the PII pass write
+    into the same EvaluationResult. Only the per-type pass may touch
+    ``results`` and ``model_errors``; the PII pass owns the pii_* counters.
+    """
+    df = _single_sentence_df(["Alice", "Smith"], ["PII", "PII"], ["PII", "O"])
+    evaluator = SpanEvaluator(iou_threshold=0.9, char_based=True, skip_words=[])
+    result = evaluator.calculate_score_on_df(df)
+
+    metrics = result.per_type["PII"]
+    assert (
+        metrics.num_predicted,
+        metrics.true_positives,
+        metrics.false_positives,
+        metrics.false_negatives,
+    ) == (1, 0, 1, 1)
+    assert (
+        result.pii_predicted,
+        result.pii_true_positives,
+        result.pii_false_positives,
+        result.pii_false_negatives,
+    ) == (1, 0, 1, 1)
+    assert result.results[("O", "PII")] == 1
+    assert result.results[("PII", "O")] == 1
+    error_types = [error.error_type for error in result.model_errors]
+    assert error_types.count(ErrorType.FP) == 1
+    assert error_types.count(ErrorType.FN) == 1
+
+
+def test_global_pass_leaves_no_pii_traces_in_per_type_results():
+    """At entity level, results and errors carry real labels only.
+
+    The PII pass relabels everything to "PII" internally; that label must not
+    leak into the confusion matrix or the error list of a per-type run.
+    """
+    df = _single_sentence_df(
+        ["Alice", "Smith", "in", "Paris"],
+        ["PERSON", "PERSON", "O", "LOCATION"],
+        ["PERSON", "O", "O", "ORGANIZATION"],
+    )
+    evaluator = SpanEvaluator(iou_threshold=0.9, char_based=True, skip_words=[])
+    result = evaluator.calculate_score_on_df(df)
+
+    labels = {label for cell in result.results for label in cell}
+    labels |= {error.prediction for error in result.model_errors}
+    labels |= {error.annotation for error in result.model_errors}
+    assert "PII" not in labels
+
+    fp_records = sum(1 for e in result.model_errors if e.error_type == ErrorType.FP)
+    fn_records = sum(1 for e in result.model_errors if e.error_type == ErrorType.FN)
+    assert fp_records == sum(m.false_positives for m in result.per_type.values()) == 2
+    assert fn_records == sum(m.false_negatives for m in result.per_type.values()) == 2
+    # "Paris" is detected as ORGANIZATION: one wrong-entity cell, no "O" entry
+    assert result.results[("LOCATION", "ORGANIZATION")] == 1
+    assert result.results.get(("O", "ORGANIZATION"), 0) == 0
+    # PII pass: "Alice" misses "Alice Smith", "Paris" is found
+    assert (
+        result.pii_predicted,
+        result.pii_true_positives,
+        result.pii_false_positives,
+        result.pii_false_negatives,
+    ) == (2, 1, 1, 1)
+
+
+@pytest.mark.parametrize("tau", [0.5, 0.75, 0.9])
+def test_hierarchical_levels_share_one_ledger(tau):
+    """binary, branch and detailed results all obey the same counting contract.
+
+    For every level: tp + fn == num_annotated per type, one error record per
+    FP and per FN, every annotation in exactly one confusion-matrix row cell
+    (also at threshold 0.5, where two types can tie on one annotation), labels
+    restricted to the level's vocabulary, and pii_* counters identical across
+    levels and equal to the binary level's per-type "PII" counts.
+    """
+    from presidio_evaluator.entity_mapping import CanonicalMapper
+
+    tokens = ["Alice", "Smith", "met", "Bob", "in", "New", "York", "on",
+              "May", "5", "2020", "call", "555", "1234"]  # fmt: skip
+    annotation = ["PERSON", "PERSON", "O", "PERSON", "O", "LOCATION", "LOCATION",
+                  "O", "DATE_TIME", "DATE_TIME", "DATE_TIME", "O",
+                  "PHONE_NUMBER", "PHONE_NUMBER"]  # fmt: skip
+    prediction = ["PERSON", "O", "O", "LOCATION", "O", "LOCATION", "LOCATION",
+                  "O", "DATE_TIME", "O", "DATE_TIME", "O",
+                  "PHONE_NUMBER", "PHONE_NUMBER"]  # fmt: skip
+    df = _single_sentence_df(tokens, annotation, prediction)
+    mapper = CanonicalMapper()
+    mapper.analyze(df)
+    mapped = mapper.get_mapped_results_dataframe()
+
+    evaluator = SpanEvaluator(iou_threshold=tau, char_based=True, skip_words=[])
+    scores = evaluator.calculate_hierarchical_scores(mapped)
+
+    binary_pii = scores["binary"].per_type["PII"]
+    for level in ("binary", "branch", "detailed"):
+        result = scores[level]
+        vocabulary = set(mapped.get_level(level)["annotation"]) | set(
+            mapped.get_level(level)["prediction"]
+        )
+        for entity_type, m in result.per_type.items():
+            assert m.true_positives + m.false_negatives == m.num_annotated, level
+            assert 0 <= m.false_positives <= m.num_predicted, level
+            row_total = sum(
+                count
+                for (ann, _pred), count in result.results.items()
+                if ann == entity_type
+            )
+            assert row_total == m.num_annotated, (level, entity_type)
+
+        fp_records = sum(1 for e in result.model_errors if e.error_type == ErrorType.FP)
+        fn_records = sum(1 for e in result.model_errors if e.error_type == ErrorType.FN)
+        assert fp_records == sum(m.false_positives for m in result.per_type.values())
+        assert fn_records == sum(m.false_negatives for m in result.per_type.values())
+
+        labels = {label for cell in result.results for label in cell}
+        labels |= {e.prediction for e in result.model_errors}
+        labels |= {e.annotation for e in result.model_errors}
+        assert labels <= vocabulary | {"O"}, (level, labels - vocabulary)
+
+        assert (
+            result.pii_predicted,
+            result.pii_true_positives,
+            result.pii_false_positives,
+            result.pii_false_negatives,
+        ) == (
+            binary_pii.num_predicted,
+            binary_pii.true_positives,
+            binary_pii.false_positives,
+            binary_pii.false_negatives,
+        ), level
+
+    # Binary level: no wrong-entity cells are possible, so the confusion matrix
+    # is the ledger itself.
+    binary = scores["binary"]
+    assert binary.results[("PII", "PII")] == binary_pii.true_positives
+    assert binary.results[("PII", "O")] == binary_pii.false_negatives
+    assert binary.results[("O", "PII")] == binary_pii.false_positives
+
+
+def test_annotation_row_is_claimed_by_strongest_match_at_tie():
+    """At a threshold two types can both reach, the row still has one cell.
+
+    Same type wins over a wrong type; among wrong types the highest IoU wins
+    (ties broken by name). Spans of the losing types are plain false positives
+    in the "O" row, with an FP record but no WrongEntity record.
+    """
+    evaluator = SpanEvaluator(iou_threshold=0.5, char_based=False, skip_words=[])
+
+    # PERSON gold of 4 tokens: LOCATION on the first half, PERSON on the second.
+    tp_df = _single_sentence_df(
+        ["a", "b", "c", "d"],
+        ["PERSON"] * 4,
+        ["LOCATION", "LOCATION", "PERSON", "PERSON"],
+    )
+    result = evaluator.calculate_score_on_df(tp_df, level="entity")
+    assert result.per_type["PERSON"].true_positives == 1
+    assert result.results[("PERSON", "PERSON")] == 1
+    assert result.results.get(("PERSON", "LOCATION"), 0) == 0
+    assert result.results[("O", "LOCATION")] == 1
+    assert result.per_type["LOCATION"].false_positives == 1
+    assert not [e for e in result.model_errors if e.error_type == ErrorType.WrongEntity]
+
+    # PERSON gold of 4 tokens: LOCATION and ORGANIZATION each cover half.
+    fn_df = _single_sentence_df(
+        ["a", "b", "c", "d"],
+        ["PERSON"] * 4,
+        ["ORGANIZATION", "ORGANIZATION", "LOCATION", "LOCATION"],
+    )
+    result = evaluator.calculate_score_on_df(fn_df, level="entity")
+    assert result.per_type["PERSON"].false_negatives == 1
+    row = {p: c for (a, p), c in result.results.items() if a == "PERSON" and c}
+    assert row == {"LOCATION": 1}  # equal IoU, alphabetical tie-break
+    assert result.results[("O", "ORGANIZATION")] == 1
+    assert result.results.get(("O", "LOCATION"), 0) == 0
+    wrong = [e for e in result.model_errors if e.error_type == ErrorType.WrongEntity]
+    assert [e.prediction for e in wrong] == ["LOCATION"]
+    fp_records = [e for e in result.model_errors if e.error_type == ErrorType.FP]
+    assert sorted(e.prediction for e in fp_records) == ["LOCATION", "ORGANIZATION"]
