@@ -12,8 +12,16 @@
 
 ### Bug Fixes
 
+- **Alias ownership and static collision warnings use structural paths** — a node's name can also be an alias of a different node in a custom hierarchy. Both `add_alias()` and construction-time warnings now derive the target from its path rather than resolving its name. Correct aliases no longer generate false warnings, and genuine conflicts remain visible even when the branch name is shadowed.
+- **`add_alias()` no longer silently steals an alias from another entity** — `add_alias("LOCATION", "EMAIL")` was accepted and quietly re-pointed `EMAIL` from `EMAIL_ADDRESS` to `LOCATION`, invalidating every corpus already annotated with that label. Whether the theft succeeded depended only on dictionary ordering. An alias already resolving somewhere other than the requested target is now rejected before the hierarchy is touched.
+- **Rejected alias additions leave the hierarchy untouched** — ownership validation now precedes creation of branch alias lists. Rejected calls neither mutate the tree nor rebuild it. The redundant post-write guard, rollback, and warning-suppression flag have been removed; static shadow warnings run at construction.
+- **Equivalent normalized aliases are not stored twice on a target** — case, underscore, and dash variations no longer create duplicate alias entries.
 - **`LICENSE` is no longer defined twice in the entity hierarchy** — it was both a leaf under `EMPLOYMENT` and an alias of `GOVERNMENT_ID` > `PROFESSIONAL_LICENSE`, so `canonicalize("LICENSE")` returned `PROFESSIONAL_LICENSE` while `to_branch("LICENSE")` returned `EMPLOYMENT`. The `EMPLOYMENT` leaf is removed: `LICENSE` now resolves to `PROFESSIONAL_LICENSE` under `GOVERNMENT_ID` in every lookup, and `add_alias("LICENSE", ...)` targets `PROFESSIONAL_LICENSE`. Datasets annotated with a `LICENSE` label now evaluate against the `GOVERNMENT_ID` branch.
 - **Hierarchy projection now honours a custom hierarchy** — the full-depth view used for branch and detailed projection was built from a module-level default hierarchy, so a `CanonicalMapper` constructed with a custom `EntityHierarchy` projected against the built-in taxonomy instead of its own. The full-depth view is now derived from the mapper's configured hierarchy.
+
+### Removals
+
+- **`_to_l1()` and `_to_l0()` removed from `base_evaluator`** — superseded by `EntityHierarchy.to_branch()` / `to_binary()`, and callerless. `_to_l1` was a copy of the branch projection that did not learn alias resolution when `to_branch()` did, leaving the two disagreeing on 434 of 570 labels — including `LOC`, which `_to_l1` bucketed under a `LOC` branch of its own rather than `LOCATION`, the exact mis-bucketing branch aliases exist to remove. Nothing called it, so nothing miscounted; it is deleted rather than fixed so the divergence cannot be reintroduced by a future import.
 
 ## Version 0.3.2
 
@@ -24,11 +32,14 @@
 ### Breaking Changes
 
 - **`LOC`, `ORG` and `PER` are no longer canonical entities** — they were empty leaf nodes under `LOCATION`/`ORGANIZATION`/`PERSON` > `NAME` and are now branch-level aliases of `LOCATION`/`ORGANIZATION`/`PERSON`. Coarse dataset labels like TAB's `LOC`/`ORG`/`PER` therefore match a model's `LOCATION`/`ORGANIZATION`/`PERSON` at the exact (leaf) level, not only at the branch level. Concretely:
-  - `canonicalize("LOC")` returns `"LOCATION"` (was `"LOC"`), and likewise for `ORG` and `PER`.
-  - `LOC`/`ORG`/`PER` no longer appear in `all_canonical_entities` or `canonical_to_branch`.
-  - `get_depth("LOC")` returns `2` (was `3`), because `LOC` now denotes the depth-2 `LOCATION` branch. `get_depth("PER")` returns `2` (was `3`).
+  `LOC` and `ORG` were depth-3 canonical leaves, but `PER` sat one level deeper, under `PERSON > NAME`, so it does not follow the same before/after as the other two. Taking them separately:
+  - `canonicalize("LOC")` returns `"LOCATION"` (was `"LOC"`), and likewise `canonicalize("ORG")`.
+  - `canonicalize("PER")` returns `"PERSON"` — **was `"NAME"`**, not `"PER"`.
+  - `LOC` and `ORG` no longer appear in `all_canonical_entities` or `canonical_to_branch`. `PER` never did, being below the canonical depth.
+  - `get_depth("LOC")` returns `2` (was `3`), because `LOC` now denotes the depth-2 `LOCATION` branch. `get_depth("PER")` returns `2` — it previously **raised `EntityNotMappedError`**.
   - `CanonicalMapper.map()` no longer accepts `LOC`/`ORG`/`PER` as resolution *targets*, since targets must be canonical entities. Such mappings are also no longer needed — the labels resolve on their own.
-  - `to_branch("LOC")` still returns `"LOCATION"`, unchanged; `to_branch("PER")` still returns `"PERSON"`.
+  - `to_branch("LOC")` returns `"LOCATION"`, unchanged.
+  - **`to_branch("PER")` returns `"PERSON"`, where it previously returned `"PER"`.** This one is a genuine behavior change, not a no-op: anyone bucketing a `PER`-annotated corpus by branch gets a different answer after upgrading. `PER` used to fall through `to_branch` unresolved and form a bucket of its own; it now joins `PERSON`.
 
 ### Behavior Changes
 

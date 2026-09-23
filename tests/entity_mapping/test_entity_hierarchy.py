@@ -1,3 +1,7 @@
+import copy
+import logging
+from unittest.mock import patch
+
 import pytest
 
 from presidio_evaluator.entity_mapping import (
@@ -656,39 +660,198 @@ class TestBranchAliases:
             EntityHierarchy()
         assert not [r for r in caplog.records if "shadowed" in r.message]
 
+
+class TestAddAliasShadowedTarget:
+    """Regression tests for structural targets and alias ownership."""
+
+    @staticmethod
+    def shadowed_target_hierarchy():
+        return {
+            "PII": {
+                "ALPHA": {"SHARED": {"_aliases": ["OWN_ALIAS"], "CHILD": []}},
+                "BETA": {"OTHER": ["SHARED"]},
+            }
+        }
+
+    def test_new_alias_on_structurally_shadowed_target_is_accepted(self):
+        h = EntityHierarchy(hierarchy=self.shadowed_target_hierarchy())
+        assert h.canonicalize("SHARED") == "OTHER"
+        h.add_alias("SHARED", "NEW_ALIAS")
+        assert h.canonicalize("NEW_ALIAS") == "SHARED"
+
+    def test_every_canonical_entity_accepts_a_fresh_alias(self):
+        """No canonical entity may reject an alias nothing else has claimed."""
+        rejected = []
+        for entity in sorted(EntityHierarchy().all_canonical_entities):
+            h = EntityHierarchy()
+            try:
+                h.add_alias(entity, f"ZZ_FRESH_{entity}")
+            except ValueError:
+                rejected.append(entity)
+        assert rejected == []
+
+    def test_alias_owned_by_another_entity_is_refused(self):
+        """Re-homing a live alias silently invalidates existing annotations."""
+        h = EntityHierarchy()
+        assert h.canonicalize("EMAIL") == "EMAIL_ADDRESS"
+        with pytest.raises(ValueError, match="already resolves"):
+            h.add_alias("LOCATION", "EMAIL")
+        assert h.canonicalize("EMAIL") == "EMAIL_ADDRESS"
+
+    def test_refused_alias_leaves_hierarchy_untouched(self):
+        h = EntityHierarchy()
+        before = copy.deepcopy(h.__dict__)
+        for target, alias in (
+            ("EMPLOYMENT", "EMAIL"),
+            ("LOCATION", "EMAIL"),
+            ("LOCATION", "CITY"),
+        ):
+            with pytest.raises(ValueError):
+                h.add_alias(target, alias)
+            assert h.__dict__ == before
+
+    def test_rejected_add_alias_never_rebuilds_or_warns(self, caplog):
+        h = EntityHierarchy()
+        with (
+            caplog.at_level(logging.WARNING),
+            patch.object(h, "_rebuild", wraps=h._rebuild) as rebuild,
+        ):
+            with pytest.raises(ValueError):
+                h.add_alias("LOCATION", "CITY")
+        rebuild.assert_not_called()
+        assert [r for r in caplog.records if "shadowed" in r.message] == []
+
+    def test_construction_still_warns_about_static_shadowing(self, caplog):
+        hier = copy.deepcopy(HIERARCHY)
+        hier["PII"]["LOCATION"][BRANCH_ALIASES_KEY] = ["LOC", "CITY"]
+        with caplog.at_level(logging.WARNING):
+            EntityHierarchy(hierarchy=hier)
+        assert any("shadowed" in r.message for r in caplog.records)
+
+    def test_canonical_name_for_path_uses_structure_not_names(self):
+        h = EntityHierarchy(hierarchy=self.shadowed_target_hierarchy())
+        found = h._find_node("SHARED")
+        assert found is not None
+        _, key, path = found
+        assert key == "SHARED"
+        assert h._canonical_name_for_path(path) == "SHARED"
+        assert h.canonicalize("SHARED") == "OTHER"
+
+    @pytest.mark.parametrize(
+        ("depth", "expected"), [(1, "PII"), (2, "ALPHA"), (3, "SHARED"), (10, "SHARED")]
+    )
+    def test_shadowed_branch_name_does_not_cause_false_warning(
+        self, depth, expected, caplog
+    ):
+        with caplog.at_level(logging.WARNING):
+            h = EntityHierarchy(
+                hierarchy=self.shadowed_target_hierarchy(), canonical_depth=depth
+            )
+        assert h.canonicalize("OWN_ALIAS") == expected
+        assert not caplog.records
+
+    def test_real_collision_warns_even_when_branch_name_is_shadowed(self, caplog):
+        tree = self.shadowed_target_hierarchy()
+        tree["PII"]["BETA"]["OTHER"].append("OWN_ALIAS")
+        with caplog.at_level(logging.WARNING):
+            h = EntityHierarchy(hierarchy=tree)
+        assert h.canonicalize("OWN_ALIAS") == "OTHER"
+        assert len(caplog.records) == 1
+        assert caplog.records[0].getMessage() == (
+            "Branch alias 'OWN_ALIAS' on 'SHARED' is shadowed by 'OTHER' "
+            "and will never resolve to 'SHARED'."
+        )
+
+    @pytest.mark.parametrize("depth", [2, 3, 10])
+    def test_deep_descendant_ownership_is_checked_before_mutation(self, depth):
+        h = EntityHierarchy(
+            hierarchy=self.shadowed_target_hierarchy(), canonical_depth=depth
+        )
+        before = copy.deepcopy(h.__dict__)
+        with patch.object(h, "_rebuild", wraps=h._rebuild) as rebuild:
+            with pytest.raises(ValueError, match="already resolves"):
+                h.add_alias("BETA", "CHILD")
+        rebuild.assert_not_called()
+        assert h.__dict__ == before
+
+    @pytest.mark.parametrize("target", ["EMPLOYMENT", "EMAIL_ADDRESS"])
+    def test_normalized_alias_addition_is_idempotent(self, target):
+        h = EntityHierarchy()
+        h.add_alias(target, "CUSTOM_ALIAS")
+        before = copy.deepcopy(h.__dict__)
+        for alias in ("customalias", "Custom-Alias", "CUSTOM_ALIAS"):
+            h.add_alias(target, alias)
+            assert h.__dict__ == before
+
+    def test_successful_addition_rebuilds_once_without_repeating_static_warnings(
+        self, caplog
+    ):
+        tree = self.shadowed_target_hierarchy()
+        tree["PII"]["BETA"]["OTHER"].append("OWN_ALIAS")
+        with caplog.at_level(logging.WARNING):
+            h = EntityHierarchy(hierarchy=tree)
+        assert caplog.records
+        caplog.clear()
+        with (
+            caplog.at_level(logging.WARNING),
+            patch.object(h, "_rebuild", wraps=h._rebuild) as rebuild,
+        ):
+            h.add_alias("BETA", "NEW_ALIAS")
+        rebuild.assert_called_once_with()
+        assert h.canonicalize("NEW_ALIAS") == "BETA"
+        assert not caplog.records
+
+
+class TestRemovedBranchProjectionHelpers:
+    def test_to_l1_and_to_l0_are_gone(self):
+        """Deleted so no future import can resurrect the diverged copy."""
+        from presidio_evaluator.evaluation import base_evaluator
+
+        assert not hasattr(base_evaluator, "_to_l1")
+        assert not hasattr(base_evaluator, "_to_l0")
+
+    def test_to_branch_resolves_aliases_that_to_l1_did_not(self):
+        h = EntityHierarchy()
+        assert h.to_branch("LOC") == "LOCATION"
+        assert h.to_branch("CITY") == "LOCATION"
+
+
+class TestUpstreamLabelRegressions:
     def test_i2b2_patient_is_a_name_not_a_record_number(self):
+        h = EntityHierarchy()
         # In the i2b2/n2c2 2014 de-identification schema, PATIENT and DOCTOR are
         # both subtypes of the NAME category; MEDICALRECORD is the ID subtype.
         # "PATIENT" tags a person's name ("Yosef Villegas"), so it must resolve
         # like DOCTOR and PATIENT_NAME, not like a medical record number.
         for label in ("PATIENT", "DOCTOR", "PATIENT_NAME"):
-            assert self.h.canonicalize(label) == "NAME"
-            assert self.h.to_branch(label) == "PERSON"
+            assert h.canonicalize(label) == "NAME"
+            assert h.to_branch(label) == "PERSON"
 
         # ...while the record-number aliases stay in PHI.
         for label in ("MEDICALRECORD", "MEDICAL_RECORD"):
-            assert self.h.canonicalize(label) == "PATIENT_ID"
-            assert self.h.to_branch(label) == "PHI"
+            assert h.canonicalize(label) == "PATIENT_ID"
+            assert h.to_branch(label) == "PHI"
 
         # MEDICAL_RECORD_NUMBER is listed under both PATIENT_ID and MRN, and MRN
         # currently wins. That pre-existing shadowing is out of scope here; it is
         # asserted at branch level so this test does not silently encode which
         # leaf happens to win.
-        assert self.h.to_branch("MEDICAL_RECORD_NUMBER") == "PHI"
+        assert h.to_branch("MEDICAL_RECORD_NUMBER") == "PHI"
 
     def test_license_resolves_to_professional_license(self):
+        h = EntityHierarchy()
         # LICENSE was defined twice: a leaf under EMPLOYMENT and an alias of
         # GOVERNMENT_ID > PROFESSIONAL_LICENSE. The alias won the alias map
         # while to_branch() saw the leaf, so one label reported two branches.
         # A license is a government-issued ID, so the EMPLOYMENT leaf is gone.
-        assert self.h.canonicalize("LICENSE") == "PROFESSIONAL_LICENSE"
-        assert self.h.to_branch("LICENSE") == "GOVERNMENT_ID"
-        assert self.h.get_branch("LICENSE") == [
+        assert h.canonicalize("LICENSE") == "PROFESSIONAL_LICENSE"
+        assert h.to_branch("LICENSE") == "GOVERNMENT_ID"
+        assert h.get_branch("LICENSE") == [
             "PII",
             "GOVERNMENT_ID",
             "PROFESSIONAL_LICENSE",
         ]
-        assert "LICENSE" not in self.h.all_canonical_entities
+        assert "LICENSE" not in h.all_canonical_entities
 
     def test_add_alias_on_license_targets_professional_license(self):
         # With the EMPLOYMENT leaf removed, "LICENSE" is only an alias, so
