@@ -8,7 +8,7 @@
 
 ## CanonicalMapper
 - Single-phase (Identify-only) — no projection phase
-- `analyze(results_df, min_severity='WARNING')` — COLLISION_SAME_BRANCH (INFO) hidden unless `min_severity='INFO'`
+- `analyze(results_df, min_severity='WARNING')` — informational COLLISION_SAME_BRANCH issues are hidden unless `min_severity='INFO'`; mixed gold depths are ERROR
 - `get_mapped_results_dataframe()` returns `MappedResults` (frozen dataclass with `.original`, `.binary`, `.branch`, `.detailed`)
 - `get_mapping()` returns `{label: resolved}` dict — UNRESOLVED labels excluded
 - `get_issues()` filters by `_min_severity` — call after `analyze()` or `map()`
@@ -18,7 +18,7 @@
 - COLLISION_CROSS_BRANCH (WARNING, blocking) — only raised when cross-branch co-occurrences outnumber same-branch ones for the prediction label
 - PREDICTION_ONLY (WARNING, blocking)
 - DATASET_ONLY (WARNING, non-blocking)
-- COLLISION_SAME_BRANCH (INFO, non-blocking)
+- COLLISION_SAME_BRANCH (INFO when projection is unambiguous; ERROR when gold mixes depths on one branch)
 
 ## _Resolution dataclass fields
 - `tier` — identification tier (EXACT, COUNTRY, COUNTRY_FALLBACK, FUZZY, UNRESOLVED)

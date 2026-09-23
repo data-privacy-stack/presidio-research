@@ -361,6 +361,16 @@ class MapperRenderer:
         for issue in m.get_issues():
             sty = sev_style[issue.severity]
             why = gap_why.get(issue.type, "")
+            if (
+                issue.type == IssueType.COLLISION_SAME_BRANCH
+                and issue.overlap_counts is None
+            ):
+                why = (
+                    "The gold annotation vocabulary uses <strong>multiple hierarchy "
+                    "depths on one branch</strong>. Each prediction is projected to the "
+                    "deepest annotated ancestor of its own label, so every annotated "
+                    "depth keeps its own metrics. No action required."
+                )
             lbl_tags = " ".join(
                 f'<code style="background:#f6f8fa;padding:1px 5px;'
                 f'border-radius:3px;font-size:12px">{lbl}</code>'

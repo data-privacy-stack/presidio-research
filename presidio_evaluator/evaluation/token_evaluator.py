@@ -29,6 +29,7 @@ class TokenEvaluator(BaseEvaluator):
         self,
         input_sample: InputSample,
         prediction: list[str],
+        allow_generic_entities: bool = True,
     ) -> tuple[Counter, list[ModelError]]:
         """
         Compares ground truth tags (annotation) and predicted (prediction)
@@ -72,6 +73,7 @@ class TokenEvaluator(BaseEvaluator):
                     cur_prediction,
                     cur_token,
                     results,
+                    allow_generic_entities=allow_generic_entities,
                 )
                 if reverted:
                     continue
@@ -135,6 +137,7 @@ class TokenEvaluator(BaseEvaluator):
         current_prediction: str,
         current_token: str | Token,
         results: Counter[tuple[str, str]],
+        allow_generic_entities: bool = True,
     ) -> bool:
         reverted = False
 
@@ -143,14 +146,22 @@ class TokenEvaluator(BaseEvaluator):
             results[(current_annotation, current_prediction)] -= 1
             reverted = True
 
-        if current_prediction in self.generic_entities and current_annotation != "O":
+        if (
+            allow_generic_entities
+            and current_prediction in self.generic_entities
+            and current_annotation != "O"
+        ):
             # Ignore cases where the prediction is generic
             results[(current_annotation, current_prediction)] -= 1
             # Add a result which assumes the generic equals the specific
             results[(current_annotation, current_annotation)] += 1
             reverted = True
 
-        elif current_annotation in self.generic_entities and current_prediction != "O":
+        elif (
+            allow_generic_entities
+            and current_annotation in self.generic_entities
+            and current_prediction != "O"
+        ):
             # Ignore cases where the prediction is generic
             results[(current_annotation, current_prediction)] -= 1
             # Add a result which assumes the generic equals the specific
@@ -202,6 +213,7 @@ class TokenEvaluator(BaseEvaluator):
         results_df: pd.DataFrame,
         beta: float = 2.0,
         level: Literal["entity", "pii", "both"] = "both",
+        allow_generic_entities: bool = True,
         **kwargs,
     ) -> EvaluationResult:
         """
@@ -219,6 +231,9 @@ class TokenEvaluator(BaseEvaluator):
         :param beta: F-beta parameter for score calculation (default 2.0).
         :param level: Which metrics to compute. One of ``"entity"``, ``"pii"``,
             or ``"both"`` (default).
+        :param allow_generic_entities: Whether generic labels such as ``PII`` may
+            satisfy a more-specific annotation. Hierarchical scoring disables
+            this because granularity projection is handled by CanonicalMapper.
         :return: EvaluationResult with the requested precision/recall/F metrics.
         """
         evaluation_results: list[EvaluationResult] = []
@@ -238,6 +253,7 @@ class TokenEvaluator(BaseEvaluator):
             results, errors = self.compare(
                 input_sample=input_sample,
                 prediction=predictions,
+                allow_generic_entities=allow_generic_entities,
             )
             evaluation_results.append(
                 EvaluationResult(

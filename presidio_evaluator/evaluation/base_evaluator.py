@@ -282,7 +282,19 @@ class BaseEvaluator(ABC):
             )
 
         return {
-            "binary": self.calculate_score_on_df(results.binary, beta=beta),
-            "branch": self.calculate_score_on_df(results.branch, beta=beta),
-            "detailed": self.calculate_score_on_df(results.detailed, beta=beta),
+            "binary": self.calculate_score_on_df(
+                results.binary,
+                beta=beta,
+                allow_generic_entities=False,
+            ),
+            "branch": self.calculate_score_on_df(
+                results.branch,
+                beta=beta,
+                allow_generic_entities=False,
+            ),
+            "detailed": self.calculate_score_on_df(
+                results.detailed,
+                beta=beta,
+                allow_generic_entities=False,
+            ),
         }

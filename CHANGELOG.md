@@ -2,12 +2,22 @@
 
 ## Unreleased
 
+### Features
+
+- **Python 3.14 support** — `requires-python` is now `>=3.11,<3.15`, `uv.lock` has been regenerated for the wider range, and the locked `spacy` moves to 3.8.16, the first release that declares 3.14 support. CI runs the test suite on 3.11 through 3.14.
+
+### Behavior Changes
+
+- **Predictions are projected to the deepest annotated ancestor during canonical mapping** — the gold vocabulary decides the granularity, per prediction. A `NAME` prediction is mapped to `PERSON` when the dataset annotates `PERSON`, and `DATE` is mapped to `DATE_TIME` when the dataset annotates `DATE_TIME`. A prediction with no annotated ancestor is left unchanged, so a coarser prediction is never pushed down onto a finer gold label and siblings are never conflated. Datasets that annotate several depths on one branch (e.g. `PERSON` and `TITLE` in `data/synth_dataset_v2.json`) need no mapping decision: `TITLE` predictions stay `TITLE` while `NAME` predictions become `PERSON`, so every annotated depth keeps its own metrics. Mixed annotation depths are reported as an INFO issue. Low-IoU errors are attributed to the projected scoring label.
+
 ### Bug Fixes
 
 - **Alias ownership and static collision warnings use structural paths** — a node's name can also be an alias of a different node in a custom hierarchy. Both `add_alias()` and construction-time warnings now derive the target from its path rather than resolving its name. Correct aliases no longer generate false warnings, and genuine conflicts remain visible even when the branch name is shadowed.
 - **`add_alias()` no longer silently steals an alias from another entity** — `add_alias("LOCATION", "EMAIL")` was accepted and quietly re-pointed `EMAIL` from `EMAIL_ADDRESS` to `LOCATION`, invalidating every corpus already annotated with that label. Whether the theft succeeded depended only on dictionary ordering. An alias already resolving somewhere other than the requested target is now rejected before the hierarchy is touched.
 - **Rejected alias additions leave the hierarchy untouched** — ownership validation now precedes creation of branch alias lists. Rejected calls neither mutate the tree nor rebuild it. The redundant post-write guard, rollback, and warning-suppression flag have been removed; static shadow warnings run at construction.
 - **Equivalent normalized aliases are not stored twice on a target** — case, underscore, and dash variations no longer create duplicate alias entries.
+- **`LICENSE` is no longer defined twice in the entity hierarchy** — it was both a leaf under `EMPLOYMENT` and an alias of `GOVERNMENT_ID` > `PROFESSIONAL_LICENSE`, so `canonicalize("LICENSE")` returned `PROFESSIONAL_LICENSE` while `to_branch("LICENSE")` returned `EMPLOYMENT`. The `EMPLOYMENT` leaf is removed: `LICENSE` now resolves to `PROFESSIONAL_LICENSE` under `GOVERNMENT_ID` in every lookup, and `add_alias("LICENSE", ...)` targets `PROFESSIONAL_LICENSE`. Datasets annotated with a `LICENSE` label now evaluate against the `GOVERNMENT_ID` branch.
+- **Hierarchy projection now honours a custom hierarchy** — the full-depth view used for branch and detailed projection was built from a module-level default hierarchy, so a `CanonicalMapper` constructed with a custom `EntityHierarchy` projected against the built-in taxonomy instead of its own. The full-depth view is now derived from the mapper's configured hierarchy.
 
 ### Removals
 

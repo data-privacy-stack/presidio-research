@@ -164,7 +164,6 @@ HIERARCHY: dict = {
             "EMPLOYEE_ID": ["EMPLOYEE"],
             "CUSTOMER_ID": ["CUSTOMER", "UNIQUE", "UNIQUE_ID"],
             "EMPLOYMENT_STATUS": [],
-            "LICENSE": [],
         },
         "GOVERNMENT_ID": {
             "SSN": [
