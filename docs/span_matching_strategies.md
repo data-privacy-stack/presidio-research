@@ -92,7 +92,19 @@ When there's insufficient overlap between spans, they are treated as both false 
 
 ## Multiple Span Scenarios
 
-When an annotation overlaps with multiple prediction spans:
+Before scoring, each prediction is assigned to at most one overlapping annotation.
+A same-type match meeting the IoU threshold takes priority, followed by greatest
+IoU. Ties prefer the same type, then earliest gold start/end, then entity type in
+descending lexical order. This is a deterministic local assignment, not a global
+maximum-matching optimization.
+
+For example, gold `NAME NAME AGE` on `"John Smith 32"` produces two spans.
+A single prediction covering all three tokens is evaluated against only one of
+them. With an IoU threshold of 1.0, the result is **one prediction, one FP, two FNs**,
+not two predictions and two FPs. If it meets the threshold for the name, it instead
+counts as one TP and the age remains one FN.
+
+When an annotation is assigned multiple prediction spans:
 
 ### 1. Multiple Spans of Same Type
 
