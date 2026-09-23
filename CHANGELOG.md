@@ -4,9 +4,10 @@
 
 ### Bug Fixes
 
-- **`add_alias()` no longer rejects a valid alias on `LICENSE`** — the rollback guard added alongside branch aliases asked where the *target's name* resolves and compared that to where the new alias landed. Those are the same question for every node except one: the hierarchy declares `LICENSE` both as a canonical leaf under `EMPLOYMENT` and as an alias of `PROFESSIONAL_LICENSE`, so `canonicalize("LICENSE")` is `"PROFESSIONAL_LICENSE"` and a brand-new alias correctly attached to the `LICENSE` leaf looked like a conflict. `add_alias("LICENSE", "PROF_LIC")` raised `ValueError` claiming the alias "already resolves to 'LICENSE'" — describing the mapping the call had itself created one line earlier. The guard now derives the target from the node's path in the tree rather than from a name lookup, so it is unaffected by another node claiming the same name. Verified across all 126 canonical entities: previously 1 rejected a fresh alias, now none do.
+- **Alias ownership and static collision warnings use structural paths** — a node's name can also be an alias of a different node in a custom hierarchy. Both `add_alias()` and construction-time warnings now derive the target from its path rather than resolving its name. Correct aliases no longer generate false warnings, and genuine conflicts remain visible even when the branch name is shadowed.
 - **`add_alias()` no longer silently steals an alias from another entity** — `add_alias("LOCATION", "EMAIL")` was accepted and quietly re-pointed `EMAIL` from `EMAIL_ADDRESS` to `LOCATION`, invalidating every corpus already annotated with that label. Whether the theft succeeded depended only on dictionary ordering. An alias already resolving somewhere other than the requested target is now rejected before the hierarchy is touched.
-- **A rejected `add_alias()` no longer logs a spurious shadow warning** — the speculative rebuild ran the branch-alias shadow check while the doomed alias was still attached, so a failed call logged a warning about a hierarchy state that was discarded microseconds later, phrased as though `definitions.py` were at fault. Shadow warnings now come only from construction, which is what they are for.
+- **Rejected alias additions leave the hierarchy untouched** — ownership validation now precedes creation of branch alias lists. Rejected calls neither mutate the tree nor rebuild it. The redundant post-write guard, rollback, and warning-suppression flag have been removed; static shadow warnings run at construction.
+- **Equivalent normalized aliases are not stored twice on a target** — case, underscore, and dash variations no longer create duplicate alias entries.
 
 ### Removals
 
@@ -28,7 +29,7 @@
   - `get_depth("LOC")` returns `2` (was `3`), because `LOC` now denotes the depth-2 `LOCATION` branch. `get_depth("PER")` returns `2` — it previously **raised `EntityNotMappedError`**.
   - `CanonicalMapper.map()` no longer accepts `LOC`/`ORG`/`PER` as resolution *targets*, since targets must be canonical entities. Such mappings are also no longer needed — the labels resolve on their own.
   - `to_branch("LOC")` returns `"LOCATION"`, unchanged.
-  - **`to_branch("PER")` returns `"PERSON"`, where it previously returned `"PER"`.** This one is a genuine behaviour change, not a no-op: anyone bucketing a `PER`-annotated corpus by branch gets a different answer after upgrading. `PER` used to fall through `to_branch` unresolved and form a bucket of its own; it now joins `PERSON`.
+  - **`to_branch("PER")` returns `"PERSON"`, where it previously returned `"PER"`.** This one is a genuine behavior change, not a no-op: anyone bucketing a `PER`-annotated corpus by branch gets a different answer after upgrading. `PER` used to fall through `to_branch` unresolved and form a bucket of its own; it now joins `PERSON`.
 
 ### Behavior Changes
 

@@ -60,6 +60,7 @@ class EntityHierarchy:
         self.canonical_depth: int = canonical_depth
         self.country_prefixed_doc_types: dict[str, str] = {}
         self._rebuild()
+        self._warn_on_shadowed_branch_aliases()
 
     @staticmethod
     def normalize(label: str) -> str:
@@ -117,15 +118,15 @@ class EntityHierarchy:
             if canonical is not None:
                 branch = self.canonical_to_branch.get(canonical)
         if branch is None:
-            raise EntityNotMappedError(
-                f"Entity {entity!r} has no branch in hierarchy"
-            )
+            raise EntityNotMappedError(f"Entity {entity!r} has no branch in hierarchy")
         return len(branch)
 
     def add_alias(self, entity_name: str, alias: str) -> None:
         """Add a raw alias for an existing entity (leaf or branch).
 
         *entity_name* may be a canonical name or any raw alias of one.
+        Ownership is checked before mutation. Equivalent normalized aliases
+        already on the target are not stored twice.
         """
         found = self._find_node(entity_name)
         if found is None:
@@ -138,55 +139,24 @@ class EntityHierarchy:
             raise KeyError(f"Entity {entity_name!r} not found in hierarchy")
         parent_dict, key, path = found
         value = parent_dict[key]
-        if isinstance(value, list):
-            added_to = value
-        else:
-            # Branch (non-leaf) node: record the alias under the reserved key so
-            # it maps to this branch, instead of creating a spurious child leaf.
-            added_to = value.setdefault(BRANCH_ALIASES_KEY, [])
-        # A pre-existing alias pointing elsewhere is a genuine conflict, and it
-        # has to be read BEFORE the append — afterwards the map has been rebuilt
-        # and cannot distinguish "was already taken" from "we just took it".
-        previously = self.raw_to_canonical.get(self.normalize(alias))
+        normalized = self.normalize(alias)
+        previously = self.raw_to_canonical.get(normalized)
         expected = self._canonical_name_for_path(path)
         if previously is not None and previously != expected:
-            # Silently re-homing someone else's alias corrupts every corpus
-            # already annotated with it: add_alias("LOCATION", "EMAIL") used to
-            # be accepted and quietly moved EMAIL from EMAIL_ADDRESS to
-            # LOCATION, depending only on dict ordering.
             raise ValueError(
                 f"Alias {alias!r} already resolves to {previously!r}, "
                 f"so it cannot be added to {key!r}",
             )
-        # Track whether THIS call appended, so a rollback never deletes an alias
-        # that was already there (e.g. re-adding an alias the target already owns).
-        appended = alias not in added_to
-        if appended:
+        # Every node/alias, including deep descendants, is in the ownership map.
+        # A conflicting descendant therefore cannot bypass the check above.
+        added_to = (
+            value
+            if isinstance(value, list)
+            else value.setdefault(BRANCH_ALIASES_KEY, [])
+        )
+        if not any(self.normalize(existing) == normalized for existing in added_to):
             added_to.append(alias)
-        self._rebuild(warn=False)
-
-        # A branch alias is applied before the recursive descent into its own
-        # subtree, so a descendant with the same normalized name wins. Rather
-        # than persist an alias that silently never resolves, roll back and say
-        # so — the caller's intent could not be honoured.
-        #
-        # "Where the target lives" is computed from the node's PATH, not by
-        # asking where its name resolves. Those differ whenever another node
-        # claims the same name as an alias: the hierarchy has a canonical leaf
-        # LICENSE and also lists LICENSE as an alias of PROFESSIONAL_LICENSE, so
-        # raw_to_canonical["LICENSE"] is "PROFESSIONAL_LICENSE" and a name-based
-        # check rejected brand-new aliases that had landed exactly where asked.
-        resolved = self.raw_to_canonical.get(self.normalize(alias))
-        if resolved != expected:
-            if appended:
-                added_to.remove(alias)
-                if not added_to and added_to is not value:
-                    value.pop(BRANCH_ALIASES_KEY, None)
-            self._rebuild(warn=False)
-            raise ValueError(
-                f"Alias {alias!r} is shadowed by {resolved!r}, "
-                f"so it cannot be added to {key!r}",
-            )
+            self._rebuild()
 
     @staticmethod
     def _strip_bio(label: str) -> str:
@@ -300,13 +270,8 @@ class EntityHierarchy:
                 )
         return result
 
-    def _rebuild(self, warn: bool = True) -> None:
-        """Recompute raw_to_canonical, all_canonical_entities, and canonical_to_branch from the current hierarchy.
-
-        *warn* is disabled by `add_alias`, whose speculative rebuilds describe
-        hierarchy states that are about to be discarded. Warning from those
-        would report a collision in `definitions.py` that never persisted.
-        """
+    def _rebuild(self) -> None:
+        """Recompute raw_to_canonical, all_canonical_entities, and canonical_to_branch from the current hierarchy."""
         self.raw_to_canonical: dict[str, str] = self._build_alias_map(
             self.hierarchy,
             self.canonical_depth,
@@ -319,8 +284,6 @@ class EntityHierarchy:
             self.hierarchy,
             self.canonical_depth,
         )
-        if warn:
-            self._warn_on_shadowed_branch_aliases()
 
     def _warn_on_shadowed_branch_aliases(self) -> None:
         """Warn about branch aliases that a descendant silently overrides.
@@ -330,28 +293,31 @@ class EntityHierarchy:
         wins. `add_alias()` rejects that at call time, but a collision baked
         into the hierarchy definition would otherwise pass unnoticed.
         """
-        for branch_key, alias in self._collect_branch_aliases(self.hierarchy):
-            expected = self.raw_to_canonical.get(self.normalize(branch_key))
+        for path, alias in self._collect_branch_aliases(self.hierarchy):
+            expected = self._canonical_name_for_path(path)
             resolved = self.raw_to_canonical.get(self.normalize(alias))
-            if expected is not None and resolved != expected:
+            if resolved != expected:
                 logger.warning(
                     "Branch alias %r on %r is shadowed by %r and will never "
                     "resolve to %r.",
                     alias,
-                    branch_key,
+                    path[-1],
                     resolved,
                     expected,
                 )
 
     @staticmethod
-    def _collect_branch_aliases(node: dict) -> list[tuple[str, str]]:
-        """Return (branch_name, alias) for every branch-level alias in the tree."""
-        found: list[tuple[str, str]] = []
+    def _collect_branch_aliases(
+        node: dict, path: tuple[str, ...] = ()
+    ) -> list[tuple[tuple[str, ...], str]]:
+        """Return (branch_path, alias) for every branch-level alias in the tree."""
+        found: list[tuple[tuple[str, ...], str]] = []
         for key, value in node.items():
             if key == BRANCH_ALIASES_KEY or not isinstance(value, dict):
                 continue
-            found.extend((key, a) for a in value.get(BRANCH_ALIASES_KEY, []))
-            found.extend(EntityHierarchy._collect_branch_aliases(value))
+            branch_path = (*path, key)
+            found.extend((branch_path, a) for a in value.get(BRANCH_ALIASES_KEY, []))
+            found.extend(EntityHierarchy._collect_branch_aliases(value, branch_path))
         return found
 
     def _resolve_remainder(self, remainder: str, threshold: float) -> str:
@@ -489,7 +455,7 @@ class EntityHierarchy:
 
         This is deliberately structural. Asking `raw_to_canonical` where the
         node's *name* resolves gives the wrong answer whenever a different node
-        claims that name as an alias — which is exactly the LICENSE case.
+        claims that name as an alias.
         """
         if len(path) > self.canonical_depth:
             return path[self.canonical_depth - 1]

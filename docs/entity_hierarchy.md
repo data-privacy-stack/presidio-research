@@ -75,10 +75,14 @@ h.add_alias("LOC", "LOCALITY")                    # target given as an alias
 h.canonicalize("LOCALITY")                        # -> 'LOCATION'
 ```
 
-`add_alias()` raises `ValueError` if the alias is already claimed by a descendant of the target — branch
-aliases are applied before the descent into their own subtree, so a descendant would win and the alias
-would never resolve. The hierarchy is left unchanged in that case. Declaring such a collision statically
-in `definitions.py` logs a warning at construction time.
+`add_alias()` raises `ValueError` if the normalized alias already resolves somewhere other than the
+target's structural canonical ancestor. This includes descendants and unrelated branches. Ownership is
+checked before changing the tree, so rejection neither creates an empty `_aliases` list nor rebuilds
+the maps. A spelling variation of an alias already stored on the target is a no-op.
+
+Static branch-alias collisions log warnings at construction time. The expected target is derived from
+the branch's path, respecting `canonical_depth`, rather than by resolving its name: a custom hierarchy
+may also use that name as an alias elsewhere. Successful runtime additions do not repeat static warnings.
 
 **Looking up an alias** — `canonicalize()`, `to_branch()` and `get_depth()` all accept raw aliases:
 
