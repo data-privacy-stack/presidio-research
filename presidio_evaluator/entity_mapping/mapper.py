@@ -907,9 +907,12 @@ class CanonicalMapper:
         """Return a MappedResults object with four pre-projected DataFrames.
 
         Each DataFrame has ``annotation`` and ``prediction`` columns
-        (plus all original non-label columns) at the corresponding level:
+        at the corresponding level, all original non-label columns, and
+        ``annotation_merge_key`` / ``prediction_merge_key`` metadata. The keys
+        carry the resolved gold label and the projected prediction label before
+        binary/branch collapse, so span boundaries survive coarse evaluation.
 
-        - ``.original`` — raw input labels, unmodified.
+        - ``.original`` — raw input columns and values, plus merge-key metadata.
         - ``.binary``   — any non-O label → ``"PII"``; suppressed/O → ``"O"``.
         - ``.branch``   — depth-2 branch ancestor (e.g. ``NAME`` → ``PERSON``).
         - ``.detailed`` — resolved hierarchy nodes, with each prediction
@@ -972,7 +975,7 @@ class CanonicalMapper:
                     return ancestor
             return resolved
 
-        # Merge keys: the finest-grained label available for each token, carried
+        # Merge keys: the detailed scoring label for each token, carried
         # alongside every level so that span merging can tell entities apart even
         # after their labels have been collapsed.
         #

@@ -78,7 +78,8 @@ class MappingIssue:
 # ---------------------------------------------------------------------------
 
 
-#: Columns carrying the finest-grained label for each token. They are attached to
+#: Columns carrying each token's detailed scoring label (after prediction
+#: projection to the annotated vocabulary). They are attached to
 #: every level of :class:`MappedResults` so that span merging can distinguish
 #: entities whose labels have been collapsed (at the binary level every label is
 #: ``"PII"``, which would otherwise make neighbouring entities indistinguishable).
@@ -93,9 +94,12 @@ class MappedResults:
     Each DataFrame has ``annotation`` and ``prediction`` columns
     (plus all original non-label columns such as ``sentence_id``,
     ``token``, ``start_indices``) projected to the appropriate level.
+    All four also carry ``annotation_merge_key`` and ``prediction_merge_key``:
+    the resolved annotation and projected prediction labels before binary/branch
+    collapse. These keys preserve span boundaries at coarser scoring levels.
 
     Attributes:
-        original:  Raw input labels, unmodified.
+        original:  Raw input columns and values, plus merge-key metadata.
         binary:    Labels resolved to ``"PII"`` (any non-O) or ``"O"``.
         branch:    Labels resolved to the depth-2 branch ancestor
                    (e.g. ``FIRST_NAME`` → ``PERSON``).
