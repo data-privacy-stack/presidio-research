@@ -339,14 +339,17 @@ class SpanEvaluator(BaseEvaluator):
         Prefers the span-id column (exact entity instances, attached by
         ``BaseModel.predict_dataset`` from the gold spans) when it is present
         and carries at least one value for this DataFrame; falls back to the
-        merge-key column (finest-grained label, attached by CanonicalMapper);
-        returns None when neither is available, in which case callers compare
-        the visible label alone.
+        merge-key column (detailed scoring label, attached by CanonicalMapper).
+        Only ``annotation`` and ``prediction`` have identity columns. Returns
+        None for other label columns or missing metadata, in which case callers
+        compare the visible label alone.
         """
         if column == "annotation":
             id_column, key_column = ANNOTATION_SPAN_ID, ANNOTATION_MERGE_KEY
-        else:
+        elif column == "prediction":
             id_column, key_column = PREDICTION_SPAN_ID, PREDICTION_MERGE_KEY
+        else:
+            return None
         if id_column in df.columns and df[id_column].notna().any():
             return id_column
         return key_column if key_column in df.columns else None
@@ -367,6 +370,8 @@ class SpanEvaluator(BaseEvaluator):
         entity type.
 
         :return: one key per span, in the same order, or None.
+        :raises ValueError: if metadata exists but a span has an invalid
+            sentence-relative token_start.
         """
         key_column = SpanEvaluator._merge_key_column(sentence_df, column)
         if key_column is None:
@@ -374,8 +379,11 @@ class SpanEvaluator(BaseEvaluator):
 
         keys = []
         for span in spans:
-            if span.token_start is None or span.token_start >= len(sentence_df):
-                return None
+            if span.token_start is None or not 0 <= span.token_start < len(sentence_df):
+                raise ValueError(
+                    f"Invalid token_start {span.token_start!r} for {column} span "
+                    f"{span!r}: expected a position in [0, {len(sentence_df)})",
+                )
             keys.append(sentence_df[key_column].iloc[span.token_start])
         return keys
 
@@ -859,6 +867,38 @@ class SpanEvaluator(BaseEvaluator):
         f_beta = self.f_beta(precision=precision, recall=recall, beta=beta)
         return precision, recall, f_beta
 
+    def _assign_prediction_overlaps(
+        self,
+        annotation_spans: list[Span],
+        prediction_spans: list[Span],
+    ) -> dict[Span, list[tuple[Span, float]]]:
+        """Assign each overlapping prediction to exactly one annotation.
+
+        Prefer a same-type match meeting the IoU threshold, then the greatest
+        IoU. Ties prefer the same type, then the earliest gold span (and its end
+        and type), independently of input order. Predictions assigned to one
+        gold span still use the existing per-type cumulative-IoU aggregation.
+        """
+        assigned: dict[Span, list[tuple[Span, float]]] = defaultdict(list)
+        for pred_span in sorted(prediction_spans, key=lambda span: span.start_position):
+            candidates = self._get_all_overlapping(pred_span, annotation_spans)
+            if not candidates:
+                continue
+            ann_span, iou = max(
+                candidates,
+                key=lambda candidate: (
+                    candidate[0].entity_type == pred_span.entity_type
+                    and candidate[1] >= self.iou_threshold,
+                    candidate[1],
+                    candidate[0].entity_type == pred_span.entity_type,
+                    -candidate[0].start_position,
+                    -candidate[0].end_position,
+                    candidate[0].entity_type,
+                ),
+            )
+            assigned[ann_span].append((pred_span, iou))
+        return assigned
+
     def _match_predictions_with_annotations(
         self,
         annotation_spans: list[Span],
@@ -871,13 +911,15 @@ class SpanEvaluator(BaseEvaluator):
 
         # Track which prediction spans have been processed
         processed_predictions: set[tuple[str, int, int]] = set()
+        assigned_overlaps = self._assign_prediction_overlaps(
+            annotation_spans, prediction_spans
+        )
 
         for ann_span in annotation_spans:
             ann_type = ann_span.entity_type
             self._add_to_annotated(evaluation_result, per_type, ann_type)
 
-            # Find all overlapping prediction spans with IoU > 0, regardless of type
-            overlapping_preds = self._get_all_overlapping(ann_span, prediction_spans)
+            overlapping_preds = assigned_overlaps.get(ann_span, [])
 
             self._add_to_processed_predictions(
                 processed_predictions,
