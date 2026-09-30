@@ -152,12 +152,19 @@ def test_small_early_overlap_cannot_steal_later_true_positive(reverse_gold, per_
 
 
 @pytest.mark.parametrize("reverse_gold", [False, True])
-def test_prediction_cannot_be_true_positive_for_two_gold_spans(reverse_gold):
+def test_wide_prediction_covering_two_gold_spans_is_two_recall_hits(reverse_gold):
+    """Two-sided counting: recall is judged per annotation, precision per span.
+
+    One prediction span covering two gold spans at IoU >= threshold is a
+    recall hit for each annotation but enters ``num_predicted`` once.
+    """
     evaluator = SpanEvaluator(iou_threshold=0.4, skip_words=[])
     df = make_df(["John", "Mary"], ["PII"] * 2, ["PII"] * 2)
     df[ANNOTATION_MERGE_KEY] = ["FIRST_NAME", "LAST_NAME"]
     df[PREDICTION_MERGE_KEY] = ["NAME"] * 2
     gold, predictions = evaluator._process_sentence_spans(df)
+    assert len(gold) == 2
+    assert len(predictions) == 1
     if reverse_gold:
         gold.reverse()
     result = evaluator._match_predictions_with_annotations(
@@ -165,11 +172,12 @@ def test_prediction_cannot_be_true_positive_for_two_gold_spans(reverse_gold):
     )
     metrics = result.per_type["PII"]
     assert metrics.num_predicted == 1
-    assert metrics.true_positives == 1
+    assert metrics.num_annotated == 2
+    assert metrics.true_positives == 2
     assert metrics.false_positives == 0
-    assert metrics.false_negatives == 1
-    missed = [e for e in result.model_errors if e.error_type == ErrorType.FN]
-    assert [e.full_text for e in missed] == ["Mary"]
+    assert metrics.false_negatives == 0
+    assert result.model_errors == []
+    assert result.results[("PII", "PII")] == 2
 
 
 def test_qualifying_same_type_match_preferred_over_wrong_type_overlap():
@@ -202,7 +210,12 @@ def test_shared_prediction_in_multiple_overlap_group_not_counted_again(char_base
     assert result.per_type["PII"].false_positives == 2
 
 
-def test_fragment_aggregation_still_counts_as_one_prediction():
+def test_fragments_jointly_covering_one_gold_span_each_enter_num_predicted():
+    """Fragments that jointly cover an annotation are all credited.
+
+    The annotation is one recall hit; each fragment is a separate prediction
+    span in ``num_predicted`` and none is a false positive.
+    """
     df = make_df(
         ["New", "York", "Mets"],
         ["ORGANIZATION"] * 3,
@@ -212,8 +225,10 @@ def test_fragment_aggregation_still_counts_as_one_prediction():
         iou_threshold=0.5, char_based=False, skip_words=[]
     ).calculate_score_on_df(df, level="entity")
     metrics = result.per_type["ORGANIZATION"]
-    assert metrics.true_positives == metrics.num_predicted == 1
+    assert metrics.num_annotated == metrics.true_positives == 1
+    assert metrics.num_predicted == 2
     assert metrics.false_positives == metrics.false_negatives == 0
+    assert metrics.precision == metrics.recall == 1.0
 
 
 def test_mapper_metadata_preserves_input_and_restored_prediction_projection():
