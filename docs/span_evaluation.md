@@ -45,6 +45,24 @@ With "of" as skip word: [ORG, ORG, ORG] (treated as one span)
 The `skip_words` parameter in the `SpanEvaluator` constructor determines which words can be skipped when merging
 adjacent spans of the same entity type.
 
+`CanonicalMapper` adds `annotation_merge_key` and `prediction_merge_key` to all
+four `MappedResults` DataFrames, including `.original`. The keys contain the
+detailed scoring labels (after prediction projection to the gold vocabulary).
+A change of key ends a token run even when the visible label is unchanged.
+Adjacent spans merge only when **both** their scored labels and merge keys agree.
+This keeps, for example, a name and an age separate when both are scored as `PII`.
+The original input columns and values are preserved in `.original`; its column
+set gains the two metadata columns.
+
+Without the paired metadata column, span creation and merging retain label-only
+behavior. Unrelated label columns such as `pred_a` never use `prediction_merge_key`.
+When metadata is present, an invalid sentence-relative `token_start` raises
+`ValueError` instead of silently disabling the keys.
+
+Merge keys are labels, not source span identities: distinct same-type entities
+such as `"Paris , London"` can still merge. Preserving source span identities
+through tokenization is a separate follow-up, not part of this fix.
+
 ## Span Matching Strategy
 
 The evaluator compares annotation spans (gold standard) with prediction spans (model output) using an Intersection over
@@ -63,7 +81,10 @@ An IoU threshold determines whether spans match sufficiently.
 
 The matching process follows these steps:
 
-1. For each annotation span, find all overlapping prediction spans
+1. Assign each prediction to at most one overlapping annotation: prefer a same-type
+   match meeting the IoU threshold, then the greatest IoU. Ties prefer the same
+   type, then the earliest gold start and end, then the entity type in descending
+   lexical order. This assignment is independent of annotation input order.
 2. Group overlapping prediction spans by entity type
 3. Calculate combined IoU for each entity type group
 4. Determine match status based on IoU threshold and entity type
@@ -87,7 +108,8 @@ false positive.
 - **F-beta**: (1 + beta²) * (precision * recall) / (beta² * precision + recall)
 
 Note that precision is not TP / num_predicted: TP counts covered annotations,
-and a single prediction covering two annotations is two TPs but one prediction.
+and two fragments jointly covering one annotation are one TP but two credited
+predictions.
 
 ### Global PII Metrics
 
@@ -120,7 +142,7 @@ so `calculate_score_on_df(level="both")` records each error once.
 
 ## Evaluation Process
 
-1. For each annotation, find all overlapping prediction spans
+1. Assign predictions to annotations using the exclusive assignment described above
 2. Group overlapping spans by entity type
 3. Calculate the same-type coverage (pairwise IoU for a single span, combined
    IoU for several)
@@ -132,6 +154,10 @@ See more info on the [Span Matching Strategies](span_matching_strategies.md) doc
 
 ## Counting Strategy
 
+- Every prediction is assigned to at most one overlapping annotation before
+  scoring: a same-type match meeting the threshold wins, then the greatest IoU,
+  with deterministic ties. A prediction is therefore never a TP for two
+  annotations
 - Every annotation is counted once in `num_annotated` and receives one verdict
   (TP or FN), regardless of how many predictions or types intersect with it
 - Every prediction span is counted once in `num_predicted` — a span is not

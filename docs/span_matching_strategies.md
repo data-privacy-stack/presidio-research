@@ -92,7 +92,19 @@ When there's insufficient overlap between spans, they are treated as both false 
 
 ## Multiple Span Scenarios
 
-When an annotation overlaps with multiple prediction spans:
+Before scoring, each prediction is assigned to at most one overlapping annotation.
+A same-type match meeting the IoU threshold takes priority, followed by greatest
+IoU. Ties prefer the same type, then earliest gold start/end, then entity type in
+descending lexical order. This is a deterministic local assignment, not a global
+maximum-matching optimization.
+
+For example, gold `NAME NAME AGE` on `"John Smith 32"` produces two spans.
+A single prediction covering all three tokens is evaluated against only one of
+them. With an IoU threshold of 1.0, the result is **one prediction, one FP, two FNs**,
+not two predictions and two FPs. If it meets the threshold for the name, it instead
+counts as one TP and the age remains one FN.
+
+When an annotation is assigned multiple prediction spans:
 
 ### 1. Multiple Spans of Same Type
 
@@ -124,17 +136,20 @@ Each entity type is evaluated separately against the annotation:
 
 ## One Prediction Overlapping Multiple Annotations
 
-The mirror case: a single prediction overlapping several annotations. Each
-annotation measures its own pairwise IoU against the prediction independently;
-the prediction itself is counted once in `num_predicted`:
+The mirror case: a single prediction overlapping several annotations. The
+prediction is assigned to one of them (a same-type match meeting the threshold
+first, then the greatest IoU, then the earliest gold span), and it is counted
+once in `num_predicted`:
 
-- Each annotation whose IoU is above the threshold is a TP; each annotation
-  whose IoU is below it is an FN.
-- The prediction is credited if it matched at least one annotation, otherwise
+- The assigned annotation is a TP if the prediction covers it at IoU ≥
+  threshold, otherwise an FN. The other annotations receive no prediction and
+  are FNs.
+- The prediction is credited if it matched its assigned annotation, otherwise
   it is a single FP (not one per missed annotation).
 - **Example**: gold [John Smith] and [Mary Jones], prediction one PERSON span
   over "John Smith met Mary Jones" (IoU ≈ 0.4 per annotation). At
-  threshold 0.3: 2 TP, num_predicted 1. At threshold 0.9: 2 FN, 1 FP.
+  threshold 0.3: 1 TP, 1 FN, num_predicted 1, credited. At threshold 0.9:
+  2 FN, 1 FP.
 
 ## Real-world Examples
 

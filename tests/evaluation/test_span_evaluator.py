@@ -1825,16 +1825,17 @@ def test_multi_sentence_df_does_not_merge_separated_same_type_spans(span_evaluat
             0.3,
             ["John", "Smith", "met", "Mary", "Jones"],
             ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
-            # At a deliberately lenient threshold the blob covers both golds:
-            # full recall credit (2 golds found), full precision credit for
-            # ONE prediction — not two TPs from a single span.
+            # At a deliberately lenient threshold the blob reaches the
+            # threshold on both golds, but a prediction is assigned to one
+            # annotation only: one TP (the earliest gold on an IoU tie), one
+            # FN, and full precision credit for ONE prediction.
             {
                 "precision": 1.0,
-                "recall": 1.0,
+                "recall": 0.5,
                 "num_predicted": 1,
                 "num_annotated": 2,
                 "false_positives": 0,
-                "false_negatives": 0,
+                "false_negatives": 1,
             },
             id="lenient-blob-covers-both-counted-once",
         ),
@@ -1864,13 +1865,13 @@ def test_single_prediction_overlapping_multiple_annotations_counted_once(
 ):
     """A prediction span overlapping several annotations is still ONE prediction.
 
-    Regression test for per-annotation double counting: the matching loop
-    processes each annotation independently and increments num_predicted (and
-    TP/FP) for every annotation a prediction overlaps, so a single blob
-    prediction covering two golds enters the precision denominator twice.
-    Desired semantics are two-sided: recall asks, per annotation, "was I
-    covered at IoU >= threshold?"; precision asks, per prediction (counted
-    once), "did I participate in any successful match?".
+    Regression test for per-annotation double counting: the old matching loop
+    processed each annotation independently and incremented num_predicted (and
+    TP/FP) for every annotation a prediction overlapped, so a single blob
+    prediction covering two golds entered the precision denominator twice.
+    Semantics are two-sided: a prediction is assigned to one annotation; recall
+    asks, per annotation, "was I covered at IoU >= threshold?"; precision asks,
+    per prediction (counted once), "did I participate in a successful match?".
     """
     prediction = ["PERSON"] * len(tokens)
     starts, pos = [], 0
@@ -1963,19 +1964,19 @@ def test_single_prediction_overlapping_multiple_annotations_counted_once(
             ["John", "Smith", "met", "Mary", "Jones"],
             ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
             ["PERSON", "PERSON", "PERSON", "PERSON", "PERSON"],
-            # One blob covers both golds, each pairwise IoU >= tau: two recall
-            # TPs, but the blob enters the precision denominator once.
-            # Precision is (np - fp)/np = 1.0, NOT tp/np (which would be 2.0).
+            # One blob reaches tau on both golds, but it is assigned to one
+            # annotation only (equal IoU: the earliest gold): one TP, one FN,
+            # and the blob enters the precision denominator once, credited.
             {
-                "true_positives": 2,
-                "false_negatives": 0,
+                "true_positives": 1,
+                "false_negatives": 1,
                 "false_positives": 0,
                 "num_predicted": 1,
                 "num_annotated": 2,
                 "precision": 1.0,
-                "recall": 1.0,
+                "recall": 0.5,
             },
-            id="4-one-pred-two-golds-above-tau-2tp",
+            id="4-one-pred-two-golds-above-tau-1tp-1fn",
         ),
         pytest.param(
             0.9,
@@ -2022,8 +2023,9 @@ def test_two_sided_counting_semantics(
     """The counting-semantics contract of two-sided matching, one case per scenario.
 
     Recall side: every annotation gets exactly one verdict (TP if covered by
-    same-type predictions at IoU >= threshold — pairwise for one span, combined
-    for several — else FN), so tp + fn == num_annotated.
+    the same-type predictions assigned to it at IoU >= threshold — pairwise for
+    one span, combined for several — else FN), so tp + fn == num_annotated. A
+    prediction is assigned to at most one annotation, so it is never a TP twice.
 
     Precision side: every prediction span enters num_predicted exactly once and
     is either credited (participated in a successful match) or an FP, so
@@ -2261,3 +2263,108 @@ def test_annotation_row_is_claimed_by_strongest_match_at_tie():
     assert [e.prediction for e in wrong] == ["LOCATION"]
     fp_records = [e for e in result.model_errors if e.error_type == ErrorType.FP]
     assert sorted(e.prediction for e in fp_records) == ["LOCATION", "ORGANIZATION"]
+
+
+class TestBinaryLevelOverMerge:
+    """Regression tests for the binary-level over-merge.
+
+    Merging compared entity types AFTER they had been collapsed, so at the
+    binary level - where every label is "PII" - the guard was vacuous and
+    unrelated neighbouring entities became one span. Gold spans then depended on
+    the granularity being scored, making the levels incomparable.
+    """
+
+    @staticmethod
+    def _df(tokens, annotations, merge_keys=None):
+        import pandas as pd
+
+        from presidio_evaluator.entity_mapping.data_objects import (
+            ANNOTATION_MERGE_KEY,
+            PREDICTION_MERGE_KEY,
+        )
+
+        starts, pos = [], 0
+        for tok in tokens:
+            starts.append(pos)
+            pos += len(tok) + 1
+        data = {
+            "sentence_id": [0] * len(tokens),
+            "token": tokens,
+            "annotation": annotations,
+            "prediction": annotations,
+            "start_indices": starts,
+        }
+        if merge_keys is not None:
+            data[ANNOTATION_MERGE_KEY] = merge_keys
+            data[PREDICTION_MERGE_KEY] = merge_keys
+        return pd.DataFrame(data)
+
+    def test_adjacent_different_entities_stay_separate_at_binary_level(self):
+        """Separated by punctuation: merging must not fire."""
+        tokens = ["Contact", "John", "Smith", ",", "32", ",", "jane@x.com"]
+        binary = ["O", "PII", "PII", "O", "PII", "O", "PII"]
+        keys = ["O", "NAME", "NAME", "O", "AGE", "O", "EMAIL_ADDRESS"]
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        spans, _ = evaluator._process_sentence_spans(self._df(tokens, binary, keys))
+        assert len(spans) == 3
+
+    def test_touching_different_entities_stay_separate_at_binary_level(self):
+        """No token in between: span creation must break on the merge key."""
+        tokens = ["Ana", "Ruiz", "29"]
+        binary = ["PII", "PII", "PII"]
+        keys = ["NAME", "NAME", "AGE"]
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        spans, _ = evaluator._process_sentence_spans(self._df(tokens, binary, keys))
+        assert len(spans) == 2
+        assert [s.entity_value for s in spans] == ["Ana Ruiz", "29"]
+
+    def test_same_entity_fragments_still_merge(self):
+        """The feature's real purpose must survive."""
+        tokens = ["Visiting", "New", "York", "today"]
+        binary = ["O", "PII", "PII", "O"]
+        keys = ["O", "LOCATION", "LOCATION", "O"]
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        spans, _ = evaluator._process_sentence_spans(self._df(tokens, binary, keys))
+        assert len(spans) == 1
+        assert spans[0].entity_value == "New York"
+
+    def test_span_count_is_identical_across_levels(self):
+        """The invariant: ground truth cannot depend on the level being scored."""
+        tokens = ["Contact", "John", "Smith", ",", "32", ",", "jane@x.com"]
+        keys = ["O", "NAME", "NAME", "O", "AGE", "O", "EMAIL_ADDRESS"]
+        levels = {
+            "detailed": keys,
+            "branch": ["O", "PERSON", "PERSON", "O", "DEMOGRAPHIC", "O", "CONTACT"],
+            "binary": ["O", "PII", "PII", "O", "PII", "O", "PII"],
+        }
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        counts = {
+            name: len(
+                evaluator._process_sentence_spans(self._df(tokens, labels, keys))[0]
+            )
+            for name, labels in levels.items()
+        }
+        assert len(set(counts.values())) == 1, counts
+
+    def test_without_merge_keys_behaviour_is_unchanged(self):
+        """Back-compat: DataFrames built without CanonicalMapper still work."""
+        tokens = ["Visiting", "New", "York", "today"]
+        labels = ["O", "LOCATION", "LOCATION", "O"]
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        spans, _ = evaluator._process_sentence_spans(self._df(tokens, labels))
+        assert len(spans) == 1
+
+    def test_merge_keys_length_is_validated(self):
+        import pandas as pd
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        span = Span("PII", "x", 0, 1, token_start=0, token_end=1)
+        with pytest.raises(ValueError, match="merge_keys has"):
+            evaluator._merge_adjacent_spans(
+                [span, span], pd.DataFrame({"token": ["x", "y"]}), merge_keys=["A"]
+            )
