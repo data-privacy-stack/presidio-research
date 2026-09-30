@@ -268,9 +268,50 @@ class InputSample:
         else:
             self.tokens = tokens
             self.tags = tags
-            # Per-token index into self.spans; unknown when tags were provided
-            # directly instead of being derived from the spans.
-            self.span_ids: list[int | None] = []
+            # Per-token entity instance id. Tags provided directly carry no
+            # link to self.spans, but a BIO/BILUO scheme still marks where each
+            # entity starts, so instance ids can be recovered from the prefixes.
+            # Plain IO tags carry no boundary information and leave this empty.
+            self.span_ids: list[int | None] = self._span_ids_from_tags(tags)
+
+    @staticmethod
+    def _span_ids_from_tags(tags: list[str]) -> list[int | None]:
+        """Derive per-token entity instance ids from BIO/BILUO prefixes.
+
+        A new instance starts on a ``B-`` or ``U-`` tag, on a change of entity
+        type, or after an ``O`` token; ``I-``/``L-`` continue the current one.
+        Ids are sequential per sample and are *not* indices into ``spans``.
+
+        :param tags: per-token tags in IO, BIO or BILUO scheme.
+        :return: one id per token (None for ``O``), or an empty list when the
+            tags carry no prefixes (plain IO), since IO runs give no more
+            information than the labels themselves.
+        """
+        if not any(str(tag).startswith(("B-", "U-")) for tag in tags):
+            return []
+
+        ids: list[int | None] = []
+        current_id = -1
+        current_type: str | None = None
+        for raw_tag in tags:
+            tag = str(raw_tag)
+            if tag == "O":
+                ids.append(None)
+                current_type = None
+                continue
+            prefix, sep, entity_type = tag.partition("-")
+            if not sep:
+                prefix, entity_type = "", tag
+            starts_new = (
+                prefix in ("B", "U")
+                or current_type is None
+                or entity_type != current_type
+            )
+            if starts_new:
+                current_id += 1
+            ids.append(current_id)
+            current_type = entity_type
+        return ids
 
     def __repr__(self) -> str:
         return f"Full text: {self.full_text}\nSpans: {self.spans}\n"

@@ -537,3 +537,33 @@ def test_extract_entity_types_duplicate_entities():
 
     entity_types = InputSample.extract_entity_types(samples)
     assert entity_types == {"PERSON"}  # Should only appear once in the set
+
+
+@pytest.mark.parametrize(
+    ("tags", "expected"),
+    [
+        # BIO: B- starts a new instance, I- continues it.
+        (
+            ["B-PERSON", "I-PERSON", "B-PERSON", "O", "B-LOCATION"],
+            [0, 0, 1, None, 2],
+        ),
+        # BILUO: U- is a one-token instance, L- closes the current one.
+        (
+            ["B-PERSON", "L-PERSON", "U-PERSON", "O", "U-LOCATION"],
+            [0, 0, 1, None, 2],
+        ),
+        # Type change without B- still starts a new instance.
+        (["B-PERSON", "I-LOCATION"], [0, 1]),
+        # Plain IO carries no boundaries: leave empty so the evaluator falls back.
+        (["PERSON", "PERSON", "O"], []),
+        ([], []),
+    ],
+)
+def test_span_ids_derived_from_prefixed_tags(tags, expected):
+    sample = InputSample(
+        full_text="x " * len(tags),
+        tokens=["x"] * len(tags),
+        tags=tags,
+        create_tags_from_span=False,
+    )
+    assert sample.span_ids == expected
