@@ -11,7 +11,7 @@ from spacy.tokens import Doc, DocBin
 from spacy.training import iob_to_biluo
 from tqdm import tqdm
 
-from presidio_evaluator import span_to_tag, tokenize
+from presidio_evaluator import span_to_tag, tags_to_span_ids, tokenize
 
 logger = logging.getLogger("presidio-evaluator")
 
@@ -53,6 +53,8 @@ class Span:
     :param normalized_end_index: Optional end index of the normalized value in the text
     :param normalized_start_indices: Optional per-token start indices of the normalized tokens,
         used for position-aware token-level comparisons
+    :param score: Optional model confidence for a predicted span. Used to resolve
+        overlapping predictions when flattening spans to tags; not part of equality.
     """
 
     def __init__(
@@ -67,6 +69,7 @@ class Span:
         normalized_start_index: int | None = None,
         normalized_end_index: int | None = None,
         normalized_start_indices: list[int] | None = None,
+        score: float | None = None,
     ) -> None:
         self.entity_type = entity_type
         self.entity_value = entity_value
@@ -78,6 +81,7 @@ class Span:
         self.normalized_start_indices = normalized_start_indices
         self.token_start = token_start
         self.token_end = token_end
+        self.score = score
 
     def intersect(
         self,
@@ -268,50 +272,10 @@ class InputSample:
         else:
             self.tokens = tokens
             self.tags = tags
-            # Per-token entity instance id. Tags provided directly carry no
-            # link to self.spans, but a BIO/BILUO scheme still marks where each
-            # entity starts, so instance ids can be recovered from the prefixes.
-            # Plain IO tags carry no boundary information and leave this empty.
-            self.span_ids: list[int | None] = self._span_ids_from_tags(tags)
-
-    @staticmethod
-    def _span_ids_from_tags(tags: list[str]) -> list[int | None]:
-        """Derive per-token entity instance ids from BIO/BILUO prefixes.
-
-        A new instance starts on a ``B-`` or ``U-`` tag, on a change of entity
-        type, or after an ``O`` token; ``I-``/``L-`` continue the current one.
-        Ids are sequential per sample and are *not* indices into ``spans``.
-
-        :param tags: per-token tags in IO, BIO or BILUO scheme.
-        :return: one id per token (None for ``O``), or an empty list when the
-            tags carry no prefixes (plain IO), since IO runs give no more
-            information than the labels themselves.
-        """
-        if not any(str(tag).startswith(("B-", "U-")) for tag in tags):
-            return []
-
-        ids: list[int | None] = []
-        current_id = -1
-        current_type: str | None = None
-        for raw_tag in tags:
-            tag = str(raw_tag)
-            if tag == "O":
-                ids.append(None)
-                current_type = None
-                continue
-            prefix, sep, entity_type = tag.partition("-")
-            if not sep:
-                prefix, entity_type = "", tag
-            starts_new = (
-                prefix in ("B", "U")
-                or current_type is None
-                or entity_type != current_type
-            )
-            if starts_new:
-                current_id += 1
-            ids.append(current_id)
-            current_type = entity_type
-        return ids
+            # Per-token entity instance id, recovered from the tags: exact for
+            # BIO/BILUO, label runs for plain IO (adjacent same-type entities
+            # then read as one instance).
+            self.span_ids: list[int | None] = tags_to_span_ids(tags)
 
     def __repr__(self) -> str:
         return f"Full text: {self.full_text}\nSpans: {self.spans}\n"

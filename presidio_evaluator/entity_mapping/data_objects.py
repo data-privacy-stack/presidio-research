@@ -78,22 +78,14 @@ class MappingIssue:
 # ---------------------------------------------------------------------------
 
 
-#: Columns carrying each token's detailed scoring label (after prediction
-#: projection to the annotated vocabulary). They are attached to
-#: every level of :class:`MappedResults` so that span merging can distinguish
-#: entities whose labels have been collapsed (at the binary level every label is
-#: ``"PII"``, which would otherwise make neighbouring entities indistinguishable).
-ANNOTATION_MERGE_KEY = "annotation_merge_key"
-PREDICTION_MERGE_KEY = "prediction_merge_key"
-
-#: Columns carrying the index of the source span covering each token (None for
-#: ``O`` tokens). Unlike the merge keys above, which only distinguish entity
-#: *types*, these identify entity *instances*: two adjacent same-type entities
-#: carry different ids, so span reconstruction never needs to guess where one
-#: ends and the next begins. ``span_to_tag`` produces the ids while flattening
-#: spans to per-token labels, and ``BaseModel.predict_dataset`` carries them
-#: into the annotation column; the prediction column is reserved for sources
-#: that know their prediction span boundaries.
+#: Columns carrying the entity instance id of the span covering each token
+#: (None for ``O`` tokens), one for the gold side and one for the prediction
+#: side. ``BaseModel.predict_dataset`` produces both from the source spans, and
+#: ``CanonicalMapper`` passes them through every level untouched, so span
+#: evaluation reconstructs the same spans at every level: two adjacent
+#: entities carry different ids even when their labels have been collapsed to
+#: ``"PII"``, and even when they are of the same type. Ids are sequential per
+#: sentence and independent between the two columns.
 ANNOTATION_SPAN_ID = "annotation_span_id"
 PREDICTION_SPAN_ID = "prediction_span_id"
 
@@ -104,13 +96,12 @@ class MappedResults:
 
     Each DataFrame has ``annotation`` and ``prediction`` columns
     (plus all original non-label columns such as ``sentence_id``,
-    ``token``, ``start_indices``) projected to the appropriate level.
-    All four also carry ``annotation_merge_key`` and ``prediction_merge_key``:
-    the resolved annotation and projected prediction labels before binary/branch
-    collapse. These keys preserve span boundaries at coarser scoring levels.
+    ``token``, ``start_indices``, ``annotation_span_id`` and
+    ``prediction_span_id``) projected to the appropriate level. Only the two
+    label columns differ between levels.
 
     Attributes:
-        original:  Raw input columns and values, plus merge-key metadata.
+        original:  Raw input columns and values.
         binary:    Labels resolved to ``"PII"`` (any non-O) or ``"O"``.
         branch:    Labels resolved to the depth-2 branch ancestor
                    (e.g. ``FIRST_NAME`` → ``PERSON``).

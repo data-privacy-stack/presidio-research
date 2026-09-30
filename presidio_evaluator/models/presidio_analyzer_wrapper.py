@@ -5,8 +5,18 @@ from presidio_analyzer import (
     RecognizerResult,
 )
 
-from presidio_evaluator import InputSample, span_to_tag
+from presidio_evaluator import InputSample, Span
 from presidio_evaluator.models import BaseModel
+
+
+def _to_span(result: RecognizerResult, sample: InputSample) -> Span:
+    return Span(
+        entity_type=result.entity_type,
+        entity_value=sample.full_text[result.start : result.end],
+        start_position=result.start,
+        end_position=result.end,
+        score=result.score,
+    )
 
 
 class PresidioAnalyzerWrapper(BaseModel):
@@ -66,50 +76,35 @@ class PresidioAnalyzerWrapper(BaseModel):
 
     def predict(self, sample: InputSample, **kwargs) -> list[str]:
         self.__update_kwargs(kwargs)
-
-        results = self.analyzer_engine.analyze(
-            text=sample.full_text,
-            **kwargs,
-        )
-        response_tags = self.__recognizer_results_to_tags(results, sample)
-        return response_tags
+        results = self.analyzer_engine.analyze(text=sample.full_text, **kwargs)
+        return self._spans_to_tags(sample, [_to_span(res, sample) for res in results])
 
     def batch_predict(self, dataset: list[InputSample], **kwargs) -> list[list[str]]:
+        return [
+            self._spans_to_tags(sample, spans)
+            for sample, spans in zip(
+                dataset, self.batch_predict_spans(dataset, **kwargs), strict=True
+            )
+        ]
+
+    def batch_predict_spans(
+        self, dataset: list[InputSample], **kwargs
+    ) -> list[list[Span]]:
+        """Presidio returns character spans directly; no tag round trip."""
+        return [
+            [_to_span(res, sample) for res in results]
+            for sample, results in zip(
+                dataset, self._batch_analyze(dataset, **kwargs), strict=True
+            )
+        ]
+
+    def _batch_analyze(
+        self, dataset: list[InputSample], **kwargs
+    ) -> list[list[RecognizerResult]]:
         self.__update_kwargs(kwargs)
         texts = [sample.full_text for sample in dataset]
         batch_analyzer = BatchAnalyzerEngine(analyzer_engine=self.analyzer_engine)
-        analyzer_results = batch_analyzer.analyze_iterator(texts=texts, **kwargs)
-
-        predictions = []
-        for prediction, sample in zip(analyzer_results, dataset, strict=False):
-            predictions.append(self.__recognizer_results_to_tags(prediction, sample))
-
-        return predictions
-
-    @staticmethod
-    def __recognizer_results_to_tags(
-        results: list[RecognizerResult],
-        sample: InputSample,
-    ) -> list[str]:
-        starts = []
-        ends = []
-        scores = []
-        tags = []
-        for res in results:
-            starts.append(res.start)
-            ends.append(res.end)
-            tags.append(res.entity_type)
-            scores.append(res.score)
-        response_tags = span_to_tag(
-            scheme="IO",
-            text=sample.full_text,
-            starts=starts,
-            ends=ends,
-            tokens=sample.tokens,
-            scores=scores,
-            tags=tags,
-        )
-        return response_tags
+        return list(batch_analyzer.analyze_iterator(texts=texts, **kwargs))
 
     def __update_kwargs(self, kwargs) -> None:
         kwargs["language"] = kwargs.get("language", self.language)

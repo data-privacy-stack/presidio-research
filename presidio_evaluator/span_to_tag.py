@@ -106,16 +106,18 @@ def span_to_tag(
     ends: list[int],
     tags: list[str],
     scores: list[float] | None = None,
-    tokens: Doc | None = None,
+    tokens: Doc | list[str] | None = None,
     token_model_version: str = "en_core_web_sm",  # noqa: S107
     return_span_ids: bool = False,
+    start_indices: list[int] | None = None,
 ) -> list[str] | tuple[list[str], list[int | None]]:
     """
     Turns a list of start and end values with corresponding labels, into a NER
     tagging (BILUO,BIO/IOB)
     :param scheme: labeling scheme, either BILUO, BIO/IOB or IO
     :param text: input text
-    :param tokens: text tokenized to tokens
+    :param tokens: text tokenized to tokens: a spaCy Doc, or plain strings
+        together with ``start_indices``
     :param starts: list of indices where entities in the text start
     :param ends: list of indices where entities in the text end
     :param tags: list of entity names
@@ -125,6 +127,8 @@ def span_to_tag(
         the index of the input span that tagged it (None for O tokens). Ids
         refer to the caller's span order; a span split by overlap resolution
         keeps one id for all its segments.
+    :param start_indices: character offset of each token; required when
+        ``tokens`` are plain strings, ignored for a spaCy Doc
     :return: list of strings, representing either BILUO or BIO for the input;
         with return_span_ids, a (tags, span_ids) tuple instead
     """
@@ -140,20 +144,26 @@ def span_to_tag(
 
     if not tokens:
         tokens = tokenize(text, token_model_version)
+    if isinstance(tokens, Doc):
+        offsets = [(token.idx, len(token.text)) for token in tokens]
+    else:
+        if start_indices is None or len(start_indices) != len(tokens):
+            raise ValueError(
+                "start_indices must be given, one per token, when tokens are strings"
+            )
+        offsets = [(idx, len(str(token))) for token, idx in zip(tokens, start_indices)]
 
     io_tags = []
     token_span_ids: list[int | None] = []
-    for token in tokens:
+    for token_idx, token_len in offsets:
         found = False
         for span_index in range(0, len(starts)):
             span_start_in_token = (
-                token.idx <= starts[span_index] <= token.idx + len(token.text)
+                token_idx <= starts[span_index] <= token_idx + token_len
             )
-            span_end_in_token = (
-                token.idx <= ends[span_index] <= token.idx + len(token.text)
-            )
+            span_end_in_token = token_idx <= ends[span_index] <= token_idx + token_len
             if (
-                starts[span_index] <= token.idx < ends[span_index]
+                starts[span_index] <= token_idx < ends[span_index]
             ):  # token start is between start and end
                 io_tags.append(tags[span_index])
                 found = True
@@ -174,6 +184,40 @@ def span_to_tag(
     if return_span_ids:
         return out_tags, token_span_ids
     return out_tags
+
+
+def tags_to_span_ids(tags: list[str]) -> list[int | None]:
+    """Derive a per-token entity instance id from a tag sequence.
+
+    A new instance starts on a ``B-`` or ``U-`` prefix, on a change of entity
+    type, or after an ``O`` token; ``I-``/``L-`` tokens continue the current
+    one. Ids are sequential from 0 and ``None`` for ``O``.
+
+    BIO/BILUO tags give exact instance boundaries. Plain IO tags carry no
+    boundary information, so two adjacent entities of the same type read as one
+    instance; callers that know their spans should use :func:`span_to_tag` with
+    ``return_span_ids=True`` instead.
+
+    :param tags: per-token tags in IO, BIO or BILUO scheme.
+    :return: one id per token.
+    """
+    ids: list[int | None] = []
+    current_id = -1
+    current_type: str | None = None
+    for raw_tag in tags:
+        tag = str(raw_tag)
+        if tag == "O":
+            ids.append(None)
+            current_type = None
+            continue
+        prefix, sep, entity_type = tag.partition("-")
+        if not sep:
+            prefix, entity_type = "", tag
+        if prefix in ("B", "U") or entity_type != current_type:
+            current_id += 1
+        ids.append(current_id)
+        current_type = entity_type
+    return ids
 
 
 def io_to_scheme(io_tags: list[str], scheme: str) -> list[str]:

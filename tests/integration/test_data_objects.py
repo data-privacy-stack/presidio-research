@@ -554,8 +554,8 @@ def test_extract_entity_types_duplicate_entities():
         ),
         # Type change without B- still starts a new instance.
         (["B-PERSON", "I-LOCATION"], [0, 1]),
-        # Plain IO carries no boundaries: leave empty so the evaluator falls back.
-        (["PERSON", "PERSON", "O"], []),
+        # Plain IO carries no boundaries: label runs are the best available.
+        (["PERSON", "PERSON", "O", "PERSON"], [0, 0, None, 1]),
         ([], []),
     ],
 )
