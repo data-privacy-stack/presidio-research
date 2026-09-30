@@ -104,11 +104,12 @@ class BaseModel(ABC):
                 ANNOTATION_SPAN_ID,
             ],
         )
-        # object dtype keeps ids as int/None; a numeric column would turn
-        # None into NaN, and NaN != NaN breaks equality-based grouping.
-        df[ANNOTATION_SPAN_ID] = df[ANNOTATION_SPAN_ID].astype("object")
-        df[ANNOTATION_SPAN_ID] = df[ANNOTATION_SPAN_ID].where(
-            df[ANNOTATION_SPAN_ID].notna(), None
+        # Rebuild the id column as object dtype straight from the row values.
+        # DataFrame construction infers float64 from int + None, which turns
+        # ids into 0.0/1.0 and None into NaN (and NaN != NaN breaks
+        # equality-based grouping); casting after the fact keeps the floats.
+        df[ANNOTATION_SPAN_ID] = pd.Series(
+            [row[ANNOTATION_SPAN_ID] for row in rows], dtype="object", index=df.index
         )
         return df
 

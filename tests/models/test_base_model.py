@@ -200,3 +200,14 @@ def test_predict_dataset_span_ids_none_for_spanless_sample_in_mixed_dataset():
     df = model.predict_dataset([with_ids, without_ids])
 
     assert list(df[ANNOTATION_SPAN_ID]) == [0, None]
+
+
+def test_predict_dataset_span_ids_stay_ints():
+    """int + None must not be coerced to float64 (0.0, NaN) on construction."""
+    tokens = ["Ana", "Ruiz", "x"]
+    tags = ["NAME", "NAME", "O"]
+    sample = _make_sample_with_span_ids(tokens, tags, [0, 4, 9], [0, 0, None])
+    df = MockTokensModel(prediction=["O"] * 3).predict_dataset([sample])
+    values = list(df[ANNOTATION_SPAN_ID])
+    assert values == [0, 0, None]
+    assert all(type(v) is int for v in values if v is not None)
