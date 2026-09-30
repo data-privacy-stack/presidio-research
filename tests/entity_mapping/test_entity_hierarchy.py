@@ -675,3 +675,26 @@ class TestBranchAliases:
         # asserted at branch level so this test does not silently encode which
         # leaf happens to win.
         assert self.h.to_branch("MEDICAL_RECORD_NUMBER") == "PHI"
+
+    def test_license_resolves_to_professional_license(self):
+        # LICENSE was defined twice: a leaf under EMPLOYMENT and an alias of
+        # GOVERNMENT_ID > PROFESSIONAL_LICENSE. The alias won the alias map
+        # while to_branch() saw the leaf, so one label reported two branches.
+        # A license is a government-issued ID, so the EMPLOYMENT leaf is gone.
+        assert self.h.canonicalize("LICENSE") == "PROFESSIONAL_LICENSE"
+        assert self.h.to_branch("LICENSE") == "GOVERNMENT_ID"
+        assert self.h.get_branch("LICENSE") == [
+            "PII",
+            "GOVERNMENT_ID",
+            "PROFESSIONAL_LICENSE",
+        ]
+        assert "LICENSE" not in self.h.all_canonical_entities
+
+    def test_add_alias_on_license_targets_professional_license(self):
+        # With the EMPLOYMENT leaf removed, "LICENSE" is only an alias, so
+        # aliasing off it lands on PROFESSIONAL_LICENSE and both names resolve
+        # to the same entity.
+        h = EntityHierarchy()
+        h.add_alias("LICENSE", "PROF_LIC")
+        assert h.canonicalize("PROF_LIC") == "PROFESSIONAL_LICENSE"
+        assert h.canonicalize("LICENSE") == "PROFESSIONAL_LICENSE"

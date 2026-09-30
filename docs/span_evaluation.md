@@ -45,6 +45,24 @@ With "of" as skip word: [ORG, ORG, ORG] (treated as one span)
 The `skip_words` parameter in the `SpanEvaluator` constructor determines which words can be skipped when merging
 adjacent spans of the same entity type.
 
+`CanonicalMapper` adds `annotation_merge_key` and `prediction_merge_key` to all
+four `MappedResults` DataFrames, including `.original`. The keys contain the
+detailed scoring labels (after prediction projection to the gold vocabulary).
+A change of key ends a token run even when the visible label is unchanged.
+Adjacent spans merge only when **both** their scored labels and merge keys agree.
+This keeps, for example, a name and an age separate when both are scored as `PII`.
+The original input columns and values are preserved in `.original`; its column
+set gains the two metadata columns.
+
+Without the paired metadata column, span creation and merging retain label-only
+behavior. Unrelated label columns such as `pred_a` never use `prediction_merge_key`.
+When metadata is present, an invalid sentence-relative `token_start` raises
+`ValueError` instead of silently disabling the keys.
+
+Merge keys are labels, not source span identities: distinct same-type entities
+such as `"Paris , London"` can still merge. Preserving source span identities
+through tokenization is a separate follow-up, not part of this fix.
+
 ## Span Matching Strategy
 
 The evaluator compares annotation spans (gold standard) with prediction spans (model output) using an Intersection over

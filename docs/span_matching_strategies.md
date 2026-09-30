@@ -92,6 +92,14 @@ When there's insufficient overlap between spans, they are treated as both false 
 
 ## Multiple Span Scenarios
 
+A single prediction span may overlap several annotations. Recall is judged per
+annotation, so each annotation it covers at IoU >= threshold is a true positive;
+precision is judged per span, so it enters `num_predicted` once. For example,
+gold `NAME NAME AGE` on `"John Smith 32"` produces two spans. A single prediction
+covering all three tokens is **one prediction**. With an IoU threshold of 1.0 it
+covers neither annotation: one FP, two FNs. At a threshold it meets for both, it
+is two TPs and still one credited prediction.
+
 When an annotation overlaps with multiple prediction spans:
 
 ### 1. Multiple Spans of Same Type
