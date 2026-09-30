@@ -126,7 +126,7 @@ def _stage_docs(src: Path, dst: Path) -> None:
     """Mirror the real docs tree into the staging dir (source stays untouched)."""
     if shutil.which("rsync"):
         dst.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["rsync", "-a", "--delete", f"{src}/", f"{dst}/"], check=True)
+        subprocess.run(["rsync", "-a", "--delete", f"{src}/", f"{dst}/"], check=True)  # noqa: S603, S607
     else:
         if dst.exists():
             shutil.rmtree(dst)
@@ -212,7 +212,7 @@ def _convert_notebooks(notebooks: list[str], docs_dir: Path) -> list[Path]:
 
         out_md = src.with_suffix(".md")
         print(f"  - {rel} -> {out_md.relative_to(docs_dir)}")
-        subprocess.run(
+        subprocess.run(  # noqa: S603
             [
                 jupyter,
                 "nbconvert",
@@ -262,7 +262,7 @@ def _rewrite_links(docs_dir: Path, notebooks: list[str]) -> None:
             prefix, url = match.group(1), match.group(2)
             if url.startswith(("http://", "https://", "//", "mailto:")):
                 return match.group(0)
-            target = (base / urllib.parse.unquote(url)).resolve()
+            target = (base / urllib.parse.unquote(url)).resolve()  # noqa: B023
             if target in converted:
                 hits += 1
                 return prefix + url[: -len(".ipynb")] + ".md"
@@ -323,7 +323,7 @@ def main(argv: list[str]) -> int:
         command, passthrough = "build", argv
 
     raw = MKDOCS_CONFIG.read_text(encoding="utf-8")
-    config = yaml.load(raw, Loader=_TolerantLoader)
+    config = yaml.load(raw, Loader=_TolerantLoader)  # noqa: S506
     docs_dir = REPO_ROOT / config.get("docs_dir", "docs")
 
     notebooks = _collect_notebook_refs(config.get("nav", []))
@@ -351,12 +351,12 @@ def main(argv: list[str]) -> int:
     # killed by the OS on memory spikes; that crash is transient, so retry a
     # couple of times before giving up.
     if command != "build":
-        return subprocess.run(cmd, check=False).returncode
+        return subprocess.run(cmd, check=False).returncode  # noqa: S603
 
     attempts = max(1, int(os.environ.get("ZENSICAL_BUILD_RETRIES", "3")))
     rc = 0
     for attempt in range(1, attempts + 1):
-        rc = subprocess.run(cmd, check=False).returncode
+        rc = subprocess.run(cmd, check=False).returncode  # noqa: S603
         if rc == 0:
             return 0
         print(f"  zensical build failed (exit {rc}), attempt {attempt}/{attempts}")
