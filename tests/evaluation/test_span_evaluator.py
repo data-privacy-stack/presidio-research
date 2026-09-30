@@ -1779,3 +1779,108 @@ def test_multi_sentence_df_does_not_merge_separated_same_type_spans(span_evaluat
     )
     assert person.num_predicted == 4
     assert person.true_positives == 4
+
+
+class TestBinaryLevelOverMerge:
+    """Regression tests for the binary-level over-merge.
+
+    Merging compared entity types AFTER they had been collapsed, so at the
+    binary level - where every label is "PII" - the guard was vacuous and
+    unrelated neighbouring entities became one span. Gold spans then depended on
+    the granularity being scored, making the levels incomparable.
+    """
+
+    @staticmethod
+    def _df(tokens, annotations, merge_keys=None):
+        import pandas as pd
+
+        from presidio_evaluator.entity_mapping.data_objects import (
+            ANNOTATION_MERGE_KEY,
+            PREDICTION_MERGE_KEY,
+        )
+
+        starts, pos = [], 0
+        for tok in tokens:
+            starts.append(pos)
+            pos += len(tok) + 1
+        data = {
+            "sentence_id": [0] * len(tokens),
+            "token": tokens,
+            "annotation": annotations,
+            "prediction": annotations,
+            "start_indices": starts,
+        }
+        if merge_keys is not None:
+            data[ANNOTATION_MERGE_KEY] = merge_keys
+            data[PREDICTION_MERGE_KEY] = merge_keys
+        return pd.DataFrame(data)
+
+    def test_adjacent_different_entities_stay_separate_at_binary_level(self):
+        """Separated by punctuation: merging must not fire."""
+        tokens = ["Contact", "John", "Smith", ",", "32", ",", "jane@x.com"]
+        binary = ["O", "PII", "PII", "O", "PII", "O", "PII"]
+        keys = ["O", "NAME", "NAME", "O", "AGE", "O", "EMAIL_ADDRESS"]
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        spans, _ = evaluator._process_sentence_spans(self._df(tokens, binary, keys))
+        assert len(spans) == 3
+
+    def test_touching_different_entities_stay_separate_at_binary_level(self):
+        """No token in between: span creation must break on the merge key."""
+        tokens = ["Ana", "Ruiz", "29"]
+        binary = ["PII", "PII", "PII"]
+        keys = ["NAME", "NAME", "AGE"]
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        spans, _ = evaluator._process_sentence_spans(self._df(tokens, binary, keys))
+        assert len(spans) == 2
+        assert [s.entity_value for s in spans] == ["Ana Ruiz", "29"]
+
+    def test_same_entity_fragments_still_merge(self):
+        """The feature's real purpose must survive."""
+        tokens = ["Visiting", "New", "York", "today"]
+        binary = ["O", "PII", "PII", "O"]
+        keys = ["O", "LOCATION", "LOCATION", "O"]
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        spans, _ = evaluator._process_sentence_spans(self._df(tokens, binary, keys))
+        assert len(spans) == 1
+        assert spans[0].entity_value == "New York"
+
+    def test_span_count_is_identical_across_levels(self):
+        """The invariant: ground truth cannot depend on the level being scored."""
+        tokens = ["Contact", "John", "Smith", ",", "32", ",", "jane@x.com"]
+        keys = ["O", "NAME", "NAME", "O", "AGE", "O", "EMAIL_ADDRESS"]
+        levels = {
+            "detailed": keys,
+            "branch": ["O", "PERSON", "PERSON", "O", "DEMOGRAPHIC", "O", "CONTACT"],
+            "binary": ["O", "PII", "PII", "O", "PII", "O", "PII"],
+        }
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        counts = {
+            name: len(
+                evaluator._process_sentence_spans(self._df(tokens, labels, keys))[0]
+            )
+            for name, labels in levels.items()
+        }
+        assert len(set(counts.values())) == 1, counts
+
+    def test_without_merge_keys_behaviour_is_unchanged(self):
+        """Back-compat: DataFrames built without CanonicalMapper still work."""
+        tokens = ["Visiting", "New", "York", "today"]
+        labels = ["O", "LOCATION", "LOCATION", "O"]
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        spans, _ = evaluator._process_sentence_spans(self._df(tokens, labels))
+        assert len(spans) == 1
+
+    def test_merge_keys_length_is_validated(self):
+        import pandas as pd
+
+        evaluator = SpanEvaluator(iou_threshold=1.0)
+        span = Span("PII", "x", 0, 1, token_start=0, token_end=1)
+        with pytest.raises(ValueError, match="merge_keys has"):
+            evaluator._merge_adjacent_spans(
+                [span, span], pd.DataFrame({"token": ["x", "y"]}), merge_keys=["A"]
+            )
