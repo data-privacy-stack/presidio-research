@@ -11,6 +11,7 @@ from presidio_evaluator.entity_mapping import (
 from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.evaluation.span_evaluator import SpanEvaluator
 from presidio_evaluator.evaluation.token_evaluator import TokenEvaluator
+from tests.helpers import with_span_ids
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,7 +35,7 @@ def _make_results(annotations: list[str], predictions: list[str]) -> MappedResul
         }
     )
     mapper = CanonicalMapper()
-    mapper.analyze(df)
+    mapper.analyze(with_span_ids(df))
     return mapper.get_mapped_results_dataframe()
 
 
@@ -53,7 +54,7 @@ def _make_single_sentence_results(
         }
     )
     mapper = CanonicalMapper()
-    mapper.analyze(df)
+    mapper.analyze(with_span_ids(df))
     return mapper.get_mapped_results_dataframe()
 
 
@@ -245,7 +246,7 @@ class TestGranularityBonus:
             }
         )
         mapper = CanonicalMapper(hierarchy=hierarchy)
-        mapper.analyze(df)
+        mapper.analyze(with_span_ids(df))
         scores = SpanEvaluator(skip_words=[]).calculate_hierarchical_scores(
             mapper.get_mapped_results_dataframe()
         )

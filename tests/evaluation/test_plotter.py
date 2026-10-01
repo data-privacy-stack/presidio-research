@@ -8,6 +8,7 @@ from plotly.graph_objs import Figure
 from presidio_evaluator.evaluation import EvaluationResult
 from presidio_evaluator.evaluation.plotter import Plotter
 from presidio_evaluator.evaluation.span_evaluator import SpanEvaluator
+from tests.helpers import with_span_ids
 
 
 @pytest.fixture
@@ -257,7 +258,9 @@ def test_plotter_with_span_evaluator_output():
     )
 
     evaluator = SpanEvaluator(model=None, skip_words=[])
-    evaluation_result = evaluator.calculate_score_on_df(results_df=results_df)
+    evaluation_result = evaluator.calculate_score_on_df(
+        results_df=with_span_ids(results_df)
+    )
 
     # Verify all fields Plotter.plot_scores() requires
     assert evaluation_result.entity_recall_dict is not None

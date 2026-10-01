@@ -4,6 +4,10 @@ from typing import Literal
 import pandas as pd
 
 from presidio_evaluator.data_objects import Span
+from presidio_evaluator.entity_mapping.data_objects import (
+    ANNOTATION_SPAN_ID,
+    PREDICTION_SPAN_ID,
+)
 from presidio_evaluator.evaluation import (
     BaseEvaluator,
     DeprecationError,
@@ -12,6 +16,13 @@ from presidio_evaluator.evaluation import (
     ModelError,
 )
 from presidio_evaluator.models import BaseModel
+from presidio_evaluator.span_to_tag import ensure_span_ids
+
+#: Label column -> the span-id column that carries its entity instance ids.
+SPAN_ID_COLUMNS = {
+    "annotation": ANNOTATION_SPAN_ID,
+    "prediction": PREDICTION_SPAN_ID,
+}
 
 
 class SpanEvaluator(BaseEvaluator):
@@ -86,112 +97,6 @@ class SpanEvaluator(BaseEvaluator):
             normalized_indices.append(start)
 
         return normalized, normalized_indices
-
-    def _merge_adjacent_spans(
-        self,
-        spans: list[Span],
-        df: pd.DataFrame,
-        merge_keys: list[str] | None = None,
-    ) -> list[Span]:
-        """
-        Merge adjacent spans of the same entity type if separated only by skip words / punctuation.
-
-        :param spans: List of Span objects to potentially merge
-        :param df: DataFrame containing the tokens and their positions
-        :param merge_keys: Optional per-span detailed scoring labels. When given,
-            both the merge keys and ``Span.entity_type`` must match. Merge keys
-            restrict merging within a scored label, never across labels.
-            This matters once labels have been collapsed:
-            at the binary level every span is ``"PII"``, so comparing
-            ``entity_type`` would merge a name, an age and an email into one span.
-        :return: List of merged Span objects
-        """
-        if not spans:
-            return []
-        if merge_keys is not None and len(merge_keys) != len(spans):
-            raise ValueError(
-                f"merge_keys has {len(merge_keys)} entries for {len(spans)} spans",
-            )
-        if merge_keys is None:
-            keys = [s.entity_type for s in spans]
-        else:
-            keys = list(merge_keys)
-
-        order = sorted(range(len(spans)), key=lambda i: spans[i].start_position)
-        spans = [spans[i] for i in order]
-        keys = [keys[i] for i in order]
-
-        merged = []
-        current = spans[0]
-        current_key = keys[0]
-
-        for next_span, next_key in zip(spans[1:], keys[1:], strict=True):
-            if (
-                current_key == next_key
-                and current.entity_type == next_span.entity_type
-                and self._are_spans_adjacent(current, next_span, df)
-            ):
-                merged_tokens = [current.entity_value, next_span.entity_value]
-                merged_normalized_text = (current.normalized_tokens or []) + (
-                    next_span.normalized_tokens or []
-                )
-                if (
-                    current.normalized_start_indices is not None
-                    and next_span.normalized_start_indices is not None
-                ):
-                    merged_normalized_indices = (
-                        current.normalized_start_indices
-                        + next_span.normalized_start_indices
-                    )
-                else:
-                    merged_normalized_indices = None
-                current = Span(
-                    entity_type=current.entity_type,
-                    entity_value=" ".join(merged_tokens),
-                    start_position=current.start_position,
-                    end_position=next_span.end_position,
-                    normalized_start_index=min(
-                        current.normalized_start_index or 0,
-                        next_span.normalized_start_index or 0,
-                    ),
-                    normalized_end_index=max(
-                        current.normalized_end_index or 0,
-                        next_span.normalized_end_index or 0,
-                    ),
-                    normalized_tokens=merged_normalized_text,
-                    normalized_start_indices=merged_normalized_indices,
-                    token_start=current.token_start,
-                    token_end=next_span.token_end,
-                )
-            else:
-                merged.append(current)
-                current = next_span
-                current_key = next_key
-
-        merged.append(current)
-        return merged
-
-    def _are_spans_adjacent(self, span1: Span, span2: Span, df: pd.DataFrame) -> bool:
-        """
-        Check if two spans are adjacent, i.e., separated only by skipwords / punctuation or whitespace tokens.
-
-        :param span1: First Span object
-        :param span2: Second Span object
-        :param df: DataFrame containing the tokens
-        :return: True if spans are adjacent, False otherwise
-        """
-        # token_start/token_end are positions within the sentence, so slice
-        # positionally — the DataFrame's index labels are caller-defined
-        # (e.g. global across sentences) and must not be used as positions.
-        if span1.token_end is None or span2.token_start is None:
-            raise ValueError(
-                "Spans must have token_start/token_end set to check adjacency",
-            )
-        between_tokens = df["token"].iloc[span1.token_end : span2.token_start].tolist()
-        non_skip_tokens = [
-            tok for tok in between_tokens if tok.lower().strip() not in self.skip_words
-        ]
-        return len(non_skip_tokens) == 0
 
     @staticmethod
     def calculate_iou(
@@ -306,77 +211,10 @@ class SpanEvaluator(BaseEvaluator):
         self,
         sentence_df: pd.DataFrame,
     ) -> tuple[list[Span], list[Span]]:
-        annotation_spans = self._create_spans(df=sentence_df, column="annotation")
-        prediction_spans = self._create_spans(df=sentence_df, column="prediction")
-
-        annotation_spans = self._merge_adjacent_spans(
-            spans=annotation_spans,
-            df=sentence_df,
-            merge_keys=self._merge_keys_for(
-                sentence_df, "annotation", annotation_spans
-            ),
+        return (
+            self._create_spans(df=sentence_df, column="annotation"),
+            self._create_spans(df=sentence_df, column="prediction"),
         )
-        prediction_spans = self._merge_adjacent_spans(
-            spans=prediction_spans,
-            df=sentence_df,
-            merge_keys=self._merge_keys_for(
-                sentence_df, "prediction", prediction_spans
-            ),
-        )
-
-        return annotation_spans, prediction_spans
-
-    @staticmethod
-    def _merge_key_column(df: pd.DataFrame, column: str) -> str | None:
-        """Name of the merge-key column paired with a label column, if present.
-
-        Only ``annotation`` and ``prediction`` have associated merge keys.
-        Returns None for other label columns or missing metadata, in which case
-        callers compare the visible label alone.
-        """
-        from presidio_evaluator.entity_mapping.data_objects import (  # noqa: PLC0415
-            ANNOTATION_MERGE_KEY,
-            PREDICTION_MERGE_KEY,
-        )
-
-        if column == "annotation":
-            key_column = ANNOTATION_MERGE_KEY
-        elif column == "prediction":
-            key_column = PREDICTION_MERGE_KEY
-        else:
-            return None
-        return key_column if key_column in df.columns else None
-
-    @staticmethod
-    def _merge_keys_for(
-        sentence_df: pd.DataFrame,
-        column: str,
-        spans: list[Span],
-    ) -> list[str] | None:
-        """Detailed scoring label for each span, read from the merge-key column.
-
-        `CanonicalMapper` attaches these columns to every level so that merging
-        stays type-aware after labels have been collapsed. When they are absent
-        (a DataFrame built by hand, or an older caller) this returns None and
-        merging falls back to comparing the visible entity type.
-
-        :return: one label per span, in the same order, or None.
-        :raises ValueError: if metadata exists but a span has an invalid
-            sentence-relative token_start.
-        """
-        key_column = SpanEvaluator._merge_key_column(sentence_df, column)
-        if key_column is None:
-            return None
-
-        keys = []
-        for span in spans:
-            if span.token_start is None or not 0 <= span.token_start < len(sentence_df):
-                raise ValueError(
-                    f"Invalid token_start {span.token_start!r} for {column} span "
-                    f"{span!r}: expected a position in [0, {len(sentence_df)})",
-                )
-            keys.append(sentence_df[key_column].iloc[span.token_start])
-        return keys
 
     @staticmethod
     def _handle_unmatched_predictions(
@@ -692,106 +530,76 @@ class SpanEvaluator(BaseEvaluator):
 
     def _create_spans(self, df: pd.DataFrame, column: str) -> list[Span]:
         """
-        Create spans from a DataFrame column.
+        Create spans from a label column using the matching span-id column.
 
-        Consecutive tokens form one span while they share a label. When a
-        merge-key column is present (attached by CanonicalMapper), a change of
-        merge key also ends the span even though the visible label is unchanged.
-        Without that, two different entities standing side by side with no token
-        between them - "Ana Ruiz 29" at the binary level, where both are "PII" -
-        would be read as a single entity and one gold span would disappear.
+        A span is a maximal run of tokens sharing an entity instance id
+        (``annotation_span_id`` for ``annotation``, ``prediction_span_id`` for
+        ``prediction``); ``O`` tokens carry no id and end a run. Boundaries
+        therefore come from the source spans, never from label runs, so the
+        same spans are produced at every mapping level and two adjacent
+        entities stay separate even when their labels are identical.
 
-        :param df: DataFrame containing the spans.
-        :param column: Name of the column to extract spans from.
+        Skip words inside a span are dropped from its normalized form; a span
+        made only of skip words is dropped entirely.
 
-        Returns:
-            List[Span]: List of Span objects created from the DataFrame.
+        :param df: One sentence's rows with ``token``, ``start_indices``, the
+            label column and its span-id column.
+        :param column: ``"annotation"`` or ``"prediction"``.
+        :return: One Span per entity instance, in sentence order.
+        A frame without the id column (hand-built or loaded from disk) falls
+        back to ids derived from the label column's runs, which is what a
+        tag-only model would produce.
         """
-        key_column = self._merge_key_column(df, column)
+        id_column = SPAN_ID_COLUMNS.get(column)
+        if id_column is None:
+            raise ValueError(
+                f"Unsupported label column {column!r}; expected one of "
+                f"{sorted(SPAN_ID_COLUMNS)}"
+            )
+        if id_column not in df.columns:
+            df = ensure_span_ids(df)
 
-        spans = []
-        current_entity_type = None
-        current_merge_key = None
-        current_tokens = []
-        current_start_indices = []
-        current_token_start: int = 0
+        spans: list[Span] = []
+        run_id = None
+        run_type: str | None = None
+        run_tokens: list[str] = []
+        run_starts: list[int] = []
+        run_token_start = 0
 
-        for idx, (_, row) in enumerate(df.iterrows()):
-            entity_type = row[column]
-            token = row["token"]
-            token_start = row["start_indices"]
-            merge_key = row[key_column] if key_column else None
-
-            if entity_type == "O":
-                if current_entity_type and current_tokens:
-                    normalized_tokens, normalized_start_indices = (
-                        self._normalize_tokens(current_tokens, current_start_indices)
-                    )
-                    if normalized_tokens:
-                        spans.append(
-                            self.__create_span(
-                                entity_type=current_entity_type,
-                                start_indices=current_start_indices,
-                                token_start=current_token_start,
-                                current_tokens=current_tokens,
-                                idx=idx,
-                                normalized_start_indices=normalized_start_indices,
-                                normalized_tokens=normalized_tokens,
-                            ),
-                        )
-                    current_entity_type = None
-                    current_merge_key = None
-                    current_tokens = []
-                    current_start_indices = []
-                    current_token_start = 0
-
-                continue
-
-            if entity_type != current_entity_type or merge_key != current_merge_key:
-                if current_entity_type and current_tokens:
-                    normalized_tokens, normalized_start_indices = (
-                        self._normalize_tokens(current_tokens, current_start_indices)
-                    )
-                    if normalized_tokens:
-                        spans.append(
-                            self.__create_span(
-                                entity_type=current_entity_type,
-                                start_indices=current_start_indices,
-                                token_start=current_token_start,
-                                current_tokens=current_tokens,
-                                idx=idx,
-                                normalized_start_indices=normalized_start_indices,
-                                normalized_tokens=normalized_tokens,
-                            ),
-                        )
-                current_entity_type = entity_type
-                current_merge_key = merge_key
-                current_tokens = [token]
-                current_start_indices = [token_start]
-                current_token_start = idx  # Set token start position
-
-            else:
-                current_tokens.append(token)
-                current_start_indices.append(token_start)
-
-        # Handle final span
-        if current_entity_type and current_tokens:
-            normalized_tokens, normalized_start_indices = self._normalize_tokens(
-                current_tokens,
-                current_start_indices,
+        def close(idx: int) -> None:
+            if run_type is None:
+                return
+            normalized_tokens, normalized_starts = self._normalize_tokens(
+                run_tokens, run_starts
             )
             if normalized_tokens:
                 spans.append(
                     self.__create_span(
-                        entity_type=current_entity_type,
-                        start_indices=current_start_indices,
-                        token_start=current_token_start,
-                        current_tokens=current_tokens,
-                        idx=len(df),
-                        normalized_start_indices=normalized_start_indices,
+                        entity_type=run_type,
+                        start_indices=run_starts,
+                        token_start=run_token_start,
+                        current_tokens=run_tokens,
+                        idx=idx,
+                        normalized_start_indices=normalized_starts,
                         normalized_tokens=normalized_tokens,
-                    ),
+                    )
                 )
+
+        rows = zip(df["token"], df["start_indices"], df[column], df[id_column])
+        for idx, (token, token_start, label, span_id) in enumerate(rows):
+            if span_id is None or label == "O":
+                close(idx)
+                run_id, run_type, run_tokens, run_starts = None, None, [], []
+                continue
+            if span_id != run_id:
+                close(idx)
+                run_id, run_type = span_id, label
+                run_tokens, run_starts = [token], [token_start]
+                run_token_start = idx
+            else:
+                run_tokens.append(token)
+                run_starts.append(token_start)
+        close(len(df))
         return spans
 
     def __create_span(

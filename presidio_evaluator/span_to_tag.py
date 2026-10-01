@@ -44,23 +44,25 @@ def _get_detailed_tags_for_span(scheme: str, cur_tags: list[str]) -> list[str]:
     return return_tags
 
 
-def _sort_spans(start, end, tag, score):
+def _sort_spans(start, end, tag, score, span_id):
     if len(start) > 0:
         tpl = [
-            (a, b, c, d)
-            for a, b, c, d in sorted(
-                zip(start, end, tag, score, strict=False),
+            (a, b, c, d, e)
+            for a, b, c, d, e in sorted(
+                zip(start, end, tag, score, span_id, strict=False),
                 key=lambda pair: pair[0],
             )
         ]
-        start, end, tag, score = [[x[i] for x in tpl] for i in range(len(tpl[0]))]
-    return start, end, tag, score
+        start, end, tag, score, span_id = [
+            [x[i] for x in tpl] for i in range(len(tpl[0]))
+        ]
+    return start, end, tag, score, span_id
 
 
-def _handle_overlaps(start, end, tag, score):
-    start, end, tag, score = _sort_spans(start, end, tag, score)
+def _handle_overlaps(start, end, tag, score, span_id):
+    start, end, tag, score, span_id = _sort_spans(start, end, tag, score, span_id)
     if len(start) == 0:
-        return start, end, tag, score
+        return start, end, tag, score, span_id
     number_of_spans = len(start)
     i = 0
     while i < number_of_spans - 1:
@@ -78,11 +80,13 @@ def _handle_overlaps(start, end, tag, score):
                 # j's score is higher, break i
                 # If i finishes after j ended, split i
                 elif end[j] < end[i]:
-                    # create new span at the end
+                    # create new span at the end; the segment is still the same
+                    # input span, so it keeps i's identity
                     start.append(end[j] + 1)
                     end.append(end[i])
                     score.append(score[i])
                     tag.append(tag[i])
+                    span_id.append(span_id[i])
                     number_of_spans += 1
                     # truncate the current i to end at start(j)
                     end[i] = start[j] - 1
@@ -91,8 +95,8 @@ def _handle_overlaps(start, end, tag, score):
                     end[i] = start[j] - 1
 
         i += 1
-    start, end, tag, score = _sort_spans(start, end, tag, score)
-    return start, end, tag, score
+    start, end, tag, score, span_id = _sort_spans(start, end, tag, score, span_id)
+    return start, end, tag, score, span_id
 
 
 def span_to_tag(
@@ -102,44 +106,64 @@ def span_to_tag(
     ends: list[int],
     tags: list[str],
     scores: list[float] | None = None,
-    tokens: Doc | None = None,
+    tokens: Doc | list[str] | None = None,
     token_model_version: str = "en_core_web_sm",  # noqa: S107
-) -> list[str]:
+    return_span_ids: bool = False,
+    start_indices: list[int] | None = None,
+) -> list[str] | tuple[list[str], list[int | None]]:
     """
     Turns a list of start and end values with corresponding labels, into a NER
     tagging (BILUO,BIO/IOB)
     :param scheme: labeling scheme, either BILUO, BIO/IOB or IO
     :param text: input text
-    :param tokens: text tokenized to tokens
+    :param tokens: text tokenized to tokens: a spaCy Doc, or plain strings
+        together with ``start_indices``
     :param starts: list of indices where entities in the text start
     :param ends: list of indices where entities in the text end
     :param tags: list of entity names
     :param scores: score of tag (confidence)
     :param token_model_version: model used for tokenization if no tokens provided
-    :return: list of strings, representing either BILUO or BIO for the input
+    :param return_span_ids: when True, also return one entry per token holding
+        the index of the input span that tagged it (None for O tokens). Ids
+        refer to the caller's span order; a span split by overlap resolution
+        keeps one id for all its segments.
+    :param start_indices: character offset of each token; required when
+        ``tokens`` are plain strings, ignored for a spaCy Doc
+    :return: list of strings, representing either BILUO or BIO for the input;
+        with return_span_ids, a (tags, span_ids) tuple instead
     """
 
     if not scores:
         # assume all scores are of equal weight
         scores = [0.5 for start in starts]
 
-    starts, ends, tags, scores = _handle_overlaps(starts, ends, tags, scores)
+    span_ids = list(range(len(starts)))
+    starts, ends, tags, scores, span_ids = _handle_overlaps(
+        starts, ends, tags, scores, span_ids
+    )
 
     if not tokens:
         tokens = tokenize(text, token_model_version)
+    if isinstance(tokens, Doc):
+        offsets = [(token.idx, len(token.text)) for token in tokens]
+    else:
+        if start_indices is None or len(start_indices) != len(tokens):
+            raise ValueError(
+                "start_indices must be given, one per token, when tokens are strings"
+            )
+        offsets = [(idx, len(str(token))) for token, idx in zip(tokens, start_indices)]
 
     io_tags = []
-    for token in tokens:
+    token_span_ids: list[int | None] = []
+    for token_idx, token_len in offsets:
         found = False
         for span_index in range(0, len(starts)):
             span_start_in_token = (
-                token.idx <= starts[span_index] <= token.idx + len(token.text)
+                token_idx <= starts[span_index] <= token_idx + token_len
             )
-            span_end_in_token = (
-                token.idx <= ends[span_index] <= token.idx + len(token.text)
-            )
+            span_end_in_token = token_idx <= ends[span_index] <= token_idx + token_len
             if (
-                starts[span_index] <= token.idx < ends[span_index]
+                starts[span_index] <= token_idx < ends[span_index]
             ):  # token start is between start and end
                 io_tags.append(tags[span_index])
                 found = True
@@ -149,15 +173,51 @@ def span_to_tag(
                 io_tags.append(tags[span_index])
                 found = True
             if found:
+                token_span_ids.append(span_ids[span_index])
                 break
 
         if not found:
             io_tags.append("O")
+            token_span_ids.append(None)
 
-    if scheme == "IO":
-        return io_tags
-    else:
-        return io_to_scheme(io_tags, scheme)
+    out_tags = io_tags if scheme == "IO" else io_to_scheme(io_tags, scheme)
+    if return_span_ids:
+        return out_tags, token_span_ids
+    return out_tags
+
+
+def tags_to_span_ids(tags: list[str]) -> list[int | None]:
+    """Derive a per-token entity instance id from a tag sequence.
+
+    A new instance starts on a ``B-`` or ``U-`` prefix, on a change of entity
+    type, or after an ``O`` token; ``I-``/``L-`` tokens continue the current
+    one. Ids are sequential from 0 and ``None`` for ``O``.
+
+    BIO/BILUO tags give exact instance boundaries. Plain IO tags carry no
+    boundary information, so two adjacent entities of the same type read as one
+    instance; callers that know their spans should use :func:`span_to_tag` with
+    ``return_span_ids=True`` instead.
+
+    :param tags: per-token tags in IO, BIO or BILUO scheme.
+    :return: one id per token.
+    """
+    ids: list[int | None] = []
+    current_id = -1
+    current_type: str | None = None
+    for raw_tag in tags:
+        tag = str(raw_tag)
+        if tag == "O":
+            ids.append(None)
+            current_type = None
+            continue
+        prefix, sep, entity_type = tag.partition("-")
+        if not sep:
+            prefix, entity_type = "", tag
+        if prefix in ("B", "U") or entity_type != current_type:
+            current_id += 1
+        ids.append(current_id)
+        current_type = entity_type
+    return ids
 
 
 def io_to_scheme(io_tags: list[str], scheme: str) -> list[str]:
@@ -190,3 +250,42 @@ def io_to_scheme(io_tags: list[str], scheme: str) -> list[str]:
             ),
         )
     return new_return_tags
+
+
+def ensure_span_ids(df):
+    """Return ``df`` with ``annotation_span_id`` / ``prediction_span_id`` present.
+
+    Frames built by :meth:`BaseModel.predict_dataset` already carry both
+    columns, taken from the source spans, and are returned unchanged. For a
+    frame that lacks one (hand-built, loaded from disk, produced by an older
+    version), the missing column is derived from the matching label column
+    with :func:`tags_to_span_ids`, per ``sentence_id`` when that column
+    exists. Derive before collapsing labels to a coarser level: ids taken from
+    the finest labels keep touching entities of different types apart, which
+    is all a label run can tell. Same-type neighbours still read as one.
+    """
+    import pandas as pd
+
+    from presidio_evaluator.entity_mapping.data_objects import (
+        ANNOTATION_SPAN_ID,
+        PREDICTION_SPAN_ID,
+    )
+
+    pairs = (("annotation", ANNOTATION_SPAN_ID), ("prediction", PREDICTION_SPAN_ID))
+    missing = [(c, i) for c, i in pairs if c in df.columns and i not in df.columns]
+    if not missing:
+        return df
+    df = df.copy()
+    groups = (
+        [g for _, g in df.groupby("sentence_id", sort=False)]
+        if "sentence_id" in df.columns
+        else [df]
+    )
+    for label_column, id_column in missing:
+        ids: list[int | None] = []
+        index: list = []
+        for group in groups:
+            ids += tags_to_span_ids(group[label_column].tolist())
+            index += group.index.tolist()
+        df[id_column] = pd.Series(ids, dtype="object", index=index).reindex(df.index)
+    return df

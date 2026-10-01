@@ -1,78 +1,62 @@
-"""Regressions for the merge-key and prediction-accounting review findings."""
+"""Regressions for span identity and prediction accounting."""
 
 import pandas as pd
 import pytest
 
-from presidio_evaluator.data_objects import Span
 from presidio_evaluator.entity_mapping import CanonicalMapper
 from presidio_evaluator.entity_mapping.data_objects import (
-    ANNOTATION_MERGE_KEY,
-    PREDICTION_MERGE_KEY,
+    ANNOTATION_SPAN_ID,
+    PREDICTION_SPAN_ID,
 )
 from presidio_evaluator.evaluation import ErrorType, EvaluationResult, SpanEvaluator
+from tests.helpers import make_results_df as make_df
 
 
-def make_df(tokens, annotations, predictions):
-    starts = []
-    position = 0
-    for token in tokens:
-        starts.append(position)
-        position += len(token) + 1
-    return pd.DataFrame(
-        {
-            "sentence_id": [0] * len(tokens),
-            "token": tokens,
-            "start_indices": starts,
-            "annotation": annotations,
-            "prediction": predictions,
-        }
-    )
-
-
-@pytest.mark.parametrize("column", ["pred_a", "pred_b", "custom_gold"])
-def test_arbitrary_columns_ignore_prediction_merge_keys(column):
+@pytest.mark.parametrize("column", ["pred_a", "custom_gold"])
+def test_arbitrary_label_columns_are_rejected(column):
     df = make_df(["John", "Smith", "32"], ["NAME"] * 3, ["NAME", "NAME", "AGE"])
     df[column] = ["PII"] * 3
-    df[PREDICTION_MERGE_KEY] = ["NAME", "NAME", "AGE"]
-    evaluator = SpanEvaluator(skip_words=[])
-
-    assert evaluator._merge_key_column(df, column) is None
-    spans = evaluator._create_spans(df, column)
-    assert [span.entity_value for span in spans] == ["John Smith 32"]
-    assert evaluator._merge_keys_for(df, column, spans) is None
+    with pytest.raises(ValueError, match="Unsupported label column"):
+        SpanEvaluator(skip_words=[])._create_spans(df, column)
 
 
 @pytest.mark.parametrize(
-    ("column", "key_column"),
-    [("annotation", ANNOTATION_MERGE_KEY), ("prediction", PREDICTION_MERGE_KEY)],
+    ("column", "id_column"),
+    [("annotation", ANNOTATION_SPAN_ID), ("prediction", PREDICTION_SPAN_ID)],
 )
-@pytest.mark.parametrize("token_start", [None, -1, 2, 100])
-def test_invalid_merge_key_position_raises(column, key_column, token_start):
-    df = pd.DataFrame({key_column: ["NAME", "AGE"]})
-    spans = [
-        Span("PII", "John", 0, 4, token_start=0, token_end=1),
-        Span("PII", "32", 5, 7, token_start=token_start, token_end=2),
+def test_missing_span_id_column_falls_back_to_label_runs(column, id_column):
+    df = make_df(["John", "32", "Ana"], ["NAME", "AGE", "NAME"], ["NAME"] * 3).drop(
+        columns=[id_column]
+    )
+    spans = SpanEvaluator(skip_words=[])._create_spans(df, column)
+    expected = 3 if column == "annotation" else 1
+    assert len(spans) == expected
+
+
+def test_mapper_derives_ids_from_finest_labels_when_missing():
+    raw = make_df(
+        ["John", "Smith", "32", ",", "Ana"],
+        ["NAME", "NAME", "AGE", "O", "NAME"],
+        ["NAME", "NAME", "AGE", "O", "NAME"],
+    ).drop(columns=[ANNOTATION_SPAN_ID, PREDICTION_SPAN_ID])
+    mapper = CanonicalMapper()
+    mapper.analyze(raw)
+    mapped = mapper.get_mapped_results_dataframe()
+    for level in ("binary", "branch", "detailed"):
+        df = mapped.get_level(level)
+        assert df[ANNOTATION_SPAN_ID].tolist() == [0, 0, 1, None, 2]
+        gold, predictions = SpanEvaluator()._process_sentence_spans(df)
+        assert len(gold) == len(predictions) == 3
+
+
+def test_span_ids_use_sentence_positions_not_dataframe_index():
+    df = make_df(["32", "John"], ["AGE", "NAME"], ["O", "O"])
+    df.index = [100, 400]
+    spans = SpanEvaluator(skip_words=[])._create_spans(df, "annotation")
+    assert [(s.entity_value, s.token_start, s.token_end) for s in spans] == [
+        ("32", 0, 1),
+        ("John", 1, 2),
     ]
-    with pytest.raises(ValueError, match="token_start"):
-        SpanEvaluator._merge_keys_for(df, column, spans)
-
-
-def test_merge_keys_use_sentence_positions_not_dataframe_index():
-    df = pd.DataFrame({ANNOTATION_MERGE_KEY: ["NAME", "AGE"]}, index=[100, 400])
-    spans = [
-        Span("PII", "32", 5, 7, token_start=1, token_end=2),
-        Span("PII", "John", 0, 4, token_start=0, token_end=1),
-    ]
-    assert SpanEvaluator._merge_keys_for(df, "annotation", spans) == ["AGE", "NAME"]
-    assert SpanEvaluator._merge_keys_for(pd.DataFrame(), "annotation", spans) is None
-
-
-def test_equal_merge_keys_cannot_merge_different_scored_labels():
-    df = make_df(["John", ",", "Smith"], ["NAME", "O", "PERSON"], ["O"] * 3)
-    evaluator = SpanEvaluator()
-    spans = evaluator._create_spans(df, "annotation")
-    merged = evaluator._merge_adjacent_spans(spans, df, ["PERSON", "PERSON"])
-    assert [span.entity_type for span in merged] == ["NAME", "PERSON"]
 
 
 @pytest.mark.parametrize("char_based", [False, True])
@@ -121,13 +105,9 @@ def test_one_prediction_over_two_gold_spans_counted_once(char_based, threshold, 
 @pytest.mark.parametrize("per_type", [False, True])
 def test_small_early_overlap_cannot_steal_later_true_positive(reverse_gold, per_type):
     evaluator = SpanEvaluator(iou_threshold=0.75, skip_words=[])
-    df = make_df(
-        ["32", "John", "Smith"],
-        ["PII"] * 3,
-        ["PII"] * 3,
-    )
-    df[ANNOTATION_MERGE_KEY] = ["AGE", "NAME", "NAME"]
-    df[PREDICTION_MERGE_KEY] = ["NAME"] * 3
+    df = make_df(["32", "John", "Smith"], ["PII"] * 3, ["PII"] * 3)
+    df[ANNOTATION_SPAN_ID] = [0, 1, 1]
+    df[PREDICTION_SPAN_ID] = [0, 0, 0]
     gold, predictions = evaluator._process_sentence_spans(df)
     if reverse_gold:
         gold.reverse()
@@ -155,8 +135,8 @@ def test_small_early_overlap_cannot_steal_later_true_positive(reverse_gold, per_
 def test_prediction_cannot_be_true_positive_for_two_gold_spans(reverse_gold):
     evaluator = SpanEvaluator(iou_threshold=0.4, skip_words=[])
     df = make_df(["John", "Mary"], ["PII"] * 2, ["PII"] * 2)
-    df[ANNOTATION_MERGE_KEY] = ["FIRST_NAME", "LAST_NAME"]
-    df[PREDICTION_MERGE_KEY] = ["NAME"] * 2
+    df[ANNOTATION_SPAN_ID] = [0, 1]
+    df[PREDICTION_SPAN_ID] = [0, 0]
     gold, predictions = evaluator._process_sentence_spans(df)
     if reverse_gold:
         gold.reverse()
@@ -216,7 +196,7 @@ def test_fragment_aggregation_still_counts_as_one_prediction():
     assert metrics.false_positives == metrics.false_negatives == 0
 
 
-def test_mapper_metadata_preserves_input_and_restored_prediction_projection():
+def test_mapper_passes_span_ids_through_every_level():
     raw = make_df(
         ["John", "Smith", ",", "32"],
         ["NAME", "NAME", "O", "AGE"],
@@ -226,18 +206,15 @@ def test_mapper_metadata_preserves_input_and_restored_prediction_projection():
     mapper = CanonicalMapper()
     mapper.analyze(raw)
     mapped = mapper.get_mapped_results_dataframe()
-    expected_keys = ["NAME", "NAME", "O", "AGE"]
     for level in ("original", "binary", "branch", "detailed"):
         df = mapped.get_level(level)
-        assert set(df.columns) == set(raw.columns) | {
-            ANNOTATION_MERGE_KEY,
-            PREDICTION_MERGE_KEY,
-        }
-        assert df[ANNOTATION_MERGE_KEY].tolist() == expected_keys
-        assert df[PREDICTION_MERGE_KEY].tolist() == expected_keys
+        assert list(df.columns) == list(raw.columns)
+        assert df[ANNOTATION_SPAN_ID].tolist() == [0, 0, None, 1]
+        assert df[PREDICTION_SPAN_ID].tolist() == [0, 1, None, 2]
         if level != "original":
             gold, predictions = SpanEvaluator()._process_sentence_spans(df)
-            assert len(gold) == len(predictions) == 2
+            assert len(gold) == 2
+            assert len(predictions) == 3
     pd.testing.assert_frame_equal(raw, before)
-    pd.testing.assert_frame_equal(mapped.original[raw.columns], raw)
-    assert mapped.detailed["prediction"].tolist() == expected_keys
+    pd.testing.assert_frame_equal(mapped.original, raw)
+    assert mapped.detailed["prediction"].tolist() == ["NAME", "NAME", "O", "AGE"]

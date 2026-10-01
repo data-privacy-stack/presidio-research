@@ -9,8 +9,6 @@ from dataclasses import dataclass
 import pandas as pd
 
 from presidio_evaluator.entity_mapping.data_objects import (
-    ANNOTATION_MERGE_KEY,
-    PREDICTION_MERGE_KEY,
     IssueSeverity,
     IssueType,
     MappedResults,
@@ -19,6 +17,7 @@ from presidio_evaluator.entity_mapping.data_objects import (
 )
 from presidio_evaluator.entity_mapping.definitions import EntityNotMappedError
 from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
+from presidio_evaluator.span_to_tag import ensure_span_ids
 
 logger = logging.getLogger("presidio_evaluator.entity_mapping")
 
@@ -907,12 +906,12 @@ class CanonicalMapper:
         """Return a MappedResults object with four pre-projected DataFrames.
 
         Each DataFrame has ``annotation`` and ``prediction`` columns
-        at the corresponding level, all original non-label columns, and
-        ``annotation_merge_key`` / ``prediction_merge_key`` metadata. The keys
-        carry the resolved gold label and the projected prediction label before
-        binary/branch collapse, so span boundaries survive coarse evaluation.
+        at the corresponding level and all original non-label columns
+        (including the ``annotation_span_id`` / ``prediction_span_id`` columns
+        produced by ``BaseModel.predict_dataset``, which pass through untouched
+        so span boundaries survive coarse evaluation).
 
-        - ``.original`` — raw input columns and values, plus merge-key metadata.
+        - ``.original`` — raw input columns and values.
         - ``.binary``   — any non-O label → ``"PII"``; suppressed/O → ``"O"``.
         - ``.branch``   — depth-2 branch ancestor (e.g. ``NAME`` → ``PERSON``).
         - ``.detailed`` — resolved hierarchy nodes, with each prediction
@@ -929,7 +928,9 @@ class CanonicalMapper:
         if blocking:
             raise IncompleteMapping(blocking)
 
-        df = self._results_df
+        # Span ids pass through every level. A frame without them gets ids
+        # derived from its finest labels here, before any collapsing.
+        df = ensure_span_ids(self._results_df)
         h_full = self._full_hierarchy
 
         annotation_vocabulary = {
@@ -975,35 +976,22 @@ class CanonicalMapper:
                     return ancestor
             return resolved
 
-        # Merge keys: the detailed scoring label for each token, carried
-        # alongside every level so that span merging can tell entities apart even
-        # after their labels have been collapsed.
-        #
-        # Without this, adjacent-span merging at the binary level compares
-        # "PII" to "PII" and unconditionally merges neighbours, so a name, an age
-        # and an email separated by commas become one span. That silently removes
-        # gold spans and makes the levels incomparable, since each ends up scored
-        # against a different ground truth.
-        ann_merge_key = df["annotation"].map(lambda x: _level(x, "detailed"))
-        pred_merge_key = df["prediction"].map(_project_prediction)
+        # Predictions are projected to the annotated vocabulary once, at the
+        # detailed level; binary and branch collapse that projected label.
+        pred_detailed = df["prediction"].map(_project_prediction)
 
         def _project(level: str) -> pd.DataFrame:
             out = df.copy()
             out["annotation"] = df["annotation"].map(lambda x: _level(x, level))
             if level == "binary":
-                out["prediction"] = pred_merge_key.map(h_full.to_binary)
+                out["prediction"] = pred_detailed.map(h_full.to_binary)
             elif level == "branch":
-                out["prediction"] = pred_merge_key.map(h_full.to_branch)
+                out["prediction"] = pred_detailed.map(h_full.to_branch)
             else:
-                out["prediction"] = pred_merge_key
-            out[ANNOTATION_MERGE_KEY] = ann_merge_key
-            out[PREDICTION_MERGE_KEY] = pred_merge_key
+                out["prediction"] = pred_detailed
             return out
 
         original = df.copy()
-        original[ANNOTATION_MERGE_KEY] = ann_merge_key
-        original[PREDICTION_MERGE_KEY] = pred_merge_key
-
         binary = _project("binary")
         branch = _project("branch")
         detailed = _project("detailed")

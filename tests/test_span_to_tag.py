@@ -255,3 +255,66 @@ def test_io_to_scheme(tags, expected_tags, scheme):
     assert actual_tags == expected_tags
 
 # fmt: on
+
+
+# ── return_span_ids ──────────────────────────────────────────────────────────
+
+
+def test_span_to_tag_returns_span_ids_aligned_with_tags():
+    text = "Ana Ruiz 29"
+    starts = [0, 9]
+    ends = [8, 11]
+    tags = ["NAME", "AGE"]
+
+    io, span_ids = span_to_tag(
+        IO_SCHEME, text, starts, ends, tags, return_span_ids=True
+    )
+
+    assert io == ["NAME", "NAME", "AGE"]
+    assert span_ids == [0, 0, 1]
+
+
+def test_span_to_tag_span_ids_are_none_for_o_tokens():
+    text = "I am Josh"
+    io, span_ids = span_to_tag(
+        IO_SCHEME, text, [5], [9], ["NAME"], return_span_ids=True
+    )
+
+    assert io == ["O", "O", "NAME"]
+    assert span_ids == [None, None, 0]
+
+
+def test_span_to_tag_adjacent_same_type_spans_get_distinct_ids():
+    """Two neighbouring entities of the same type are distinguishable by id."""
+    text = "Paris London"
+    starts = [0, 6]
+    ends = [5, 12]
+    tags = ["LOCATION", "LOCATION"]
+
+    io, span_ids = span_to_tag(
+        IO_SCHEME, text, starts, ends, tags, return_span_ids=True
+    )
+
+    assert io == ["LOCATION", "LOCATION"]
+    assert span_ids == [0, 1]
+
+
+def test_span_to_tag_split_span_keeps_one_id():
+    """A span split by a higher-score overlap is still one entity."""
+    text = "one two three"
+    starts = [0, 4]
+    ends = [13, 7]
+    tags = ["X", "Y"]
+    scores = [0.5, 0.9]
+
+    io, span_ids = span_to_tag(
+        IO_SCHEME, text, starts, ends, tags, scores, return_span_ids=True
+    )
+
+    assert io == ["X", "Y", "X"]
+    assert span_ids == [0, 1, 0]
+
+
+def test_span_to_tag_default_return_is_tags_only():
+    tags = span_to_tag(IO_SCHEME, "I am Josh", [5], [9], ["NAME"])
+    assert tags == ["O", "O", "NAME"]

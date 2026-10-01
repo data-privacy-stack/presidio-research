@@ -250,6 +250,31 @@ def test_manually_set_start_indices():
     assert start_indices == [0, 5, 9, 13, 17, 24]
 
 
+def test_create_tags_from_span_sets_span_ids():
+    """Two same-type entities keep distinct ids; O tokens get None."""
+    sample = InputSample(
+        full_text="Alex and Bob are friends.",
+        spans=[
+            Span(
+                entity_type="PERSON",
+                entity_value="Alex",
+                start_position=0,
+                end_position=4,
+            ),
+            Span(
+                entity_type="PERSON",
+                entity_value="Bob",
+                start_position=9,
+                end_position=12,
+            ),
+        ],
+        create_tags_from_span=True,
+    )
+
+    # Alex and Bob are friends .
+    assert sample.span_ids == [0, None, 1, None, None, None]
+
+
 def test_span_intersection(pair_of_spans):
     """Test that spans with different entity types do not intersect"""
     span1 = pair_of_spans[0]
@@ -512,3 +537,33 @@ def test_extract_entity_types_duplicate_entities():
 
     entity_types = InputSample.extract_entity_types(samples)
     assert entity_types == {"PERSON"}  # Should only appear once in the set
+
+
+@pytest.mark.parametrize(
+    ("tags", "expected"),
+    [
+        # BIO: B- starts a new instance, I- continues it.
+        (
+            ["B-PERSON", "I-PERSON", "B-PERSON", "O", "B-LOCATION"],
+            [0, 0, 1, None, 2],
+        ),
+        # BILUO: U- is a one-token instance, L- closes the current one.
+        (
+            ["B-PERSON", "L-PERSON", "U-PERSON", "O", "U-LOCATION"],
+            [0, 0, 1, None, 2],
+        ),
+        # Type change without B- still starts a new instance.
+        (["B-PERSON", "I-LOCATION"], [0, 1]),
+        # Plain IO carries no boundaries: label runs are the best available.
+        (["PERSON", "PERSON", "O", "PERSON"], [0, 0, None, 1]),
+        ([], []),
+    ],
+)
+def test_span_ids_derived_from_prefixed_tags(tags, expected):
+    sample = InputSample(
+        full_text="x " * len(tags),
+        tokens=["x"] * len(tags),
+        tags=tags,
+        create_tags_from_span=False,
+    )
+    assert sample.span_ids == expected

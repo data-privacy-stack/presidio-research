@@ -7,13 +7,41 @@ matched, and evaluated, along with comparisons to other evaluation paradigms.
 
 ### Span Creation
 
-Spans are created from token-level annotations in the input data. Each span represents a continuous sequence of tokens
-with the same entity type annotation. The basic properties of a span include:
+Spans are reconstructed from the per-token results DataFrame produced by
+`BaseModel.predict_dataset()`. Besides the label columns (`annotation`,
+`prediction`) that frame carries two **span-id** columns, `annotation_span_id`
+and `prediction_span_id`: the entity instance that covers each token, `None`
+for `O`. A span is a maximal run of tokens sharing an id. The basic properties
+of a span include:
 
 - `entity_type`: The type of entity (e.g., PERSON, LOCATION)
 - `entity_value`: The actual text of the entity
 - `start_position` and `end_position`: Character-level boundaries
 
+Ids come from the source, not from the labels:
+
+- **Gold**: `InputSample` records which span produced each token's tag
+  (`span_ids`) when tags are created from spans. Samples built from BIO/BILUO
+  tags recover the ids from the `B-`/`U-` prefixes; plain IO tags give label
+  runs, so two touching entities of the same type read as one.
+- **Predictions**: `BaseModel.batch_predict_spans()` returns the model's spans.
+  The Presidio wrappers return their `RecognizerResult`s directly; the default
+  implementation converts the tags from `batch_predict()` at that boundary,
+  with the same BIO-exact / IO-runs rule as above.
+
+Because `CanonicalMapper` only rewrites the label columns, the ids are identical
+at every mapping level and so are the spans. Two adjacent entities stay separate
+at the binary level even though both read `PII`, and even when they are of the
+same type (`"Paris , London"` is two spans). The ground truth therefore never
+depends on the level being scored.
+
+A DataFrame without the span-id columns (hand-built, loaded from disk, or from
+an older version) still evaluates: `ensure_span_ids()` derives the missing
+column from the label column's runs. `CanonicalMapper` does this from the
+original, finest labels before collapsing them, so touching entities of
+different types stay apart at every level. What a label run cannot tell is
+where two same-type neighbours split, so build the DataFrame with
+`predict_dataset()` whenever the source spans are available.
 
 #### Span Normalization
 
@@ -26,42 +54,14 @@ For more advanced processing, spans also include normalized versions of the text
 Normalization helps with more consistent matching between variations of the same entity (e.g., "John Smith" vs "john
 smith") and by better handling of punctuation marks and skip words.
 
-### Span Merging
+#### Skip Words
 
-In some cases, multiple separate tokens may need to be merged into a single span:
-
-1. **Adjacent tokens of same type**: Consecutive tokens with the same entity type are merged into a single span
-2. **Skip words handling**: Certain configurable words (like punctuation marks or skip words) can be included in spans even if
-   they are annotated as non-entities, allowing for more natural entity boundaries
-
-Example of skip words:
-
-```
-Text: "University of Washington"
-Without skip words: [ORG, O, ORG]
-With "of" as skip word: [ORG, ORG, ORG] (treated as one span)
-```
-
-The `skip_words` parameter in the `SpanEvaluator` constructor determines which words can be skipped when merging
-adjacent spans of the same entity type.
-
-`CanonicalMapper` adds `annotation_merge_key` and `prediction_merge_key` to all
-four `MappedResults` DataFrames, including `.original`. The keys contain the
-detailed scoring labels (after prediction projection to the gold vocabulary).
-A change of key ends a token run even when the visible label is unchanged.
-Adjacent spans merge only when **both** their scored labels and merge keys agree.
-This keeps, for example, a name and an age separate when both are scored as `PII`.
-The original input columns and values are preserved in `.original`; its column
-set gains the two metadata columns.
-
-Without the paired metadata column, span creation and merging retain label-only
-behavior. Unrelated label columns such as `pred_a` never use `prediction_merge_key`.
-When metadata is present, an invalid sentence-relative `token_start` raises
-`ValueError` instead of silently disabling the keys.
-
-Merge keys are labels, not source span identities: distinct same-type entities
-such as `"Paris , London"` can still merge. Preserving source span identities
-through tokenization is a separate follow-up, not part of this fix.
+The `skip_words` parameter of `SpanEvaluator` lists tokens (punctuation, titles,
+stop words) that are dropped from a span's normalized form before IoU is
+computed, so `"Mr. John Smith"` and `"John Smith"` compare equal when `mr.` is
+a skip word. A span made only of skip words is dropped. Skip words never merge
+two spans: a span's boundaries are fixed by its id, and a skip token inside a
+source span (the comma in `"New, York"`) already carries that span's id.
 
 ## Span Matching Strategy
 

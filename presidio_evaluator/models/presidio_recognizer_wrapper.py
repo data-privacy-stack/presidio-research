@@ -1,9 +1,8 @@
 from presidio_analyzer import EntityRecognizer
 from presidio_analyzer.nlp_engine import NlpEngine
 
-from presidio_evaluator import InputSample
+from presidio_evaluator import InputSample, Span
 from presidio_evaluator.models import BaseModel
-from presidio_evaluator.span_to_tag import span_to_tag
 
 
 class PresidioRecognizerWrapper(BaseModel):
@@ -42,7 +41,7 @@ class PresidioRecognizerWrapper(BaseModel):
     def __make_nlp_artifacts(self, text: str):
         return self.nlp_engine.process_text(text, "en")
 
-    def predict(self, sample: InputSample, **kwargs) -> list[str]:
+    def predict_spans(self, sample: InputSample) -> list[Span]:
         nlp_artifacts = None
         if self.with_nlp_artifacts:
             nlp_artifacts = self.__make_nlp_artifacts(sample.full_text)
@@ -52,27 +51,24 @@ class PresidioRecognizerWrapper(BaseModel):
             self.entities,
             nlp_artifacts,
         )
-        starts = []
-        ends = []
-        tags = []
-        scores = []
-        for res in results:
-            if not res.start:
-                res.start = 0
-            starts.append(res.start)
-            ends.append(res.end)
-            tags.append(res.entity_type)
-            scores.append(res.score)
-        response_tags = span_to_tag(
-            scheme=self.labeling_scheme,
-            text=sample.full_text,
-            starts=starts,
-            ends=ends,
-            tags=tags,
-            tokens=sample.tokens,
-            scores=scores,
-        )
-        return response_tags
+        return [
+            Span(
+                entity_type=res.entity_type,
+                entity_value=sample.full_text[res.start or 0 : res.end],
+                start_position=res.start or 0,
+                end_position=res.end,
+                score=res.score,
+            )
+            for res in results
+        ]
+
+    def predict(self, sample: InputSample, **kwargs) -> list[str]:
+        return self._spans_to_tags(sample, self.predict_spans(sample))
 
     def batch_predict(self, dataset: list[InputSample], **kwargs) -> list[list[str]]:
         return [self.predict(sample, **kwargs) for sample in dataset]
+
+    def batch_predict_spans(
+        self, dataset: list[InputSample], **kwargs
+    ) -> list[list[Span]]:
+        return [self.predict_spans(sample) for sample in dataset]

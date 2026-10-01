@@ -11,7 +11,7 @@ from spacy.tokens import Doc, DocBin
 from spacy.training import iob_to_biluo
 from tqdm import tqdm
 
-from presidio_evaluator import span_to_tag, tokenize
+from presidio_evaluator import span_to_tag, tags_to_span_ids, tokenize
 
 logger = logging.getLogger("presidio-evaluator")
 
@@ -53,6 +53,8 @@ class Span:
     :param normalized_end_index: Optional end index of the normalized value in the text
     :param normalized_start_indices: Optional per-token start indices of the normalized tokens,
         used for position-aware token-level comparisons
+    :param score: Optional model confidence for a predicted span. Used to resolve
+        overlapping predictions when flattening spans to tags; not part of equality.
     """
 
     def __init__(
@@ -67,6 +69,7 @@ class Span:
         normalized_start_index: int | None = None,
         normalized_end_index: int | None = None,
         normalized_start_indices: list[int] | None = None,
+        score: float | None = None,
     ) -> None:
         self.entity_type = entity_type
         self.entity_value = entity_value
@@ -78,6 +81,7 @@ class Span:
         self.normalized_start_indices = normalized_start_indices
         self.token_start = token_start
         self.token_end = token_end
+        self.score = score
 
     def intersect(
         self,
@@ -258,13 +262,20 @@ class InputSample:
         self.start_indices = start_indices if start_indices else []
 
         if create_tags_from_span:
-            tokens, tags, start_indices = self.get_tags(scheme, token_model_version)
+            tokens, tags, start_indices, span_ids = self.get_tags(
+                scheme, token_model_version, return_span_ids=True
+            )
             self.tokens = tokens
             self.tags = tags
             self.start_indices = start_indices
+            self.span_ids = span_ids
         else:
             self.tokens = tokens
             self.tags = tags
+            # Per-token entity instance id, recovered from the tags: exact for
+            # BIO/BILUO, label runs for plain IO (adjacent same-type entities
+            # then read as one instance).
+            self.span_ids: list[int | None] = tags_to_span_ids(tags)
 
     def __repr__(self) -> str:
         return f"Full text: {self.full_text}\nSpans: {self.spans}\n"
@@ -288,19 +299,25 @@ class InputSample:
         self,
         scheme: str = "IOB",
         model_version: str = "en_core_web_sm",
-    ) -> tuple[Doc, list[str], list[int]]:
+        return_span_ids: bool = False,
+    ) -> (
+        tuple[Doc, list[str], list[int]]
+        | tuple[Doc, list[str], list[int], list[int | None]]
+    ):
         """Extract the tokens, tags, and start_indices from the spans.
 
         :param scheme: IO, BIO or BILUO
         :param model_version: The name of the spaCy model to use for tokenization
-        :return: tokens, tags, start_indices
+        :param return_span_ids: when True, also return the index into
+            ``self.spans`` of the span covering each token (None for O tokens)
+        :return: tokens, tags, start_indices [, span_ids]
         """
         start_positions = [span.start_position for span in self.spans]
         end_positions = [span.end_position for span in self.spans]
         tags = [span.entity_type for span in self.spans]
         tokens = tokenize(self.full_text, model_version)
 
-        labels = span_to_tag(
+        labels, span_ids = span_to_tag(
             scheme=scheme,
             text=self.full_text,
             tags=tags,
@@ -308,9 +325,12 @@ class InputSample:
             ends=end_positions,
             tokens=tokens,
             token_model_version=model_version,
+            return_span_ids=True,
         )
 
         start_indices = [token.idx for token in tokens]
+        if return_span_ids:
+            return tokens, labels, start_indices, span_ids
         return tokens, labels, start_indices
 
     def to_conll(
