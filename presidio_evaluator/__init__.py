@@ -1,4 +1,10 @@
-from .span_to_tag import io_to_scheme, span_to_tag, tags_to_span_ids, tokenize  # noqa: I001
+from .span_to_tag import (  # noqa: I001
+    ensure_span_ids,
+    io_to_scheme,
+    span_to_tag,
+    tags_to_span_ids,
+    tokenize,
+)
 from .data_objects import InputSample, Span
 
 from dotenv import load_dotenv  # noqa: E402
@@ -14,5 +20,6 @@ __all__ = [
     "span_to_tag",
     "tokenize",
     "io_to_scheme",
+    "ensure_span_ids",
     "tags_to_span_ids",
 ]

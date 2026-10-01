@@ -35,8 +35,13 @@ at the binary level even though both read `PII`, and even when they are of the
 same type (`"Paris , London"` is two spans). The ground truth therefore never
 depends on the level being scored.
 
-`SpanEvaluator` requires the span-id columns and raises `ValueError` when they
-are missing. Build the DataFrame with `predict_dataset()`.
+A DataFrame without the span-id columns (hand-built, loaded from disk, or from
+an older version) still evaluates: `ensure_span_ids()` derives the missing
+column from the label column's runs. `CanonicalMapper` does this from the
+original, finest labels before collapsing them, so touching entities of
+different types stay apart at every level. What a label run cannot tell is
+where two same-type neighbours split, so build the DataFrame with
+`predict_dataset()` whenever the source spans are available.
 
 #### Span Normalization
 

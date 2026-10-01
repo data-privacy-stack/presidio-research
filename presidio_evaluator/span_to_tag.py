@@ -250,3 +250,42 @@ def io_to_scheme(io_tags: list[str], scheme: str) -> list[str]:
             ),
         )
     return new_return_tags
+
+
+def ensure_span_ids(df):
+    """Return ``df`` with ``annotation_span_id`` / ``prediction_span_id`` present.
+
+    Frames built by :meth:`BaseModel.predict_dataset` already carry both
+    columns, taken from the source spans, and are returned unchanged. For a
+    frame that lacks one (hand-built, loaded from disk, produced by an older
+    version), the missing column is derived from the matching label column
+    with :func:`tags_to_span_ids`, per ``sentence_id`` when that column
+    exists. Derive before collapsing labels to a coarser level: ids taken from
+    the finest labels keep touching entities of different types apart, which
+    is all a label run can tell. Same-type neighbours still read as one.
+    """
+    import pandas as pd
+
+    from presidio_evaluator.entity_mapping.data_objects import (
+        ANNOTATION_SPAN_ID,
+        PREDICTION_SPAN_ID,
+    )
+
+    pairs = (("annotation", ANNOTATION_SPAN_ID), ("prediction", PREDICTION_SPAN_ID))
+    missing = [(c, i) for c, i in pairs if c in df.columns and i not in df.columns]
+    if not missing:
+        return df
+    df = df.copy()
+    groups = (
+        [g for _, g in df.groupby("sentence_id", sort=False)]
+        if "sentence_id" in df.columns
+        else [df]
+    )
+    for label_column, id_column in missing:
+        ids: list[int | None] = []
+        index: list = []
+        for group in groups:
+            ids += tags_to_span_ids(group[label_column].tolist())
+            index += group.index.tolist()
+        df[id_column] = pd.Series(ids, dtype="object", index=index).reindex(df.index)
+    return df

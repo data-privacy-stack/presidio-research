@@ -24,12 +24,29 @@ def test_arbitrary_label_columns_are_rejected(column):
     ("column", "id_column"),
     [("annotation", ANNOTATION_SPAN_ID), ("prediction", PREDICTION_SPAN_ID)],
 )
-def test_missing_span_id_column_raises(column, id_column):
-    df = make_df(["John", "32"], ["NAME", "AGE"], ["NAME", "AGE"]).drop(
+def test_missing_span_id_column_falls_back_to_label_runs(column, id_column):
+    df = make_df(["John", "32", "Ana"], ["NAME", "AGE", "NAME"], ["NAME"] * 3).drop(
         columns=[id_column]
     )
-    with pytest.raises(ValueError, match="predict_dataset"):
-        SpanEvaluator()._create_spans(df, column)
+    spans = SpanEvaluator(skip_words=[])._create_spans(df, column)
+    expected = 3 if column == "annotation" else 1
+    assert len(spans) == expected
+
+
+def test_mapper_derives_ids_from_finest_labels_when_missing():
+    raw = make_df(
+        ["John", "Smith", "32", ",", "Ana"],
+        ["NAME", "NAME", "AGE", "O", "NAME"],
+        ["NAME", "NAME", "AGE", "O", "NAME"],
+    ).drop(columns=[ANNOTATION_SPAN_ID, PREDICTION_SPAN_ID])
+    mapper = CanonicalMapper()
+    mapper.analyze(raw)
+    mapped = mapper.get_mapped_results_dataframe()
+    for level in ("binary", "branch", "detailed"):
+        df = mapped.get_level(level)
+        assert df[ANNOTATION_SPAN_ID].tolist() == [0, 0, 1, None, 2]
+        gold, predictions = SpanEvaluator()._process_sentence_spans(df)
+        assert len(gold) == len(predictions) == 3
 
 
 def test_span_ids_use_sentence_positions_not_dataframe_index():

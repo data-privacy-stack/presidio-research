@@ -16,6 +16,7 @@ from presidio_evaluator.evaluation import (
     ModelError,
 )
 from presidio_evaluator.models import BaseModel
+from presidio_evaluator.span_to_tag import ensure_span_ids
 
 #: Label column -> the span-id column that carries its entity instance ids.
 SPAN_ID_COLUMNS = {
@@ -545,8 +546,9 @@ class SpanEvaluator(BaseEvaluator):
             label column and its span-id column.
         :param column: ``"annotation"`` or ``"prediction"``.
         :return: One Span per entity instance, in sentence order.
-        :raises ValueError: if the span-id column is missing. DataFrames are
-            expected to come from ``BaseModel.predict_dataset``.
+        A frame without the id column (hand-built or loaded from disk) falls
+        back to ids derived from the label column's runs, which is what a
+        tag-only model would produce.
         """
         id_column = SPAN_ID_COLUMNS.get(column)
         if id_column is None:
@@ -555,10 +557,7 @@ class SpanEvaluator(BaseEvaluator):
                 f"{sorted(SPAN_ID_COLUMNS)}"
             )
         if id_column not in df.columns:
-            raise ValueError(
-                f"Column {id_column!r} is missing: span boundaries are read from "
-                "span ids. Build the DataFrame with BaseModel.predict_dataset()."
-            )
+            df = ensure_span_ids(df)
 
         spans: list[Span] = []
         run_id = None

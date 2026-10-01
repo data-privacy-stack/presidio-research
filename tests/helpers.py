@@ -2,32 +2,12 @@
 
 import pandas as pd
 
-from presidio_evaluator import tags_to_span_ids
-from presidio_evaluator.entity_mapping.data_objects import (
-    ANNOTATION_SPAN_ID,
-    PREDICTION_SPAN_ID,
-)
+from presidio_evaluator import ensure_span_ids
 
 
 def with_span_ids(df: pd.DataFrame) -> pd.DataFrame:
-    """Attach span-id columns derived from the label columns' runs.
-
-    ``BaseModel.predict_dataset`` produces these columns from the source spans.
-    Hand-built frames only have IO labels, so ids are label runs, one per
-    sentence, which matches what a tag-only model would produce.
-    """
-    df = df.copy()
-    for label_column, id_column in (
-        ("annotation", ANNOTATION_SPAN_ID),
-        ("prediction", PREDICTION_SPAN_ID),
-    ):
-        if label_column not in df.columns or id_column in df.columns:
-            continue
-        ids: list[int | None] = []
-        for _, sentence in df.groupby("sentence_id", sort=False):
-            ids += tags_to_span_ids(sentence[label_column].tolist())
-        df[id_column] = pd.Series(ids, dtype="object", index=df.index)
-    return df
+    """Attach span-id columns derived from label runs (see ensure_span_ids)."""
+    return ensure_span_ids(df)
 
 
 def make_results_df(tokens, annotations, predictions, sentence_id=0) -> pd.DataFrame:

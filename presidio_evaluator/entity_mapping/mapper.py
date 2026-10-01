@@ -17,6 +17,7 @@ from presidio_evaluator.entity_mapping.data_objects import (
 )
 from presidio_evaluator.entity_mapping.definitions import EntityNotMappedError
 from presidio_evaluator.entity_mapping.hierarchy import EntityHierarchy
+from presidio_evaluator.span_to_tag import ensure_span_ids
 
 logger = logging.getLogger("presidio_evaluator.entity_mapping")
 
@@ -927,7 +928,9 @@ class CanonicalMapper:
         if blocking:
             raise IncompleteMapping(blocking)
 
-        df = self._results_df
+        # Span ids pass through every level. A frame without them gets ids
+        # derived from its finest labels here, before any collapsing.
+        df = ensure_span_ids(self._results_df)
         h_full = self._full_hierarchy
 
         annotation_vocabulary = {
