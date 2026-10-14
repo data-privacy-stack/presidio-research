@@ -92,31 +92,31 @@ When there's insufficient overlap between spans, they are treated as both false 
 
 ## Multiple Span Scenarios
 
-Before scoring, each prediction is assigned to at most one overlapping annotation.
-A same-type match meeting the IoU threshold takes priority, followed by greatest
-IoU. Ties prefer the same type, then earliest gold start/end, then entity type in
-descending lexical order. This is a deterministic local assignment, not a global
-maximum-matching optimization.
+A single prediction span may overlap several annotations. Recall is judged per
+annotation, so each annotation it covers at IoU >= threshold is a true positive;
+precision is judged per span, so it enters `num_predicted` once. For example,
+gold `NAME NAME AGE` on `"John Smith 32"` produces two spans. A single prediction
+covering all three tokens is **one prediction**. With an IoU threshold of 1.0 it
+covers neither annotation: one FP, two FNs. At a threshold it meets for both, it
+is two TPs and still one credited prediction.
 
-For example, gold `NAME NAME AGE` on `"John Smith 32"` produces two spans.
-A single prediction covering all three tokens is evaluated against only one of
-them. With an IoU threshold of 1.0, the result is **one prediction, one FP, two FNs**,
-not two predictions and two FPs. If it meets the threshold for the name, it instead
-counts as one TP and the age remains one FN.
-
-When an annotation is assigned multiple prediction spans:
+When an annotation overlaps with multiple prediction spans:
 
 ### 1. Multiple Spans of Same Type
 
-Spans of the same type are combined, and their collective IoU is calculated:
+Spans of the same type are combined, and their collective IoU is calculated.
+The combined IoU decides the annotation's verdict; the spans themselves are
+counted individually in `num_predicted`:
 
 - **Example**:
     - Text: "New York Mets"
     - Annotation: [ORGANIZATION, ORGANIZATION, ORGANIZATION]
     - Prediction: [ORGANIZATION, O, ORGANIZATION]
     - Combined IoU = 0.67
-    - If threshold = 0.5: Treated as a match (TP)
-    - If threshold = 0.75: Treated as a miss (FN)
+    - If threshold = 0.5: Treated as a match — 1 TP; both spans are credited
+      (num_predicted: +2, FP: 0)
+    - If threshold = 0.75: Treated as a miss — 1 FN; each failed span is its
+      own false positive (num_predicted: +2, FP: +2)
 
 ### 2. Multiple Spans of Different Types
 
@@ -129,6 +129,20 @@ Each entity type is evaluated separately against the annotation:
     - PERSON IoU = 0.67, LOCATION IoU = 0.33
     - If threshold = 0.5: PERSON is a match but wrong type for LOCATION portion
     - Result: TP for PERSON, FP for LOCATION
+
+## One Prediction Overlapping Multiple Annotations
+
+The mirror case: a single prediction overlapping several annotations. Each
+annotation measures its own pairwise IoU against the prediction independently;
+the prediction itself is counted once in `num_predicted`:
+
+- Each annotation whose IoU is above the threshold is a TP; each annotation
+  whose IoU is below it is an FN.
+- The prediction is credited if it matched at least one annotation, otherwise
+  it is a single FP (not one per missed annotation).
+- **Example**: gold [John Smith] and [Mary Jones], prediction one PERSON span
+  over "John Smith met Mary Jones" (IoU ≈ 0.4 per annotation). At
+  threshold 0.3: 2 TP, num_predicted 1. At threshold 0.9: 2 FN, 1 FP.
 
 ## Real-world Examples
 
