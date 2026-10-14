@@ -529,6 +529,7 @@ class SpanEvaluator(BaseEvaluator):
             evaluation_result = EvaluationResult()
 
         annotation_spans, prediction_spans = self._process_sentence_spans(sentence_df)
+        errors_before = len(evaluation_result.model_errors)
         # Match predictions with annotations and update metrics
         evaluation_result = self._match_predictions_with_annotations(
             annotation_spans,
@@ -536,6 +537,9 @@ class SpanEvaluator(BaseEvaluator):
             evaluation_result,
             per_type,
         )
+        sentence_id = sentence_df["sentence_id"].iloc[0]
+        for error in evaluation_result.model_errors[errors_before:]:
+            error.sample_id = sentence_id
         return evaluation_result
 
     def _create_spans(self, df: pd.DataFrame, column: str) -> list[Span]:
