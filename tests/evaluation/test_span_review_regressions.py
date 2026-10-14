@@ -236,3 +236,11 @@ def test_mapper_passes_span_ids_through_every_level():
     pd.testing.assert_frame_equal(raw, before)
     pd.testing.assert_frame_equal(mapped.original, raw)
     assert mapped.detailed["prediction"].tolist() == ["NAME", "NAME", "O", "AGE"]
+
+
+def test_title_only_span_is_scored_with_default_skip_words():
+    evaluator = SpanEvaluator(iou_threshold=0.75)
+    df = make_df(["Mr.", "Smith"], ["TITLE", "PERSON"], ["TITLE", "PERSON"])
+    result = evaluator.calculate_score_on_df(df)
+    assert result.per_type["TITLE"].num_annotated == 1
+    assert result.per_type["TITLE"].true_positives == 1
