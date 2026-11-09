@@ -290,7 +290,7 @@ def test_model_errors_carry_the_sentence_id():
     assert errors == {ErrorType.FN: 7, ErrorType.FP: 9}
     assert all(type(e.sample_id) is int for e in result.model_errors)
 
-    
+
 def test_title_only_span_is_scored_with_default_skip_words():
     evaluator = SpanEvaluator(iou_threshold=0.75)
     df = make_df(["Mr.", "Smith"], ["TITLE", "PERSON"], ["TITLE", "PERSON"])
