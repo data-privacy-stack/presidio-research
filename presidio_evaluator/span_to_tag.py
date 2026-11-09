@@ -103,6 +103,15 @@ def _handle_overlaps(start, end, tag, score, span_id):
     return start, end, tag, score, span_id
 
 
+def _drop_empty_segments(text, start, end, tag, score, span_id):
+    """Drop segments left by overlap trimming that cover no text.
+
+    Such a segment would otherwise be attached to the neighbouring token.
+    """
+    keep = [i for i in range(len(start)) if text[start[i] : end[i]].strip()]
+    return tuple([col[i] for i in keep] for col in (start, end, tag, score, span_id))
+
+
 def span_to_tag(
     scheme: str,
     text: str,
@@ -130,6 +139,9 @@ def span_to_tag(
     span_ids = list(range(len(starts)))
     starts, ends, tags, scores, span_ids = _handle_overlaps(
         starts, ends, tags, scores, span_ids
+    )
+    starts, ends, tags, scores, span_ids = _drop_empty_segments(
+        text, starts, ends, tags, scores, span_ids
     )
 
     if not tokens:

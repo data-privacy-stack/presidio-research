@@ -332,3 +332,26 @@ def test_span_to_tag_default_return_is_tags_only():
 )
 def test_tags_to_span_ids_single_token_prefixes_start_new_span(tags, expected):
     assert tags_to_span_ids(tags) == expected
+
+
+def test_span_to_tag_overlap_residual_without_text_is_dropped():
+    """A wider span whose text is a leading space + a higher-score span leaves
+    no residual tag on the neighbouring tokens."""
+    text = "limit for card 4454794511390933?"
+    tokens = ["limit", "for", "card", "4454794511390933", "?"]
+    start_indices = [0, 6, 10, 15, 31]
+
+    io, span_ids = span_to_tag(
+        IO_SCHEME,
+        text,
+        starts=[15, 14],
+        ends=[31, 32],
+        tags=["CREDIT_CARD", "ID"],
+        scores=[1.0, 0.8],
+        tokens=tokens,
+        start_indices=start_indices,
+        return_span_ids=True,
+    )
+
+    assert io == ["O", "O", "O", "CREDIT_CARD", "O"]
+    assert span_ids == [None, None, None, 0, None]
