@@ -1878,18 +1878,18 @@ def test_multi_sentence_df_does_not_merge_separated_same_type_spans(span_evaluat
             0.3,
             ["John", "Smith", "met", "Mary", "Jones"],
             ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
-            # At a deliberately lenient threshold the blob covers both golds:
-            # full recall credit (2 golds found), full precision credit for
-            # ONE prediction — not two TPs from a single span.
+            # Exclusive assignment credits only one gold, even though both
+            # pairwise IoUs meet the lenient threshold.
             {
                 "precision": 1.0,
-                "recall": 1.0,
+                "recall": 0.5,
                 "num_predicted": 1,
                 "num_annotated": 2,
+                "true_positives": 1,
                 "false_positives": 0,
-                "false_negatives": 0,
+                "false_negatives": 1,
             },
-            id="lenient-blob-covers-both-counted-once",
+            id="lenient-blob-assigned-to-one-gold",
         ),
         pytest.param(
             0.6,
@@ -1917,13 +1917,9 @@ def test_single_prediction_overlapping_multiple_annotations_counted_once(
 ):
     """A prediction span overlapping several annotations is still ONE prediction.
 
-    Regression test for per-annotation double counting: the matching loop
-    processes each annotation independently and increments num_predicted (and
-    TP/FP) for every annotation a prediction overlaps, so a single blob
-    prediction covering two golds enters the precision denominator twice.
-    Desired semantics are two-sided: recall asks, per annotation, "was I
-    covered at IoU >= threshold?"; precision asks, per prediction (counted
-    once), "did I participate in any successful match?".
+    Each prediction is assigned to at most one annotation before scoring.
+    Recall asks whether assigned same-type predictions cover the annotation
+    at IoU >= threshold; precision counts each prediction once.
     """
     prediction = ["PERSON"] * len(tokens)
     df = make_results_df(tokens, annotation, prediction)
@@ -2003,19 +1999,18 @@ def test_single_prediction_overlapping_multiple_annotations_counted_once(
             ["John", "Smith", "met", "Mary", "Jones"],
             ["PERSON", "PERSON", "O", "PERSON", "PERSON"],
             ["PERSON", "PERSON", "PERSON", "PERSON", "PERSON"],
-            # One blob covers both golds, each pairwise IoU >= tau: two recall
-            # TPs, but the blob enters the precision denominator once.
-            # Precision is (np - fp)/np = 1.0, NOT tp/np (which would be 2.0).
+            # Both pairwise IoUs meet tau, but the blob is assigned to only
+            # one gold: one TP and one FN, with one credited prediction.
             {
-                "true_positives": 2,
-                "false_negatives": 0,
+                "true_positives": 1,
+                "false_negatives": 1,
                 "false_positives": 0,
                 "num_predicted": 1,
                 "num_annotated": 2,
                 "precision": 1.0,
-                "recall": 1.0,
+                "recall": 0.5,
             },
-            id="4-one-pred-two-golds-above-tau-2tp",
+            id="4-one-pred-two-golds-above-tau-1tp-1fn",
         ),
         pytest.param(
             0.9,
@@ -2062,7 +2057,7 @@ def test_two_sided_counting_semantics(
     """The counting-semantics contract of two-sided matching, one case per scenario.
 
     Recall side: every annotation gets exactly one verdict (TP if covered by
-    same-type predictions at IoU >= threshold — pairwise for one span, combined
+    assigned same-type predictions at IoU >= threshold — pairwise for one span, combined
     for several — else FN), so tp + fn == num_annotated.
 
     Precision side: every prediction span enters num_predicted exactly once and

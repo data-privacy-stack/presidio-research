@@ -1,4 +1,7 @@
-# Span Evaluation in Presidio Evaluator
+---
+title: Span Evaluation in Presidio Evaluator
+description: Span creation, exclusive assignment, and evaluation metrics for PII detection.
+---
 
 This document explains the span evaluation process implemented in Presidio Evaluator, covering how spans are created,
 matched, and evaluated, along with comparisons to other evaluation paradigms.
@@ -72,9 +75,13 @@ An IoU threshold determines whether spans match sufficiently.
 
 The matching process follows these steps:
 
-1. For each annotation span, find all overlapping prediction spans
-2. Group overlapping prediction spans by entity type
-3. Calculate combined IoU for each entity type group
+1. Assign each overlapping prediction to exactly one annotation, preferring a
+   same-type match meeting the IoU threshold, then greatest IoU. Ties prefer
+   the same type, then earliest annotation start, earliest end, and entity type,
+   independently of input order
+2. For each annotation, group only its assigned predictions by entity type
+3. Calculate pairwise IoU for a single prediction or combined IoU for several
+   predictions of one type
 4. Determine match status based on IoU threshold and entity type
 
 > For a detailed breakdown of different matching scenarios and examples, see
@@ -84,7 +91,7 @@ The matching process follows these steps:
 
 The evaluator calculates both per-entity-type metrics and global PII metrics.
 Recall is counted per annotation: each annotation is a true positive if
-predictions of its type cover it at IoU ≥ threshold, and a false negative
+assigned predictions of its type cover it at IoU ≥ threshold, and a false negative
 otherwise. Precision is counted per prediction span: each span is counted once
 in `num_predicted`, either credited by a successful match or counted as a
 false positive.
@@ -96,7 +103,8 @@ false positive.
 - **F-beta**: (1 + beta²) * (precision * recall) / (beta² * precision + recall)
 
 Note that precision is not TP / num_predicted: TP counts covered annotations,
-and a single prediction covering two annotations is two TPs but one prediction.
+so multiple fragments jointly matching one annotation yield one TP but several
+credited predictions. A single prediction can match at most one annotation.
 
 ### Global PII Metrics
 
@@ -118,8 +126,9 @@ The confusion matrix (`EvaluationResult.results`) is annotation-centric:
   positives that overlap nothing, or overlap an annotation below the threshold.
   A prediction already represented by a `(type, predicted type)` cell is not
   added to the `"O"` row again.
-- Column totals are not the prediction ledger. One prediction that covers two
-  annotations appears in two cells while counting once in `num_predicted`. Use
+- Column totals are not the prediction ledger. Multiple assigned predictions
+  jointly covering one annotation appear in one cell while each counts in
+  `num_predicted`. One prediction cannot claim multiple annotation cells. Use
   `num_predicted` and `false_positives` for prediction-side totals.
 
 Confusion-matrix cells and `ModelError` records are written by the per-type
@@ -129,8 +138,9 @@ so `calculate_score_on_df(level="both")` records each error once.
 
 ## Evaluation Process
 
-1. For each annotation, find all overlapping prediction spans
-2. Group overlapping spans by entity type
+1. Assign each overlapping prediction to one annotation using the matching
+   preference and tie-breaking rules above
+2. For each annotation, group only its assigned predictions by entity type
 3. Calculate the same-type coverage (pairwise IoU for a single span, combined
    IoU for several)
 4. Determine match status based on IoU and entity type

@@ -150,13 +150,12 @@ def test_small_early_overlap_cannot_steal_later_true_positive(reverse_gold, per_
 
 
 @pytest.mark.parametrize("reverse_gold", [False, True])
-def test_wide_prediction_covering_two_gold_spans_is_two_recall_hits(reverse_gold):
-    """Two-sided counting: recall is judged per annotation, precision per span.
-
-    One prediction span covering two gold spans at IoU >= threshold is a
-    recall hit for each annotation but enters ``num_predicted`` once.
-    """
-    evaluator = SpanEvaluator(iou_threshold=0.4, skip_words=[])
+@pytest.mark.parametrize("char_based", [False, True])
+def test_prediction_cannot_be_true_positive_for_two_gold_spans(
+    reverse_gold, char_based
+):
+    """A prediction is assigned once, with ties going to the earliest gold."""
+    evaluator = SpanEvaluator(iou_threshold=0.4, char_based=char_based, skip_words=[])
     df = make_df(["John", "Mary"], ["PII"] * 2, ["PII"] * 2)
     df[ANNOTATION_SPAN_ID] = [0, 1]
     df[PREDICTION_SPAN_ID] = [0, 0]
@@ -171,11 +170,35 @@ def test_wide_prediction_covering_two_gold_spans_is_two_recall_hits(reverse_gold
     metrics = result.per_type["PII"]
     assert metrics.num_predicted == 1
     assert metrics.num_annotated == 2
-    assert metrics.true_positives == 2
+    assert metrics.true_positives == 1
     assert metrics.false_positives == 0
-    assert metrics.false_negatives == 0
-    assert result.model_errors == []
-    assert result.results[("PII", "PII")] == 2
+    assert metrics.false_negatives == 1
+    assert len(result.model_errors) == 1
+    assert result.model_errors[0].error_type == ErrorType.FN
+    assert result.model_errors[0].start == 5
+    assert result.results == {("PII", "PII"): 1, ("PII", "O"): 1}
+
+
+@pytest.mark.parametrize("char_based", [False, True])
+@pytest.mark.parametrize("level", ["entity", "both"])
+def test_wrong_type_prediction_covering_two_annotations_claims_one_cell(
+    char_based, level
+):
+    df = make_df(["John", "Mary"], ["NAME"] * 2, ["LOCATION"] * 2)
+    df[ANNOTATION_SPAN_ID] = [0, 1]
+    result = SpanEvaluator(
+        iou_threshold=0.4, char_based=char_based, skip_words=[]
+    ).calculate_score_on_df(df, level=level)
+
+    assert result.results == {("NAME", "LOCATION"): 1, ("NAME", "O"): 1}
+    assert result.per_type["NAME"].num_annotated == 2
+    assert result.per_type["NAME"].true_positives == 0
+    assert result.per_type["NAME"].false_negatives == 2
+    assert result.per_type["LOCATION"].num_predicted == 1
+    assert result.per_type["LOCATION"].false_positives == 1
+    assert sum(e.error_type == ErrorType.WrongEntity for e in result.model_errors) == 1
+    assert sum(e.error_type == ErrorType.FN for e in result.model_errors) == 2
+    assert sum(e.error_type == ErrorType.FP for e in result.model_errors) == 1
 
 
 def test_qualifying_same_type_match_preferred_over_wrong_type_overlap():

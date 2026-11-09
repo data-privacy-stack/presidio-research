@@ -1,4 +1,7 @@
-# Span Matching Strategies in Presidio Evaluator
+---
+title: Span Matching Strategies in Presidio Evaluator
+description: Span assignment, overlap scenarios, and counting rules for PII evaluation.
+---
 
 This document explains how the span evaluation works in Presidio Evaluator, focusing on different overlap scenarios
 between annotated and predicted spans.
@@ -92,15 +95,17 @@ When there's insufficient overlap between spans, they are treated as both false 
 
 ## Multiple Span Scenarios
 
-A single prediction span may overlap several annotations. Recall is judged per
-annotation, so each annotation it covers at IoU >= threshold is a true positive;
-precision is judged per span, so it enters `num_predicted` once. For example,
-gold `NAME NAME AGE` on `"John Smith 32"` produces two spans. A single prediction
-covering all three tokens is **one prediction**. With an IoU threshold of 1.0 it
-covers neither annotation: one FP, two FNs. At a threshold it meets for both, it
-is two TPs and still one credited prediction.
+A single prediction span may overlap several annotations, but it is assigned to
+only one before scoring. Assignment prefers a same-type match meeting the IoU
+threshold, then the greatest IoU. Ties prefer the same type, then the earliest
+annotation (followed by its end and type), independently of input order.
+Recall is judged per annotation using only its assigned predictions; precision
+counts each prediction once in `num_predicted`. For example, gold `NAME NAME AGE`
+on `"John Smith 32"` produces two spans. A single `NAME` prediction covering all
+three tokens is one prediction. At threshold 1.0 it matches neither annotation:
+one FP, two FNs. At threshold 0.5 it matches only the name: one TP, one FN, no FP.
 
-When an annotation overlaps with multiple prediction spans:
+When an annotation has multiple assigned prediction spans:
 
 ### 1. Multiple Spans of Same Type
 
@@ -132,17 +137,21 @@ Each entity type is evaluated separately against the annotation:
 
 ## One Prediction Overlapping Multiple Annotations
 
-The mirror case: a single prediction overlapping several annotations. Each
-annotation measures its own pairwise IoU against the prediction independently;
-the prediction itself is counted once in `num_predicted`:
+The mirror case is a single prediction overlapping several annotations. Only
+the annotation selected by exclusive assignment can use that prediction:
 
-- Each annotation whose IoU is above the threshold is a TP; each annotation
-  whose IoU is below it is an FN.
-- The prediction is credited if it matched at least one annotation, otherwise
-  it is a single FP (not one per missed annotation).
-- **Example**: gold [John Smith] and [Mary Jones], prediction one PERSON span
-  over "John Smith met Mary Jones" (IoU ≈ 0.4 per annotation). At
-  threshold 0.3: 2 TP, num_predicted 1. At threshold 0.9: 2 FN, 1 FP.
+- The selected annotation is a TP if the prediction has the same type and
+  meets the IoU threshold; otherwise it is an FN.
+- Other annotations without assigned predictions are FNs.
+- The prediction is counted once in `num_predicted`: credited if it matches
+  its assigned annotation, otherwise a single FP.
+
+For example, gold PERSON spans \[John Smith\] and \[Mary Jones\] overlap one
+PERSON prediction over "John Smith met Mary Jones" (IoU ≈ 0.4 per annotation).
+Equal IoUs assign it to the earlier span, "John Smith". At threshold 0.3:
+1 TP, 1 FN, no FP, num_predicted 1. At threshold 0.9: 2 FN, 1 FP.
+A qualifying wrong-type prediction instead produces one wrong-type cell and
+one `(PERSON, "O")` cell, not two wrong-type cells.
 
 ## Real-world Examples
 

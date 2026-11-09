@@ -561,9 +561,9 @@ class SpanEvaluator(BaseEvaluator):
         Counting is two-sided: recall is true_positives / num_annotated
         (annotations covered), while precision is
         (num_predicted - false_positives) / num_predicted (prediction spans
-        credited with a match). The numerators may differ — e.g. one wide
-        prediction covering two annotations is two recall hits but a single
-        credited prediction.
+        credited with a match). The numerators may differ: several prediction
+        fragments covering one annotation are one recall hit but multiple
+        credited predictions.
 
         :param true_positives: (int) Number of annotations covered at IoU >= threshold.
         :param num_predicted: (int) Number of predicted spans.
@@ -613,6 +613,38 @@ class SpanEvaluator(BaseEvaluator):
             return pairwise_ious[0]
         return self._calculate_combined_iou(ann_span, spans)
 
+    def _assign_prediction_overlaps(
+        self,
+        annotation_spans: list[Span],
+        prediction_spans: list[Span],
+    ) -> dict[Span, list[tuple[Span, float]]]:
+        """Assign each overlapping prediction to exactly one annotation.
+
+        Prefer a same-type match meeting the IoU threshold, then the greatest
+        IoU. Ties prefer the same type, then the earliest gold span (and its end
+        and type), independently of input order. Predictions assigned to one
+        gold span still use the existing per-type cumulative-IoU aggregation.
+        """
+        assigned: dict[Span, list[tuple[Span, float]]] = defaultdict(list)
+        for pred_span in sorted(prediction_spans, key=lambda span: span.start_position):
+            candidates = self._get_all_overlapping(pred_span, annotation_spans)
+            if not candidates:
+                continue
+            ann_span, iou = max(
+                candidates,
+                key=lambda candidate: (
+                    candidate[0].entity_type == pred_span.entity_type
+                    and candidate[1] >= self.iou_threshold,
+                    candidate[1],
+                    candidate[0].entity_type == pred_span.entity_type,
+                    -candidate[0].start_position,
+                    -candidate[0].end_position,
+                    candidate[0].entity_type,
+                ),
+            )
+            assigned[ann_span].append((pred_span, iou))
+        return assigned
+
     def _match_predictions_with_annotations(
         self,
         annotation_spans: list[Span],
@@ -622,21 +654,22 @@ class SpanEvaluator(BaseEvaluator):
     ) -> EvaluationResult:
         """Match spans and update counts using two-sided counting.
 
-        Recall side (per annotation): each annotation independently asks
-        whether the predictions of its type cover it at IoU >= threshold —
-        individually or combined. Covered -> true positive (recall hit),
-        otherwise false negative.
+        Each overlapping prediction is assigned to exactly one annotation
+        before scoring. Recall side (per annotation): each annotation asks
+        whether its assigned predictions of the same type cover it at
+        IoU >= threshold, individually or combined. Covered -> true positive
+        (recall hit), otherwise false negative.
 
         Precision side (per prediction): each prediction span enters
         num_predicted exactly once, no matter how many annotations it
-        overlaps. A prediction that participated in at least one successful
+        overlaps. A prediction that participated in a successful
         same-type match is credited; any other prediction is a false
         positive.
 
         Precision is therefore (num_predicted - false_positives) /
         num_predicted while recall is true_positives / num_annotated; the two
-        numerators may legitimately differ (one wide prediction covering two
-        annotations is two recall hits but a single credited prediction).
+        numerators may legitimately differ (several fragments covering one
+        annotation are one recall hit but multiple credited predictions).
 
         :param annotation_spans: (list[Span]) Gold spans of one sentence.
         :param prediction_spans: (list[Span]) Predicted spans of the same sentence.
@@ -669,12 +702,16 @@ class SpanEvaluator(BaseEvaluator):
         # matrix once, so these skip the ("O", pred_type) row.
         wrong_entity_predictions: set[tuple[str, int, int]] = set()
 
+        assigned_predictions = self._assign_prediction_overlaps(
+            annotation_spans, prediction_spans
+        )
+
         # --- Recall pass: one verdict per annotation ---
         for ann_span in annotation_spans:
             ann_type = ann_span.entity_type
             self._add_to_annotated(evaluation_result, per_type, ann_type)
 
-            overlapping_preds = self._get_all_overlapping(ann_span, prediction_spans)
+            overlapping_preds = assigned_predictions.get(ann_span, [])
             for pred_span, _ in overlapping_preds:
                 overlapping_predictions.add(self._span_key(pred_span))
             spans_by_type, iou_by_type = self._group_spans_by_type(overlapping_preds)
