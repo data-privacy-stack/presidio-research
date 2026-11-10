@@ -11,8 +11,42 @@
 
 ### Behavior Changes
 
-- **Spans are built from the original entity boundaries** — `predict_dataset()` adds `annotation_span_id` and `prediction_span_id` columns, and `SpanEvaluator` builds spans from them instead of from runs of identical labels. Spans are therefore the same at every mapping level. `SpanEvaluator` raises if the columns are missing; `CanonicalMapper` adds them for DataFrames that lack them. Skip words no longer join separate spans, and `predict_dataset()` writes IO labels to `prediction` for every model. Known effect until the matcher work in #185: gold annotated more finely than the prediction (first and last name against one full-name prediction) is scored as missed, because each prediction is matched to a single gold span.
+- **Spans are built from the original entity boundaries** — `predict_dataset()` adds `annotation_span_id` and `prediction_span_id` columns, and `SpanEvaluator` builds spans from them instead of from runs of identical labels. Spans are therefore the same at every mapping level. `SpanEvaluator` raises if the columns are missing; `CanonicalMapper` adds them for DataFrames that lack them. Skip words no longer join separate spans, and `predict_dataset()` writes IO labels to `prediction` for every model. Known limitation: gold annotated more finely than the prediction (first and last name against one full-name prediction) is scored as missed, because each prediction is assigned to a single gold span.
 - **Predictions are projected to the deepest annotated ancestor during canonical mapping** — the gold vocabulary decides the granularity, per prediction. A `NAME` prediction is mapped to `PERSON` when the dataset annotates `PERSON`, and `DATE` is mapped to `DATE_TIME` when the dataset annotates `DATE_TIME`. A prediction with no annotated ancestor is left unchanged, so a coarser prediction is never pushed down onto a finer gold label and siblings are never conflated. Datasets that annotate several depths on one branch (e.g. `PERSON` and `TITLE` in `data/synth_dataset_v2.json`) need no mapping decision: `TITLE` predictions stay `TITLE` while `NAME` predictions become `PERSON`, so every annotated depth keeps its own metrics. Mixed annotation depths are reported as an INFO issue. Low-IoU errors are attributed to the projected scoring label.
+- Two-sided (asymmetric) span counting in `SpanEvaluator`: recall is now counted
+  per annotation and precision per prediction span. Every annotation gets one
+  verdict (`TP + FN == num_annotated`), and every prediction enters
+  `num_predicted` once, as either credited or FP. Each overlapping prediction is
+  assigned to exactly one annotation before scoring; a wide span covering two
+  annotations can yield at most one TP, leaving the other annotation as an FN
+  if it has no other assigned predictions.
+  Precision is `(num_predicted - false_positives) / num_predicted`;
+  `true_positives` counts covered annotations, so several fragments jointly
+  matching one annotation yield one recall hit but multiple credited predictions.
+  Thus `true_positives / num_predicted` is not a valid general precision formula.
+  A same-type group failing combined IoU counts one FP per span; a wide span
+  missing several annotations counts only one FP. A span matching one annotation
+  and brushing another incurs an FN for the latter, not an extra FP.
+  This fixes annotations counted as both FN and TP and prediction totals that
+  drifted from the actual number of spans.
+- **Single-span coverage uses exact pairwise IoU** — when exactly one prediction overlaps an annotation, coverage is measured with the exact pairwise `Span.iou`; the combined-IoU path (which slightly inflates values at span boundaries) is reserved for genuine multi-span coverage. Borderline single-span matches at a threshold boundary may flip compared to previous releases (e.g. IoU 0.4706 previously computed as 0.50 no longer passes τ=0.5).
+- Annotation-centric confusion matrix: every annotation is recorded in one cell:
+  `(type, type)` when covered, `(type, predicted type)` when a different type
+  covers it at IoU >= threshold, `(type, "O")` otherwise. Row totals equal
+  `num_annotated`. When several assigned types reach the threshold on one
+  annotation, its own type claims the cell, else the wrong type with highest
+  IoU; other types are false positives in the `"O"` row.
+  The `"O"` row holds only predictions represented by no annotation cell.
+  Exclusive assignment prevents one prediction from claiming multiple
+  annotation cells; a wrong-type prediction spanning two annotations produces
+  one wrong-type cell and one `(type, "O")` cell when the latter has no other
+  assigned predictions. Multiple fragments can still share one annotation cell.
+  Confusion-matrix cells and `ModelError` records are written only by the per-type
+  pass; the global PII pass updates only `pii_*` counters.
+  Thus `calculate_score_on_df(level="both")`, also used by
+  `calculate_hierarchical_scores`, no longer duplicates false-positive errors or
+  adds an `("O", "PII")` cell to per-type results.
+  See [Span Evaluation](docs/span_evaluation.md).
 
 ### Bug Fixes
 
