@@ -209,9 +209,20 @@ class SentenceFaker(Faker):
         if isinstance(pattern, str):
             return pattern.lower()
         elif isinstance(pattern, InputSample):
-            pattern.fake = pattern.full_text.lower()
-            for span in pattern.spans:
-                span.entity_value = str(span.entity_value).lower()
+            # Lower-case piece by piece and recompute the offsets, since
+            # str.lower() can change the length of a string ("İ" -> "i̇").
+            text = pattern.full_text
+            lowered = ""
+            cursor = 0
+            for span in sorted(pattern.spans, key=lambda s: s.start_position):
+                lowered += text[cursor : span.start_position].lower()
+                value = text[span.start_position : span.end_position].lower()
+                cursor = span.end_position
+                span.start_position = len(lowered)
+                lowered += value
+                span.end_position = len(lowered)
+                span.entity_value = value
+            pattern.full_text = lowered + text[cursor:].lower()
             return pattern
 
     def add_provider_alias(self, provider_name: str, new_name: str) -> None:
