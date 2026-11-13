@@ -7,6 +7,7 @@
 - **`Span.score`** — optional model confidence on a span, used to resolve overlapping predictions when spans are flattened to tags.
 - **`tags_to_span_ids()`** — derives span ids from tags when the source spans are not available.
 - **`span_to_tag()`** accepts plain string tokens with `start_indices`, not only a spaCy `Doc`.
+- **`PresidioSentenceFaker(match_records_to_locale=True)`** — uses only the base records whose `country_code` matches the locale's country (`DE` for `de_DE`), so a German dataset no longer gets Finnish or Dutch addresses. Off by default.
 - **Python 3.14 support** — `requires-python` is now `>=3.11,<3.15`, `uv.lock` has been regenerated for the wider range, and the locked `spacy` moves to 3.8.16, the first release that declares 3.14 support. CI runs the test suite on 3.11 through 3.14.
 
 ### Behavior Changes
