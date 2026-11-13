@@ -6,6 +6,9 @@ from faker import Faker
 
 from presidio_evaluator.data_generator import PresidioSentenceFaker
 from presidio_evaluator.data_generator.faker_extensions import providers
+from presidio_evaluator.data_generator.faker_extensions.datasets import (
+    load_fake_person_df,
+)
 
 
 def _get_classes_from_module(module):
@@ -73,3 +76,55 @@ def test_generate_new_fake_sentences(num_sentences: int):
 def test_preprocess_template(template_before: str, template_after: str):
     sentence_faker = PresidioSentenceFaker(locale="en", lower_case_ratio=0)
     assert sentence_faker._preprocess_template(template_before) == template_after
+
+
+def _cities(sentence_faker: PresidioSentenceFaker, num_samples: int) -> set[str]:
+    samples = sentence_faker.generate_new_fake_sentences(num_samples)
+    return {sample.spans[0].entity_value for sample in samples}
+
+
+def test_match_records_to_locale_uses_only_records_from_that_country():
+    records = load_fake_person_df()
+    german_cities = set(records.loc[records["country_code"] == "DE", "city"])
+
+    sentence_faker = PresidioSentenceFaker(
+        locale="de_DE",
+        lower_case_ratio=0,
+        sentence_templates=["Bitte die Rechnung nach {{city}} schicken!"],
+        random_seed=42,
+        match_records_to_locale=True,
+    )
+
+    assert _cities(sentence_faker, 100) <= german_cities
+
+
+def test_records_are_not_matched_to_locale_by_default():
+    records = load_fake_person_df()
+    german_cities = set(records.loc[records["country_code"] == "DE", "city"])
+
+    sentence_faker = PresidioSentenceFaker(
+        locale="de_DE",
+        lower_case_ratio=0,
+        sentence_templates=["Bitte die Rechnung nach {{city}} schicken!"],
+        random_seed=42,
+    )
+
+    assert not _cities(sentence_faker, 100) <= german_cities
+
+
+@pytest.mark.parametrize(
+    "locale, base_records, error",
+    [
+        ("de", None, "has no country part"),
+        ("ja_JP", None, "No base records have country_code 'JP'"),
+        ("de_DE", [{"city": "Berlin"}], "needs a country_code field"),
+    ],
+)
+def test_match_records_to_locale_errors(locale, base_records, error):
+    with pytest.raises(ValueError, match=error):
+        PresidioSentenceFaker(
+            locale=locale,
+            lower_case_ratio=0,
+            base_records=base_records,
+            match_records_to_locale=True,
+        )

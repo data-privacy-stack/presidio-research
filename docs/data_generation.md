@@ -61,6 +61,9 @@ templates: `My name is John` -> `My name is [PERSON]`
        - e.g. For a `TownProvider` which outputs entity type of `town`, execute `PresidioSentenceFaker.ENTITY_TYPE_MAPPING['town'] = 'GPE'`)
    - Passing in a DataFrame representing your underlying PII records (or default to those provided)
      - Optionally extend with inbuilt presidio entity providers accessible via `from presidio_evaluator.data_generator.faker_extensions.datasets import load_fake_person_df`
+     - Optionally pass `match_records_to_locale=True` to use only the records from the locale's country
+     (`DE` for `de_DE`), so addresses, cities, postcodes and phone numbers match the locale.
+     Names in the default records come from many name sets in every country, so they stay mixed.
    - Adding any additional aliases required by your dataset by adding to `PresidioSentenceFaker.PROVIDER_ALIASES`
      - e.g. if the entity providers support "name" but your dataset templates contain "person", you can add this alias
      with `PresidioSentenceFaker.PROVIDER_ALIASES['name'] = 'person'`)
