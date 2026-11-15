@@ -78,46 +78,102 @@ def test_preprocess_template(template_before: str, template_after: str):
     assert sentence_faker._preprocess_template(template_before) == template_after
 
 
-def _cities(sentence_faker: PresidioSentenceFaker, num_samples: int) -> set[str]:
-    samples = sentence_faker.generate_new_fake_sentences(num_samples)
-    return {sample.spans[0].entity_value for sample in samples}
+def _record_pool(sentence_faker: PresidioSentenceFaker) -> list[dict]:
+    return sentence_faker._sentence_faker.factories[0].records
 
 
 def test_match_records_to_locale_uses_only_records_from_that_country():
     records = load_fake_person_df()
-    german_cities = set(records.loc[records["country_code"] == "DE", "city"])
 
     sentence_faker = PresidioSentenceFaker(
-        locale="de_DE",
+        locale="de_DE", lower_case_ratio=0, match_records_to_locale=True
+    )
+
+    pool = _record_pool(sentence_faker)
+    assert len(pool) == (records["country_code"] == "DE").sum()
+    assert {record["country_code"] for record in pool} == {"DE"}
+
+
+def test_records_are_not_matched_to_locale_by_default():
+    sentence_faker = PresidioSentenceFaker(locale="de_DE", lower_case_ratio=0)
+
+    assert len(_record_pool(sentence_faker)) == len(load_fake_person_df())
+
+
+def test_match_records_to_locale_fills_empty_fields():
+    # No GB record has a state, and some have no mothers_maiden,
+    # which Faker has no provider for.
+    sentence_faker = PresidioSentenceFaker(
+        locale="en_GB",
         lower_case_ratio=0,
-        sentence_templates=["Bitte die Rechnung nach {{city}} schicken!"],
+        sentence_templates=[
+            "I live in {{city}}, {{state}} {{state_abbr}}. My mother was {{mothers_maiden}}"
+        ],
         random_seed=42,
         match_records_to_locale=True,
     )
 
-    assert _cities(sentence_faker, 100) <= german_cities
+    pool = _record_pool(sentence_faker)
+    assert all("mothers_maiden" in record for record in pool)
+    assert not any("state" in record for record in pool)
+
+    samples = sentence_faker.generate_new_fake_sentences(200)
+    values = [span.entity_value for sample in samples for span in sample.spans]
+    assert "nan" not in values
 
 
-def test_records_are_not_matched_to_locale_by_default():
-    records = load_fake_person_df()
-    german_cities = set(records.loc[records["country_code"] == "DE", "city"])
+@pytest.mark.parametrize(
+    "locale, country",
+    [
+        ("de_DE", "DE"),
+        ("de-AT", "AT"),
+        ("sr_Latn_RS", "RS"),
+        ("en_US.UTF-8", "US"),
+        ("es_CA", "ES"),
+        ("fr_QC", "CA"),
+        ("en_MS", "MY"),
+    ],
+)
+def test_locale_country(locale, country):
+    assert PresidioSentenceFaker._locale_country(locale) == country
 
+
+@pytest.mark.parametrize("locale", [["de_DE"], {"de_DE": 1.0}])
+def test_match_records_to_locale_accepts_locale_list_and_dict(locale):
+    sentence_faker = PresidioSentenceFaker(
+        locale=locale, lower_case_ratio=0, match_records_to_locale=True
+    )
+
+    assert {record["country_code"] for record in _record_pool(sentence_faker)} == {"DE"}
+
+
+def test_match_records_to_locale_ignores_case_and_spaces_in_country_code():
     sentence_faker = PresidioSentenceFaker(
         locale="de_DE",
         lower_case_ratio=0,
-        sentence_templates=["Bitte die Rechnung nach {{city}} schicken!"],
-        random_seed=42,
+        base_records=[
+            {"country_code": " de", "city": "Berlin"},
+            {"country_code": "FR", "city": "Paris"},
+        ],
+        match_records_to_locale=True,
     )
 
-    assert not _cities(sentence_faker, 100) <= german_cities
+    assert _record_pool(sentence_faker) == [{"country_code": " de", "city": "Berlin"}]
 
 
 @pytest.mark.parametrize(
     "locale, base_records, error",
     [
-        ("de", None, "has no country part"),
+        ("de", None, "has no country"),
+        ("ar_AA", None, "has no country"),
         ("ja_JP", None, "No base records have country_code 'JP'"),
+        ("de_DE", [], "got no base records"),
         ("de_DE", [{"city": "Berlin"}], "needs a country_code field"),
+        (
+            "de_DE",
+            [{"country_code": "FR"}, {"country_code": float("nan")}],
+            "Available: FR$",
+        ),
     ],
 )
 def test_match_records_to_locale_errors(locale, base_records, error):
