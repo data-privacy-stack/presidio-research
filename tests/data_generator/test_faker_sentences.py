@@ -1,13 +1,9 @@
 import pytest
 from faker import Faker
 
-from presidio_evaluator import InputSample, Span
 from presidio_evaluator.data_generator.faker_extensions import (
     RecordGenerator,
     SentenceFaker,
-)
-from presidio_evaluator.data_generator.faker_extensions.sentences import (
-    lower_case_sample,
 )
 from presidio_evaluator.data_generator.presidio_data_generator import (
     PresidioDataGenerator,
@@ -90,12 +86,3 @@ def test_presidio_data_generator_lower_case_ratio_keeps_the_sample():
 
     assert res.full_text == "my name is i̇smail yılmaz and i live in i̇zmir"
     _assert_spans_aligned(res)
-
-
-def test_lower_case_sample_rejects_overlapping_spans():
-    sample = InputSample(
-        full_text="Hello World",
-        spans=[Span("A", "Hello World", 0, 11), Span("B", "World", 6, 11)],
-    )
-    with pytest.raises(ValueError, match="overlapping"):
-        lower_case_sample(sample)

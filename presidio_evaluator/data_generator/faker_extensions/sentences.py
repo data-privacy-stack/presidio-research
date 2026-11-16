@@ -10,55 +10,6 @@ from presidio_evaluator import InputSample, Span
 from presidio_evaluator.data_generator.faker_extensions import SpanGenerator
 
 
-def lower_case_sample(pattern: str | InputSample) -> str | InputSample:
-    """Lower-case a generated sentence, keeping its spans aligned.
-
-    For an InputSample, the text is lowered piece by piece (between and inside
-    spans) and the span offsets are recomputed, since str.lower() can change
-    the length of a string ("İ" -> "i̇"). Lowering piece by piece can differ
-    from lowering the whole sentence where lower() depends on context: a span
-    ending in a Greek capital sigma gets a final sigma ("ΟΔΟΣ" -> "οδος") even
-    when a letter follows it. The text of `masked` is lowered as well, leaving
-    its {{placeholders}} as they are.
-    """
-    if isinstance(pattern, str):
-        return pattern.lower()
-    if not isinstance(pattern, InputSample):
-        raise TypeError(f"Expected str or InputSample, got {type(pattern).__name__}")
-
-    text = pattern.full_text
-    pieces: list[str] = []
-    length = 0
-    cursor = 0
-    for span in sorted(pattern.spans, key=lambda s: s.start_position):
-        start, end = span.start_position, span.end_position
-        # parse() never produces overlapping spans; with them, the overlapped
-        # text would be added twice and every later offset would shift
-        if start < cursor:
-            raise ValueError("Cannot lower-case a sample with overlapping spans")
-        before = text[cursor:start].lower()
-        value = text[start:end].lower()
-        pieces += [before, value]
-        span.start_position = length + len(before)
-        span.end_position = span.start_position + len(value)
-        span.entity_value = value
-        length = span.end_position
-        cursor = end
-    pieces.append(text[cursor:].lower())
-    pattern.full_text = "".join(pieces)
-
-    if pattern.masked:
-        masked = pattern.masked
-        pieces = []
-        cursor = 0
-        for match in _re_token.finditer(masked):
-            pieces += [masked[cursor : match.start()].lower(), match.group()]
-            cursor = match.end()
-        pieces.append(masked[cursor:].lower())
-        pattern.masked = "".join(pieces)
-    return pattern
-
-
 class RecordGenerator(SpanGenerator):
     """Prioritizes the sampling of values found in input records,
     in order to allow semantically similar elements to be drawn together.
@@ -235,17 +186,19 @@ class SentenceFaker(Faker):
 
         """
         try:
+            lower_case = random.random() < self.lower_case_ratio
             if isinstance(self.factories[0], SpanGenerator):
                 span_generator: SpanGenerator = self.factories[0]
                 fake_pattern = span_generator.parse(
                     template,
                     add_spans=add_spans,
                     template_id=template_id,
+                    lower_case=lower_case,
                 )
             else:
                 fake_pattern = self.factories[0].parse(template)
-            if random.random() < self.lower_case_ratio:
-                fake_pattern = self._lower_pattern(fake_pattern)
+                if lower_case and isinstance(fake_pattern, str):
+                    fake_pattern = fake_pattern.lower()
             return fake_pattern
         except Exception as err:
             raise AttributeError(
@@ -253,10 +206,6 @@ class SentenceFaker(Faker):
                 f"Add a new Faker provider or create an alias "
                 f"for the entity name. {err}",
             ) from err
-
-    @staticmethod
-    def _lower_pattern(pattern: str | InputSample) -> str | InputSample:
-        return lower_case_sample(pattern)
 
     def add_provider_alias(self, provider_name: str, new_name: str) -> None:
         """

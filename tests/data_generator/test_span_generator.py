@@ -116,6 +116,17 @@ def test_no_replacements(span_faker):
     assert len(res.spans) == 0
 
 
+def test_lower_case_keeps_spans_aligned_when_the_template_changes_length(span_faker):
+    # "İ".lower() is two characters long, so the value moves one to the right
+    pattern = "İstanbul'da {{foo}} var"
+    res = span_faker.parse(pattern, add_spans=True, lower_case=True)
+
+    assert res.full_text == "i̇stanbul'da bar var"
+    assert res.masked == "i̇stanbul'da {{foo}} var"
+    span = res.spans[0]
+    assert res.full_text[span.start_position : span.end_position] == "bar"
+
+
 def test_without_spans(span_faker):
     pattern = "this is a sentence with {{foo}}"
     expected = "this is a sentence with bar"

@@ -10,15 +10,11 @@ from faker.providers import BaseProvider
 from pandas import DataFrame
 from tqdm import tqdm
 
-from presidio_evaluator import InputSample
 from presidio_evaluator.data_generator.faker_extensions import (
     SpanGenerator,
 )
 from presidio_evaluator.data_generator.faker_extensions.data_objects import (
     FakerSpansResult,
-)
-from presidio_evaluator.data_generator.faker_extensions.sentences import (
-    lower_case_sample,
 )
 
 
@@ -109,17 +105,19 @@ class PresidioDataGenerator:
 
         """
         try:
+            lower_case = random.random() < self.lower_case_ratio
             if isinstance(self.faker.factories[0], SpanGenerator):
                 fake_pattern = self.faker.parse(
                     template,
                     add_spans=add_spans,
                     template_id=template_id,
                     sample_id=sample_id,
+                    lower_case=lower_case,
                 )
             else:
                 fake_pattern = self.faker.parse(template)
-            if random.random() < self.lower_case_ratio:
-                fake_pattern = self._lower_pattern(fake_pattern)
+                if lower_case and isinstance(fake_pattern, str):
+                    fake_pattern = fake_pattern.lower()
             return fake_pattern
         except Exception as err:
             raise AttributeError(
@@ -152,17 +150,6 @@ class PresidioDataGenerator:
             template_id = random.choice(range(len(templates)))
             template = templates[template_id]
             yield self.parse(template=template, template_id=template_id, sample_id=i)
-
-    @staticmethod
-    def _lower_pattern(pattern: str | InputSample | FakerSpansResult):
-        if isinstance(pattern, FakerSpansResult):
-            pattern.fake = pattern.fake.lower()
-            for span in pattern.spans:
-                span.value = str(span.value).lower()
-            return pattern
-        # SpanGenerator returns an InputSample, which used to fall through
-        # here and come back as None
-        return lower_case_sample(pattern)
 
     @staticmethod
     def seed(seed_value=42) -> None:
