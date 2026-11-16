@@ -1,6 +1,27 @@
 import pytest
+from faker import Faker
 
-from presidio_evaluator.data_generator.faker_extensions import SentenceFaker
+from presidio_evaluator import InputSample, Span
+from presidio_evaluator.data_generator.faker_extensions import (
+    RecordGenerator,
+    SentenceFaker,
+)
+from presidio_evaluator.data_generator.faker_extensions.sentences import (
+    lower_case_sample,
+)
+from presidio_evaluator.data_generator.presidio_data_generator import (
+    PresidioDataGenerator,
+)
+
+TEMPLATE = "My name is {{name}} and I live in {{city}}"
+
+
+def _assert_spans_aligned(sample):
+    for span in sample.spans:
+        assert span.entity_value == span.entity_value.lower()
+        assert sample.full_text[span.start_position : span.end_position] == (
+            span.entity_value
+        )
 
 
 def test_new_provider_no_alias_raises_attribute_error():
@@ -31,11 +52,50 @@ def test_new_provider_with_alias():
 )
 def test_lower_case_ratio_lowers_text_and_keeps_spans_aligned(record):
     data_generator = SentenceFaker(lower_case_ratio=1.0, records=[record])
-    res = data_generator.parse("My name is {{name}} and I live in {{city}}", 0)
+    res = data_generator.parse(TEMPLATE, 0)
 
-    expected = f"My name is {record['name']} and I live in {record['city']}"
-    assert res.full_text == expected.lower()
+    # the text around and inside the spans is lowered piece by piece
+    name, city = record["name"].lower(), record["city"].lower()
+    assert res.full_text == f"my name is {name} and i live in {city}"
+    assert res.masked == "my name is {{name}} and i live in {{city}}"
     for span in res.spans:
-        value = record[span.entity_type].lower()
-        assert span.entity_value == value
-        assert res.full_text[span.start_position : span.end_position] == value
+        assert span.entity_value == record[span.entity_type].lower()
+    _assert_spans_aligned(res)
+
+
+def test_lower_case_ratio_without_records():
+    res = SentenceFaker(lower_case_ratio=1.0).parse(TEMPLATE, 0)
+
+    assert res.full_text.startswith("my name is ")
+    assert res.full_text == res.full_text.lower()
+    assert res.masked == "my name is {{name}} and i live in {{city}}"
+    assert len(res.spans) == 2
+    _assert_spans_aligned(res)
+
+
+def test_lower_case_ratio_without_spans():
+    res = SentenceFaker(lower_case_ratio=1.0).parse(TEMPLATE, 0, add_spans=False)
+
+    assert isinstance(res, str)
+    assert res.startswith("my name is ")
+    assert res == res.lower()
+
+
+def test_presidio_data_generator_lower_case_ratio_keeps_the_sample():
+    records = [{"name": "İsmail Yılmaz", "city": "İzmir"}]
+    faker = Faker(generator=RecordGenerator(records=records))
+    with pytest.warns(DeprecationWarning):
+        data_generator = PresidioDataGenerator(custom_faker=faker, lower_case_ratio=1.0)
+    res = data_generator.parse(TEMPLATE, 0)
+
+    assert res.full_text == "my name is i̇smail yılmaz and i live in i̇zmir"
+    _assert_spans_aligned(res)
+
+
+def test_lower_case_sample_rejects_overlapping_spans():
+    sample = InputSample(
+        full_text="Hello World",
+        spans=[Span("A", "Hello World", 0, 11), Span("B", "World", 6, 11)],
+    )
+    with pytest.raises(ValueError, match="overlapping"):
+        lower_case_sample(sample)

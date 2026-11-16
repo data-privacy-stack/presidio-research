@@ -47,7 +47,8 @@ class PresidioSentenceFaker:
     A high level interface for generating fake sentences with entity metadata.
     By default, this leverages all the existing templates and additional providers in this library.
     :param: locale: The faker locale to use e.g. 'en_US'
-    :param lower_case_ratio: Percentage of names that should start with lower case
+    :param lower_case_ratio: Share of sentences (0 to 1) that are lower-cased in full,
+    including the entity values
     :param: sentence_templates: Defaults to presidio_templates_file_path, a provided argument overrides this
     :param: entity_providers: Defaults to presidio_additional_entity_providers, a provided argument overrides this
     :param: base_records: A DataFrame with entity types as columns and each row corresponding to a fake individual.

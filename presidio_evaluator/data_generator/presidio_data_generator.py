@@ -10,11 +10,15 @@ from faker.providers import BaseProvider
 from pandas import DataFrame
 from tqdm import tqdm
 
+from presidio_evaluator import InputSample
 from presidio_evaluator.data_generator.faker_extensions import (
     SpanGenerator,
 )
 from presidio_evaluator.data_generator.faker_extensions.data_objects import (
     FakerSpansResult,
+)
+from presidio_evaluator.data_generator.faker_extensions.sentences import (
+    lower_case_sample,
 )
 
 
@@ -31,7 +35,8 @@ class PresidioDataGenerator:
         e.g. "My name is {{first_name}}."
         :param custom_faker: A Faker object provided by the user
         :param locale: A locale object to create our own Faker instance if a custom one was not provided.
-        :param lower_case_ratio: Percentage of names that should start with lower case
+        :param lower_case_ratio: Share of sentences (0 to 1) that are lower-cased in full,
+        including the entity values
 
         :example:
 
@@ -149,14 +154,15 @@ class PresidioDataGenerator:
             yield self.parse(template=template, template_id=template_id, sample_id=i)
 
     @staticmethod
-    def _lower_pattern(pattern: str | FakerSpansResult):
-        if isinstance(pattern, str):
-            return pattern.lower()
-        elif isinstance(pattern, FakerSpansResult):
+    def _lower_pattern(pattern: str | InputSample | FakerSpansResult):
+        if isinstance(pattern, FakerSpansResult):
             pattern.fake = pattern.fake.lower()
             for span in pattern.spans:
                 span.value = str(span.value).lower()
             return pattern
+        # SpanGenerator returns an InputSample, which used to fall through
+        # here and come back as None
+        return lower_case_sample(pattern)
 
     @staticmethod
     def seed(seed_value=42) -> None:
