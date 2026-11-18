@@ -135,7 +135,8 @@ class SentenceFaker(Faker):
         """
         Leverages Faker to create fake PII entities into predefined templates of structure: a b c {{PII}} d e f,
         e.g. "My name is {{first_name}} and returning span information in addition to fake text."
-        :param lower_case_ratio: Percentage of names that should start with lower case
+        :param lower_case_ratio: Share of sentences (0 to 1) that are lower-cased in full,
+        including the entity values
         :param records: fake PII values to draw from, in order to maintain semantic relationship between elements.
         :param faker_kwargs: Arguments for the parent class (faker.Faker)
 
@@ -185,17 +186,19 @@ class SentenceFaker(Faker):
 
         """
         try:
+            lower_case = random.random() < self.lower_case_ratio
             if isinstance(self.factories[0], SpanGenerator):
                 span_generator: SpanGenerator = self.factories[0]
                 fake_pattern = span_generator.parse(
                     template,
                     add_spans=add_spans,
                     template_id=template_id,
+                    lower_case=lower_case,
                 )
             else:
                 fake_pattern = self.factories[0].parse(template)
-            if random.random() < self.lower_case_ratio:
-                fake_pattern = self._lower_pattern(fake_pattern)
+                if lower_case and isinstance(fake_pattern, str):
+                    fake_pattern = fake_pattern.lower()
             return fake_pattern
         except Exception as err:
             raise AttributeError(
@@ -203,16 +206,6 @@ class SentenceFaker(Faker):
                 f"Add a new Faker provider or create an alias "
                 f"for the entity name. {err}",
             ) from err
-
-    @staticmethod
-    def _lower_pattern(pattern: str | InputSample):
-        if isinstance(pattern, str):
-            return pattern.lower()
-        elif isinstance(pattern, InputSample):
-            pattern.fake = pattern.full_text.lower()
-            for span in pattern.spans:
-                span.entity_value = str(span.entity_value).lower()
-            return pattern
 
     def add_provider_alias(self, provider_name: str, new_name: str) -> None:
         """

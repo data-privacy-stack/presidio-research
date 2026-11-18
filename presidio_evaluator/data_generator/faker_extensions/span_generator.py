@@ -32,6 +32,7 @@ class SpanGenerator(Generator):
         add_spans: bool = False,
         template_id: int | None = None,
         sample_id: int | None = None,
+        lower_case: bool = False,
     ) -> str | InputSample:
         """Parses a Faker template.
 
@@ -40,52 +41,54 @@ class SpanGenerator(Generator):
         :param add_spans: Whether to return the spans of each fake value in the output string
         :param template_id: Template ID to be returned with the output
         :param sample_id: unique sample id
+        :param lower_case: Whether to lower-case the template text and the fake values.
+        Each piece is lowered on its own, which can differ from lowering the whole
+        sentence where lower() depends on context (a Greek capital sigma at the end
+        of a value becomes a final sigma even when a letter follows it).
+        The {{placeholders}} in `masked` keep their case.
         """
 
         # Create Span objects for original placeholders
         spans = self._match_to_span(text)
 
-        # Reverse for easier index handling while replacing
-        spans = sorted(spans, reverse=True, key=lambda x: x.start_position)
+        # Build the text from left to right, taking each offset from the text
+        # built so far: a fake value, or a piece of template text once lowered
+        # ("İ" -> "i̇"), can have a different length than what it replaces
+        fake_pieces: list[str] = []
+        masked_pieces: list[str] = []
+        length = 0
+        cursor = 0
+        for span in sorted(spans, key=lambda x: x.start_position):
+            literal = text[cursor : span.start_position]
+            placeholder = text[span.start_position : span.end_position]
+            value = str(span.entity_value)
+            if lower_case:
+                literal = literal.lower()
+                value = value.lower()
+            cursor = span.end_position
 
-        fake_text = ""
-        prev_end = len(text)  # we are going backwards
+            fake_pieces += [literal, value]
+            masked_pieces += [literal, placeholder]
+            span.start_position = length + len(literal)
+            span.end_position = span.start_position + len(value)
+            span.entity_value = value
+            span.entity_type = span.entity_type.strip()
+            length = span.end_position
 
-        # Update indices and fake text based on new values
-        for i, span in enumerate(spans):
-            formatter = span.entity_type
-            old_len = len(formatter) + 4  # adding two curly brackets
-            new_len = len(str(span.entity_value))
+        rest = text[cursor:].lower() if lower_case else text[cursor:]
+        fake_pieces.append(rest)
+        masked_pieces.append(rest)
+        fake_text = "".join(fake_pieces)
 
-            # Update full text
-            fake_text = str(text[span.end_position : prev_end]) + str(fake_text)
-            fake_text = str(span.entity_value) + str(fake_text)
-            prev_end = span.start_position
+        if not add_spans:
+            return fake_text
 
-            if add_spans:  # skip if spans aren't required
-                # Update span indices
-                delta = new_len - old_len
-                span.end_position = span.end_position + delta
-                span.entity_type = formatter.strip()
-
-                # Update previously inserted spans since indices shifted
-                for j in range(0, i):
-                    spans[j].start_position += delta
-                    spans[j].end_position += delta
-
-        # Add the beginning of the sentence
-        fake_text = text[0:prev_end] + fake_text
-
-        return (
-            InputSample(
-                full_text=fake_text,
-                spans=spans,
-                masked=text,
-                template_id=template_id,
-                sample_id=sample_id,
-            )
-            if add_spans
-            else fake_text
+        return InputSample(
+            full_text=fake_text,
+            spans=sorted(spans, reverse=True, key=lambda x: x.start_position),
+            masked="".join(masked_pieces),
+            template_id=template_id,
+            sample_id=sample_id,
         )
 
     def _match_to_span(self, text: str, **kwargs) -> list[Span]:

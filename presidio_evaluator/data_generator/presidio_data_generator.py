@@ -31,7 +31,8 @@ class PresidioDataGenerator:
         e.g. "My name is {{first_name}}."
         :param custom_faker: A Faker object provided by the user
         :param locale: A locale object to create our own Faker instance if a custom one was not provided.
-        :param lower_case_ratio: Percentage of names that should start with lower case
+        :param lower_case_ratio: Share of sentences (0 to 1) that are lower-cased in full,
+        including the entity values
 
         :example:
 
@@ -104,17 +105,19 @@ class PresidioDataGenerator:
 
         """
         try:
+            lower_case = random.random() < self.lower_case_ratio
             if isinstance(self.faker.factories[0], SpanGenerator):
                 fake_pattern = self.faker.parse(
                     template,
                     add_spans=add_spans,
                     template_id=template_id,
                     sample_id=sample_id,
+                    lower_case=lower_case,
                 )
             else:
                 fake_pattern = self.faker.parse(template)
-            if random.random() < self.lower_case_ratio:
-                fake_pattern = self._lower_pattern(fake_pattern)
+                if lower_case and isinstance(fake_pattern, str):
+                    fake_pattern = fake_pattern.lower()
             return fake_pattern
         except Exception as err:
             raise AttributeError(
@@ -147,16 +150,6 @@ class PresidioDataGenerator:
             template_id = random.choice(range(len(templates)))
             template = templates[template_id]
             yield self.parse(template=template, template_id=template_id, sample_id=i)
-
-    @staticmethod
-    def _lower_pattern(pattern: str | FakerSpansResult):
-        if isinstance(pattern, str):
-            return pattern.lower()
-        elif isinstance(pattern, FakerSpansResult):
-            pattern.fake = pattern.fake.lower()
-            for span in pattern.spans:
-                span.value = str(span.value).lower()
-            return pattern
 
     @staticmethod
     def seed(seed_value=42) -> None:
