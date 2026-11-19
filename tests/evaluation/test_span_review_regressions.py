@@ -150,12 +150,18 @@ def test_small_early_overlap_cannot_steal_later_true_positive(reverse_gold, per_
 
 
 @pytest.mark.parametrize("reverse_gold", [False, True])
-def test_prediction_cannot_be_true_positive_for_two_gold_spans(reverse_gold):
-    evaluator = SpanEvaluator(iou_threshold=0.4, skip_words=[])
+@pytest.mark.parametrize("char_based", [False, True])
+def test_prediction_cannot_be_true_positive_for_two_gold_spans(
+    reverse_gold, char_based
+):
+    """A prediction is assigned once, with ties going to the earliest gold."""
+    evaluator = SpanEvaluator(iou_threshold=0.4, char_based=char_based, skip_words=[])
     df = make_df(["John", "Mary"], ["PII"] * 2, ["PII"] * 2)
     df[ANNOTATION_SPAN_ID] = [0, 1]
     df[PREDICTION_SPAN_ID] = [0, 0]
     gold, predictions = evaluator._process_sentence_spans(df)
+    assert len(gold) == 2
+    assert len(predictions) == 1
     if reverse_gold:
         gold.reverse()
     result = evaluator._match_predictions_with_annotations(
@@ -163,11 +169,36 @@ def test_prediction_cannot_be_true_positive_for_two_gold_spans(reverse_gold):
     )
     metrics = result.per_type["PII"]
     assert metrics.num_predicted == 1
+    assert metrics.num_annotated == 2
     assert metrics.true_positives == 1
     assert metrics.false_positives == 0
     assert metrics.false_negatives == 1
-    missed = [e for e in result.model_errors if e.error_type == ErrorType.FN]
-    assert [e.full_text for e in missed] == ["Mary"]
+    assert len(result.model_errors) == 1
+    assert result.model_errors[0].error_type == ErrorType.FN
+    assert result.model_errors[0].start == 5
+    assert result.results == {("PII", "PII"): 1, ("PII", "O"): 1}
+
+
+@pytest.mark.parametrize("char_based", [False, True])
+@pytest.mark.parametrize("level", ["entity", "both"])
+def test_wrong_type_prediction_covering_two_annotations_claims_one_cell(
+    char_based, level
+):
+    df = make_df(["John", "Mary"], ["NAME"] * 2, ["LOCATION"] * 2)
+    df[ANNOTATION_SPAN_ID] = [0, 1]
+    result = SpanEvaluator(
+        iou_threshold=0.4, char_based=char_based, skip_words=[]
+    ).calculate_score_on_df(df, level=level)
+
+    assert result.results == {("NAME", "LOCATION"): 1, ("NAME", "O"): 1}
+    assert result.per_type["NAME"].num_annotated == 2
+    assert result.per_type["NAME"].true_positives == 0
+    assert result.per_type["NAME"].false_negatives == 2
+    assert result.per_type["LOCATION"].num_predicted == 1
+    assert result.per_type["LOCATION"].false_positives == 1
+    assert sum(e.error_type == ErrorType.WrongEntity for e in result.model_errors) == 1
+    assert sum(e.error_type == ErrorType.FN for e in result.model_errors) == 2
+    assert sum(e.error_type == ErrorType.FP for e in result.model_errors) == 1
 
 
 def test_qualifying_same_type_match_preferred_over_wrong_type_overlap():
@@ -200,7 +231,12 @@ def test_shared_prediction_in_multiple_overlap_group_not_counted_again(char_base
     assert result.per_type["PII"].false_positives == 2
 
 
-def test_fragment_aggregation_still_counts_as_one_prediction():
+def test_fragments_jointly_covering_one_gold_span_each_enter_num_predicted():
+    """Fragments that jointly cover an annotation are all credited.
+
+    The annotation is one recall hit; each fragment is a separate prediction
+    span in ``num_predicted`` and none is a false positive.
+    """
     df = make_df(
         ["New", "York", "Mets"],
         ["ORGANIZATION"] * 3,
@@ -210,8 +246,10 @@ def test_fragment_aggregation_still_counts_as_one_prediction():
         iou_threshold=0.5, char_based=False, skip_words=[]
     ).calculate_score_on_df(df, level="entity")
     metrics = result.per_type["ORGANIZATION"]
-    assert metrics.true_positives == metrics.num_predicted == 1
+    assert metrics.num_annotated == metrics.true_positives == 1
+    assert metrics.num_predicted == 2
     assert metrics.false_positives == metrics.false_negatives == 0
+    assert metrics.precision == metrics.recall == 1.0
 
 
 def test_mapper_passes_span_ids_through_every_level():
@@ -252,7 +290,7 @@ def test_model_errors_carry_the_sentence_id():
     assert errors == {ErrorType.FN: 7, ErrorType.FP: 9}
     assert all(type(e.sample_id) is int for e in result.model_errors)
 
-    
+
 def test_title_only_span_is_scored_with_default_skip_words():
     evaluator = SpanEvaluator(iou_threshold=0.75)
     df = make_df(["Mr.", "Smith"], ["TITLE", "PERSON"], ["TITLE", "PERSON"])

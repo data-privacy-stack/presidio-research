@@ -1,4 +1,7 @@
-# Span Matching Strategies in Presidio Evaluator
+---
+title: Span Matching Strategies in Presidio Evaluator
+description: Span assignment, overlap scenarios, and counting rules for PII evaluation.
+---
 
 This document explains how the span evaluation works in Presidio Evaluator, focusing on different overlap scenarios
 between annotated and predicted spans.
@@ -92,31 +95,33 @@ When there's insufficient overlap between spans, they are treated as both false 
 
 ## Multiple Span Scenarios
 
-Before scoring, each prediction is assigned to at most one overlapping annotation.
-A same-type match meeting the IoU threshold takes priority, followed by greatest
-IoU. Ties prefer the same type, then earliest gold start/end, then entity type in
-descending lexical order. This is a deterministic local assignment, not a global
-maximum-matching optimization.
+A single prediction span may overlap several annotations, but it is assigned to
+only one before scoring. Assignment prefers a same-type match meeting the IoU
+threshold, then the greatest IoU. Ties prefer the same type, then the earliest
+annotation (followed by its end and type), independently of input order.
+Recall is judged per annotation using only its assigned predictions; precision
+counts each prediction once in `num_predicted`. For example, gold `NAME NAME AGE`
+on `"John Smith 32"` produces two spans. A single `NAME` prediction covering all
+three tokens is one prediction. At threshold 1.0 it matches neither annotation:
+one FP, two FNs. At threshold 0.5 it matches only the name: one TP, one FN, no FP.
 
-For example, gold `NAME NAME AGE` on `"John Smith 32"` produces two spans.
-A single prediction covering all three tokens is evaluated against only one of
-them. With an IoU threshold of 1.0, the result is **one prediction, one FP, two FNs**,
-not two predictions and two FPs. If it meets the threshold for the name, it instead
-counts as one TP and the age remains one FN.
-
-When an annotation is assigned multiple prediction spans:
+When an annotation has multiple assigned prediction spans:
 
 ### 1. Multiple Spans of Same Type
 
-Spans of the same type are combined, and their collective IoU is calculated:
+Spans of the same type are combined, and their collective IoU is calculated.
+The combined IoU decides the annotation's verdict; the spans themselves are
+counted individually in `num_predicted`:
 
 - **Example**:
     - Text: "New York Mets"
     - Annotation: [ORGANIZATION, ORGANIZATION, ORGANIZATION]
     - Prediction: [ORGANIZATION, O, ORGANIZATION]
     - Combined IoU = 0.67
-    - If threshold = 0.5: Treated as a match (TP)
-    - If threshold = 0.75: Treated as a miss (FN)
+    - If threshold = 0.5: Treated as a match — 1 TP; both spans are credited
+      (num_predicted: +2, FP: 0)
+    - If threshold = 0.75: Treated as a miss — 1 FN; each failed span is its
+      own false positive (num_predicted: +2, FP: +2)
 
 ### 2. Multiple Spans of Different Types
 
@@ -129,6 +134,24 @@ Each entity type is evaluated separately against the annotation:
     - PERSON IoU = 0.67, LOCATION IoU = 0.33
     - If threshold = 0.5: PERSON is a match but wrong type for LOCATION portion
     - Result: TP for PERSON, FP for LOCATION
+
+## One Prediction Overlapping Multiple Annotations
+
+The mirror case is a single prediction overlapping several annotations. Only
+the annotation selected by exclusive assignment can use that prediction:
+
+- The selected annotation is a TP if the prediction has the same type and
+  meets the IoU threshold; otherwise it is an FN.
+- Other annotations without assigned predictions are FNs.
+- The prediction is counted once in `num_predicted`: credited if it matches
+  its assigned annotation, otherwise a single FP.
+
+For example, gold PERSON spans \[John Smith\] and \[Mary Jones\] overlap one
+PERSON prediction over "John Smith met Mary Jones" (IoU ≈ 0.4 per annotation).
+Equal IoUs assign it to the earlier span, "John Smith". At threshold 0.3:
+1 TP, 1 FN, no FP, num_predicted 1. At threshold 0.9: 2 FN, 1 FP.
+A qualifying wrong-type prediction instead produces one wrong-type cell and
+one `(PERSON, "O")` cell, not two wrong-type cells.
 
 ## Real-world Examples
 

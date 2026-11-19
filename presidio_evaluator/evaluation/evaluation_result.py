@@ -11,14 +11,14 @@ from presidio_evaluator.evaluation import ModelError
 class PIIEvaluationMetrics:
     """Metrics for a specific entity type.
 
-    :param precision: Precision for the entity type (true_positives / (true_positives + false_positives))
+    :param precision: Precision for the entity type ((num_predicted - false_positives) / num_predicted)
     :param recall: Recall for the entity type (true_positives / (true_positives + false_negatives))
     :param f_beta: F-beta score for the entity type, where beta is typically set to 1 (harmonic mean of precision and recall)
     :param num_predicted: Total number of predicted entities of this type
     :param num_annotated: Total number of annotated entities of this type
-    :param true_positives: Number of true positive predictions for this entity type
+    :param true_positives: Number of correctly matched annotations for this entity type
     :param false_positives: Number of false positive predictions for this entity type
-    :param false_negatives: Number of false negative predictions for this entity type
+    :param false_negatives: Number of unmatched annotations for this entity type
     """
 
     precision: float = 0.0
