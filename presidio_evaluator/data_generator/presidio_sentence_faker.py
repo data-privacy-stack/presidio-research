@@ -28,6 +28,10 @@ from presidio_evaluator.data_generator.faker_extensions.datasets import (
 )
 from presidio_evaluator.data_generator.faker_extensions.sentences import SentenceFaker
 
+# Faker locales whose last subtag is not the ISO code of the country their data
+# comes from. None means the locale has no country (ar_AA is generic Arabic).
+LOCALE_COUNTRIES = {"es_ca": "ES", "fr_qc": "CA", "en_ms": "MY", "ar_aa": None}
+
 presidio_templates_file_path = raw_data_dir / "templates.txt"
 presidio_additional_entity_providers = [
     IpAddressProvider,
@@ -57,6 +61,14 @@ class PresidioSentenceFaker:
     :param: provider_aliases: A dictionary mapping provider names to the given entity types.
     Useful if the templates contain a different name for the entity type than the one supported by Faker or PresidioSentenceFaker.
     :param: random_seed: A seed to make results reproducible between runs
+    :param: match_records_to_locale: Only use the base records whose ``country_code`` is the country
+    of ``locale`` (``DE`` for ``de_DE``, ``RS`` for ``sr_Latn_RS``, any of the countries for a list or dict
+    of locales), so addresses, cities, postcodes and phone numbers come from that country.
+    Matching is by country only, so ``fr_CH`` and ``de_CH`` share the Swiss records.
+    An empty field in a kept record is filled from another record of the same country,
+    or by Faker when no record of that country has it.
+    The default records have about 80 to 120 per country, so values repeat in large datasets.
+    Raises a ValueError if a locale has no country or no record matches it. Defaults to False.
     """
 
     PROVIDER_ALIASES = [
@@ -120,6 +132,7 @@ class PresidioSentenceFaker:
         entity_type_mapping: dict[str, str] | None = None,
         provider_aliases: list[tuple[str, str]] | None = None,
         random_seed: SeedType | None = None,
+        match_records_to_locale: bool = False,
     ) -> None:
         self._sentence_templates = sentence_templates
         if not self._sentence_templates:
@@ -132,6 +145,8 @@ class PresidioSentenceFaker:
             entity_providers = presidio_additional_entity_providers
         if base_records is None:
             base_records = load_fake_person_df()
+        if match_records_to_locale:
+            base_records = self._records_for_locale(base_records, locale)
 
         self._sentence_faker = SentenceFaker(
             records=base_records,
@@ -162,6 +177,81 @@ class PresidioSentenceFaker:
                 new_name=alias,
             )
         self.fake_sentence_results = None
+
+    @staticmethod
+    def _locale_country(locale: str) -> str:
+        """Return the country of a locale: DE for de_DE, RS for sr_Latn_RS, US for en_US.UTF-8."""
+        name = re.split(r"[.@]", locale, maxsplit=1)[0].replace("-", "_").lower()
+        if name in LOCALE_COUNTRIES:
+            country = LOCALE_COUNTRIES[name]
+        else:
+            subtags = name.split("_")
+            region = subtags[-1] if len(subtags) > 1 else ""
+            country = region.upper() if len(region) == 2 and region.isalpha() else None
+        if not country:
+            raise ValueError(
+                f"Locale {locale!r} has no country (e.g. 'de_DE'), "
+                "so the base records can't be matched to it"
+            )
+        return country
+
+    @classmethod
+    def _records_for_locale(
+        cls,
+        records: pd.DataFrame | list[dict],
+        locale: str | list[str] | dict[str, float],
+    ) -> list[dict]:
+        """Keep the records from the countries of the locale, with their empty fields filled.
+
+        An empty field takes the value of another record of the same country.
+        It is left out when no record of that country has it, so Faker generates it.
+        """
+        locales = [locale] if isinstance(locale, str) else list(locale)
+        countries = {cls._locale_country(name) for name in locales}
+
+        if len(records) == 0:
+            raise ValueError("match_records_to_locale got no base records")
+        if not isinstance(records, pd.DataFrame):
+            records = pd.DataFrame(records, dtype=object)
+        if "country_code" not in records.columns:
+            raise ValueError(
+                "match_records_to_locale needs a country_code field in the base records"
+            )
+
+        codes = records["country_code"].map(
+            lambda code: str(code).strip().upper(), na_action="ignore"
+        )
+        available = set(codes.dropna())
+        missing = sorted(countries - available)
+        if missing:
+            raise ValueError(
+                f"No base records have country_code {', '.join(map(repr, missing))}. "
+                f"Available: {', '.join(sorted(available))}"
+            )
+
+        kept = records[codes.isin(countries)].astype(object)
+        for rows in kept.groupby(codes[kept.index]).groups.values():
+            for column in kept.columns:
+                cells = kept.loc[rows, column]
+                empty = cells.isna()
+                values = cells[~empty].to_list()
+                if values and empty.any():
+                    kept.loc[cells.index[empty], column] = [
+                        values[i % len(values)] for i in range(empty.sum())
+                    ]
+
+        print(
+            f"match_records_to_locale: using {len(kept)} of {len(records)} base records "
+            f"({', '.join(sorted(countries))})"
+        )
+        return [
+            {
+                key: value
+                for key, value in record.items()
+                if not (pd.api.types.is_scalar(value) and pd.isna(value))
+            }
+            for record in kept.to_dict(orient="records")
+        ]
 
     def generate_new_fake_sentences(self, num_samples: int) -> list[InputSample]:
         """Generate fake sentences based on the templates, input data and entity providers."""
