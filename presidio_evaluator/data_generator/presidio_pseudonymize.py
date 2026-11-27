@@ -1,5 +1,6 @@
 from presidio_analyzer import RecognizerResult
 from presidio_anonymizer import AnonymizerEngine
+from presidio_anonymizer.entities import OperatorConfig
 
 from presidio_evaluator.data_generator.faker_extensions import SentenceFaker
 
@@ -16,17 +17,16 @@ class PresidioPseudonymization(SentenceFaker):
 
         super().__init__(**kwargs)
         if map_to_presidio_entities:
-            self.add_provider_alias("name", "PERSON")
-            self.add_provider_alias("ipv4", "IP_ADDRESS")
-            self.add_provider_alias("company", "ORGANIZATION")
-            self.add_provider_alias("country", "LOCATION")
-            self.add_provider_alias("credit_card_number", "CREDIT_CARD")
-            self.add_provider_alias("iban", "IBAN_CODE")
-            self.add_provider_alias("phone_number", "PHONE_NUMBER")
-            self.add_provider_alias("url", "URL")
-            self.add_provider_alias("ssn", "US_SSN")
-            self.add_provider_alias("email", "EMAIL_ADDRESS")
-            self.add_provider_alias("date_time", "DATE_TIME")
+            # Template placeholders are looked up in lower case. PHONE_NUMBER,
+            # URL and DATE_TIME already match Faker providers of the same name.
+            self.add_provider_alias("name", "person")
+            self.add_provider_alias("ipv4", "ip_address")
+            self.add_provider_alias("company", "organization")
+            self.add_provider_alias("country", "location")
+            self.add_provider_alias("credit_card_number", "credit_card")
+            self.add_provider_alias("iban", "iban_code")
+            self.add_provider_alias("ssn", "us_ssn")
+            self.add_provider_alias("email", "email_address")
 
     def pseudonymize(
         self,
@@ -44,13 +44,21 @@ class PresidioPseudonymization(SentenceFaker):
 
         presidio_response = sorted(presidio_response, key=lambda resp: resp.start)
 
+        # Replace each entity with a {{ENTITY_TYPE}} placeholder directly,
+        # so "<" and ">" in the original text are left as they are
+        operators = {
+            resp.entity_type: OperatorConfig(
+                "replace", {"new_value": "{{" + resp.entity_type + "}}"}
+            )
+            for resp in presidio_response
+        }
         anonymizer_engine = AnonymizerEngine()
         anonymized_result = anonymizer_engine.anonymize(
             text=original_text,
             analyzer_results=presidio_response,
+            operators=operators,
         )
 
         templated_text = anonymized_result.text
-        templated_text = templated_text.replace(">", "}}").replace("<", "{{")
         fake_texts = [self.parse(templated_text, add_spans=False) for _ in range(count)]
         return fake_texts
