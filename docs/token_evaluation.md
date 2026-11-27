@@ -102,11 +102,12 @@ results_df = my_model.predict_dataset(dataset)
 
 # 2. Map entity types to the same namespace
 mapper = CanonicalMapper()
-mapped_df = mapper.get_mapped_results_dataframe(results_df)
+mapper.analyze(results_df)
+mapped_results = mapper.get_mapped_results_dataframe()
 
 # 3. Evaluate
 final_result = evaluator.calculate_score_on_df(
-    mapped_df,
+    mapped_results.detailed,
     beta=1.0,  # F1 score
 )
 

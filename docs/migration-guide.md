@@ -42,17 +42,17 @@ from presidio_evaluator.evaluation import SpanEvaluator
 results_df = wrapped_analyzer.predict_dataset(dataset)
 
 # Step 2: Map
-mapper = CanonicalMapper.from_dataset(dataset)
-mapped_df = mapper.get_mapped_results_dataframe(results_df)
+mapper = CanonicalMapper()
+mapper.analyze(results_df)
+mapped_results = mapper.get_mapped_results_dataframe()
 
 # Step 3: Score
 entities_to_keep = {v for v in mapper.get_mapping().values() if v is not None}
 evaluator = SpanEvaluator(
-    model=wrapped_analyzer,
     entities_to_keep=list(entities_to_keep),
     iou_threshold=0.75,
 )
-scores = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_df)
+scores = evaluator.calculate_score_on_df(per_type=True, results_df=mapped_results.detailed)
 ```
 
 ---
@@ -79,11 +79,12 @@ from presidio_evaluator.entity_mapping import CanonicalMapper
 from presidio_evaluator.evaluation import TokenEvaluator
 
 results_df = my_model.predict_dataset(dataset)
-mapper = CanonicalMapper.from_dataset(dataset)
-mapped_df = mapper.get_mapped_results_dataframe(results_df)
+mapper = CanonicalMapper()
+mapper.analyze(results_df)
+mapped_results = mapper.get_mapped_results_dataframe()
 
-evaluator = TokenEvaluator(model=my_model)
-scores = evaluator.calculate_score_on_df(results_df=mapped_df)
+evaluator = TokenEvaluator()
+scores = evaluator.calculate_score_on_df(results_df=mapped_results.detailed)
 ```
 
 ---
