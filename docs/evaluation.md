@@ -25,6 +25,8 @@ as:
 - `calculate_score_on_df()` — the primary entry point, accepts a 5-column DataFrame with columns
   `sentence_id`, `token`, `annotation`, `prediction`, `start_indices` (schema produced by
   `model.predict_dataset()` and optionally processed by `CanonicalMapper.get_mapped_results_dataframe`).
+  `SpanEvaluator` also needs the `annotation_span_id` and `prediction_span_id` columns, which
+  `predict_dataset()` adds and `CanonicalMapper` derives when they are missing.
   The `level` parameter controls which metrics are computed: `"entity"` (per-type only), `"pii"` (global
   PII only), or `"both"` (default).
 
@@ -125,11 +127,12 @@ results_df = model.predict_dataset(dataset)
 
 # 2. Map entity types to a shared canonical namespace
 mapper = CanonicalMapper()
-mapped_df = mapper.get_mapped_results_dataframe(results_df)
+mapper.analyze(results_df)
+mapped_results = mapper.get_mapped_results_dataframe()
 
 # 3. Evaluate
 evaluator = SpanEvaluator()
-results = evaluator.calculate_score_on_df(mapped_df, beta=f_beta)
+results = evaluator.calculate_score_on_df(mapped_results.detailed, beta=f_beta)
 
 # 4. Extract confusion matrix and entities
 entities, confmatrix = results.to_confusion_matrix()
@@ -273,7 +276,7 @@ final_result = evaluator.calculate_score_on_df(results_df)
 
 print(f"Precision: {final_result.pii_precision:.4f}")
 print(f"Recall: {final_result.pii_recall:.4f}")
-print(f"F1: {final_result.pii_f:.4f}")
+print(f"F2: {final_result.pii_f:.4f}")
 ```
 
 **Output:**
@@ -281,7 +284,7 @@ print(f"F1: {final_result.pii_f:.4f}")
 ```
 Precision: 0.7500
 Recall: 1.0000
-F1: 0.8571
+F2: 0.9375
 ```
 
 ### Presidio Token Evaluator (with skip words)
@@ -307,7 +310,7 @@ final_result = evaluator.calculate_score_on_df(results_df)
 
 print(f"Precision: {final_result.pii_precision:.4f}")
 print(f"Recall: {final_result.pii_recall:.4f}")
-print(f"F1: {final_result.pii_f:.4f}")
+print(f"F2: {final_result.pii_f:.4f}")
 ```
 
 **Output:**
@@ -315,7 +318,7 @@ print(f"F1: {final_result.pii_f:.4f}")
 ```
 Precision: 1.0000
 Recall: 1.0000
-F1: 1.0000
+F2: 1.0000
 ```
 
 With "of" as a skip word, the token evaluator ignores this token in the evaluation, resulting in perfect precision and
@@ -336,6 +339,8 @@ results_df = pd.DataFrame({
     "annotation": ["LOC", "LOC", "O", "LOC"],
     "prediction": ["LOC", "LOC", "LOC", "LOC"],
     "start_indices": [0, 7, 14, 17],
+    "annotation_span_id": [0, 0, None, 1],
+    "prediction_span_id": [0, 0, 0, 0],
 })
 
 # Initialize span evaluator with no skip words
@@ -344,16 +349,19 @@ scores = evaluator.calculate_score_on_df(results_df)
 
 print(f"Precision: {scores.pii_precision:.4f}")
 print(f"Recall: {scores.pii_recall:.4f}")
-print(f"F1: {scores.pii_f:.4f}")
+print(f"F2: {scores.pii_f:.4f}")
 ```
 
 **Output:**
 
 ```
-Precision: 1.0 # IoU is higher than the threshold
-Recall: 0.5 # The IoU between "America" and "United States of America" is less than the threshold, so it's a FN.
-F2: 0.55556
+Precision: 0.0000
+Recall: 0.0000
+F2: nan
 ```
+
+The prediction is assigned to the annotation it overlaps most, "United States", with a character IoU of 13/24 = 0.54,
+below the 0.9 threshold. Both annotations are false negatives and the prediction is a false positive.
 
 The span evaluator is stricter about entity boundaries, treating "United States of America" as a different entity than
 the separate "United States" and "America" entities.
@@ -373,6 +381,8 @@ results_df = pd.DataFrame({
     "annotation": ["LOC", "LOC", "O", "LOC"],
     "prediction": ["LOC", "LOC", "LOC", "LOC"],
     "start_indices": [0, 7, 14, 17],
+    "annotation_span_id": [0, 0, None, 1],
+    "prediction_span_id": [0, 0, 0, 0],
 })
 
 # Initialize span evaluator with default skip words (includes "of")
@@ -381,19 +391,19 @@ scores = evaluator.calculate_score_on_df(results_df)
 
 print(f"Precision: {scores.pii_precision:.4f}")
 print(f"Recall: {scores.pii_recall:.4f}")
-print(f"F1: {scores.pii_f:.4f}")
+print(f"F2: {scores.pii_f:.4f}")
 ```
 
 **Output:**
 
 ```
-Precision: 1.000 
-Recall: 1.0000
-F2: 1.000
+Precision: 0.0000
+Recall: 0.0000
+F2: nan
 ```
 
-With "of" as a skip word, the span evaluator can now merge "United States" and "America" into one entity, resulting in a
-perfect match with the prediction.
+Skip words do not join separate spans (see [Skip Words](span_evaluation.md#skip-words)), so "United States" and
+"America" stay two annotations and the result is the same as without skip words.
 
 ### Key Takeaways
 
